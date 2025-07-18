@@ -33,10 +33,10 @@ Coding conventions, best practices, and idiomatic patterns.
 
 | ID | Title | Status | Priority | Target Version | Dependencies |
 |----|-------|--------|----------|----------------|--------------|
-| [PLD-001](./PLD-001) | Semantic Type System | Draft | Core | 0.1.0 | None |
-| [PLD-002](./PLD-002) | Smart Module System | Draft | Core | 0.1.0 | PLD-001 |
-| [PLD-003](./PLD-003) | Effect System & Capabilities | Draft | Core | 0.2.0 | PLD-001 |
-| [PLD-004](./PLD-004) | Compiler Architecture | Planned | Core | 0.1.0 | PLD-001 |
+| [PLD-001](./PLD-001.md) | Semantic Type System | Draft | Core | 0.1.0 | None |
+| [PLD-002](./PLD-002.md) | Smart Module System | Draft | Core | 0.1.0 | PLD-001 |
+| [PLD-003](./PLD-003.md) | Effect System & Capabilities | Draft | Core | 0.2.0 | PLD-001 |
+| [PLD-004](./PLD-004.md) | Compiler Architecture | Planned | Core | 0.1.0 | PLD-001 |
 | PLD-005 | Memory Management Model | Planned | Core | 0.1.0 | PLD-004 |
 | PLD-006 | Error Handling Philosophy | Planned | Core | 0.1.0 | PLD-001, PLD-003 |
 | PLD-007 | Concurrency Model | Planned | High | 0.3.0 | PLD-003, PLD-005 |
