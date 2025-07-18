@@ -1,0 +1,27 @@
+[package]
+name = "prism-common"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Common utilities and types for the Prism language compiler"
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+serde = { workspace = true, features = ["derive"], optional = true }
+serde_json = { workspace = true, optional = true }
+indexmap.workspace = true
+smallvec.workspace = true
+bitvec.workspace = true
+once_cell.workspace = true
+string-interner.workspace = true
+rustc-hash.workspace = true
+
+[features]
+default = []
+serde = ["dep:serde", "dep:serde_json"] 

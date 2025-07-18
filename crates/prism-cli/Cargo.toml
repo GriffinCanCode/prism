@@ -1,0 +1,37 @@
+[package]
+name = "prism-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Command-line interface for the Prism programming language"
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "prism"
+path = "src/main.rs"
+
+[dependencies]
+prism-common.workspace = true
+prism-lexer.workspace = true
+prism-parser.workspace = true
+prism-semantic.workspace = true
+prism-effects.workspace = true
+prism-codegen.workspace = true
+prism-ai.workspace = true
+clap.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tokio.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+serde = { workspace = true, features = ["derive"], optional = true }
+serde_json = { workspace = true, optional = true }
+
+[features]
+default = []
+serde = ["dep:serde", "dep:serde_json", "prism-common/serde"] 

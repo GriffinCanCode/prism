@@ -1,0 +1,29 @@
+[package]
+name = "prism-effects"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Effect system and capability-based security for Prism"
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+prism-common.workspace = true
+prism-ast.workspace = true
+prism-semantic.workspace = true
+petgraph.workspace = true
+rustc-hash.workspace = true
+indexmap.workspace = true
+thiserror.workspace = true
+serde = { workspace = true, features = ["derive"], optional = true }
+
+[features]
+default = []
+serde = ["dep:serde", "prism-common/serde", "prism-ast/serde", "prism-semantic/serde"]
+
+[dev-dependencies]
+insta.workspace = true 

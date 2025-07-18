@@ -1,0 +1,22 @@
+[package]
+name = "prism-ast"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Abstract Syntax Tree definitions for the Prism programming language"
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+prism-common.workspace = true
+serde = { workspace = true, features = ["derive"], optional = true }
+indexmap.workspace = true
+smallvec.workspace = true
+
+[features]
+default = []
+serde = ["dep:serde", "prism-common/serde"] 

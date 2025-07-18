@@ -1,0 +1,28 @@
+[package]
+name = "prism-runtime"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Runtime support for the Prism programming language"
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+prism-common.workspace = true
+prism-effects.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+thiserror.workspace = true
+serde = { workspace = true, features = ["derive"], optional = true }
+serde_json = { workspace = true, optional = true }
+
+[features]
+default = []
+serde = ["dep:serde", "dep:serde_json", "prism-common/serde"]
+
+[dev-dependencies]
+insta.workspace = true 

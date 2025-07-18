@@ -1,0 +1,118 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/prism-ast",
+    "crates/prism-lexer", 
+    "crates/prism-parser",
+    "crates/prism-semantic",
+    "crates/prism-effects",
+    # "crates/prism-codegen",  # Temporarily disabled due to LLVM dependency issues
+    # "crates/prism-ai",       # Temporarily disabled due to candle dependency issues
+    "crates/prism-cli",
+    "crates/prism-common",
+    "crates/prism-runtime",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Prism Language Team"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/GriffinCanCode/prism"
+homepage = "https://prism-lang.org"
+description = "The Prism programming language"
+keywords = ["compiler", "language", "ai", "semantic-types", "capabilities"]
+categories = ["compilers", "development-tools"]
+rust-version = "1.75"
+
+[workspace.dependencies]
+# Core dependencies
+thiserror = "1.0"
+anyhow = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.0", features = ["full"] }
+async-trait = "0.1"
+
+# CLI and interface
+clap = { version = "4.0", features = ["derive"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Parsing and analysis
+nom = "7.1"
+logos = "0.14"
+petgraph = "0.6"
+rustc-hash = "1.1"
+
+# Code generation
+# inkwell = { version = "0.4", features = ["llvm17-0"] }  # Temporarily disabled due to LLVM dependency issues
+swc_core = { version = "0.90", features = ["ecma_ast", "ecma_codegen", "ecma_parser"] }
+
+# AI and machine learning  
+# candle-core = "0.4"      # Temporarily disabled due to dependency issues
+# candle-nn = "0.4"        # Temporarily disabled due to dependency issues
+# candle-transformers = "0.4"  # Temporarily disabled due to dependency issues
+tokenizers = "0.15"
+hf-hub = "0.3"
+
+# Testing and benchmarking
+criterion = { version = "0.5", features = ["html_reports"] }
+proptest = "1.0"
+insta = "1.34"
+
+# Memory management and performance
+arena = "0.3"
+string-interner = "0.17"
+dashmap = "5.5"
+rayon = "1.8"
+
+# Utilities
+once_cell = "1.19"
+indexmap = "2.1"
+smallvec = { version = "1.11", features = ["serde"] }
+bitvec = "1.0"
+
+# Internal workspace dependencies
+prism-common = { path = "crates/prism-common" }
+prism-ast = { path = "crates/prism-ast" }
+prism-lexer = { path = "crates/prism-lexer" }
+prism-parser = { path = "crates/prism-parser" }
+prism-semantic = { path = "crates/prism-semantic" }
+prism-effects = { path = "crates/prism-effects" }
+prism-codegen = { path = "crates/prism-codegen" }
+prism-ai = { path = "crates/prism-ai" }
+prism-runtime = { path = "crates/prism-runtime" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+unused_imports = "warn"
+unused_variables = "warn"
+
+[workspace.lints.clippy]
+all = "warn"
+pedantic = "warn"
+nursery = "warn"
+cargo = "warn"
+# Allow some pedantic lints for development ease
+similar_names = "allow"
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+
+[profile.dev]
+panic = "abort"
+debug = true
+opt-level = 0
+
+[profile.release]
+panic = "abort"
+debug = false
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[profile.bench]
+inherits = "release"
+debug = true 

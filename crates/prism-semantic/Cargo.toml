@@ -1,0 +1,28 @@
+[package]
+name = "prism-semantic"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Semantic analysis for the Prism programming language"
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+prism-common.workspace = true
+prism-ast.workspace = true
+petgraph.workspace = true
+rustc-hash.workspace = true
+indexmap.workspace = true
+thiserror.workspace = true
+serde = { workspace = true, features = ["derive"], optional = true }
+
+[features]
+default = []
+serde = ["dep:serde", "prism-common/serde", "prism-ast/serde"]
+
+[dev-dependencies]
+insta.workspace = true 
