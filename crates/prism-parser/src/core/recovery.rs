@@ -5,8 +5,8 @@
 //! for better error reporting and recovery strategies.
 
 use crate::{
-    error::{ErrorContext, ParseError, ParseErrorKind, ParseResult, ErrorSeverity},
-    Parser,
+    core::error::{ErrorContext, ParseError, ParseErrorKind, ParseResult, ErrorSeverity},
+    parser::Parser,
 };
 use prism_ast::{AstNode, Expr, Item, Stmt, Type, ErrorStmt, ErrorExpr, ErrorType};
 use prism_lexer::{Token, TokenKind};
@@ -609,7 +609,7 @@ impl Parser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Parser;
+    use crate::parser::Parser;
     use prism_lexer::{SemanticLexer, Lexer};
     use prism_common::SourceId;
     

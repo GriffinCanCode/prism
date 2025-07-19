@@ -17,6 +17,7 @@ pub mod stmt;
 pub mod types;
 pub mod visitor;
 pub mod type_inference;
+pub mod transformations;
 
 // Re-export main types
 pub use arena::AstArena;
@@ -28,6 +29,7 @@ pub use stmt::*;
 pub use types::*;
 pub use visitor::*;
 pub use type_inference::*;
+pub use transformations::*;
 
 use prism_common::SourceId;
 use std::collections::HashMap;

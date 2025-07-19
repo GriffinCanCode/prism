@@ -1,0 +1,71 @@
+[package]
+name = "prism-compiler"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Query-based compilation engine for the Prism programming language"
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# Workspace dependencies
+prism-common = { workspace = true }
+prism-ast = { workspace = true }
+prism-lexer = { workspace = true }
+prism-parser = { workspace = true }
+prism-semantic = { workspace = true }
+prism-effects = { workspace = true }
+prism-pir = { workspace = true }
+prism-codegen = { workspace = true }
+
+# Core dependencies
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+
+# Performance and concurrency
+rayon = { workspace = true }
+dashmap = { workspace = true }
+once_cell = { workspace = true }
+
+# Data structures
+indexmap = { workspace = true }
+smallvec = { workspace = true }
+petgraph = { workspace = true }
+rustc-hash = { workspace = true }
+
+# Memory management
+# arena = { workspace = true }  # Not available
+string-interner = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Additional dependencies for new features
+num_cpus = "1.16"
+notify = "6.1"
+bincode = "1.3"
+chrono = { version = "0.4", features = ["serde"] }
+serde_yaml = "0.9"
+
+[dev-dependencies]
+criterion = { workspace = true }
+proptest = { workspace = true }
+insta = { workspace = true }
+tokio-test = "0.4"
+tempfile = "3.8"
+
+# [[bench]]
+# name = "query_engine"
+# harness = false
+
+# [[bench]]
+# name = "parallel_compilation"
+# harness = false 

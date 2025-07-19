@@ -12,14 +12,24 @@ categories.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-prism-common.workspace = true
-prism-ast.workspace = true
-prism-semantic.workspace = true
-prism-effects.workspace = true
-inkwell.workspace = true
-swc_core.workspace = true
-thiserror.workspace = true
+# Workspace dependencies
+prism-common = { workspace = true }
+prism-ast = { workspace = true }
+prism-pir = { workspace = true }
+
+# Core dependencies
+thiserror = { workspace = true }
 serde = { workspace = true, features = ["derive"], optional = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+async-trait = { workspace = true }
+
+# Code generation backends
+# inkwell = { workspace = true }  # LLVM backend - temporarily disabled due to LLVM dependency issues
+swc_core = { workspace = true }  # JavaScript/TypeScript backend
+
+# Logging
+tracing = { workspace = true }
 
 [features]
 default = []

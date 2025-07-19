@@ -73,6 +73,13 @@ impl Span {
         Self::new(Position::start(), Position::start(), SourceId::new(0))
     }
 
+    /// Create a span from byte offsets (for testing)
+    pub fn from_offsets(start_offset: u32, end_offset: u32, source_id: SourceId) -> Self {
+        let start = Position::new(1, start_offset + 1, start_offset);
+        let end = Position::new(1, end_offset + 1, end_offset);
+        Self::new(start, end, source_id)
+    }
+
     /// Check if this span contains another span
     pub fn contains(&self, other: &Span) -> bool {
         self.source_id == other.source_id

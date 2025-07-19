@@ -4,11 +4,10 @@
 //! including semantic type inference, constraint propagation, and AI-assisted type suggestions.
 
 use crate::{
-    AstNode, Expr, Type, SemanticType, TypeConstraint, Effect, EffectType,
-    UnionType, IntersectionType, DependentType, SecurityClassification,
-    SemanticTypeMetadata, AIContext, ValidationPredicate, RefinementCondition,
+    AstNode, Expr, Type, TypeConstraint, Effect, EffectType,
+    EffectMetadata, EffectCategory, AiContext, LiteralValue, BinaryOperator, UnaryOperator,
 };
-use prism_common::{span::Span, symbol::Symbol};
+use prism_common::{span::Span, symbol::Symbol, NodeId};
 use std::collections::{HashMap, HashSet};
 use thiserror::Error;
 
@@ -128,7 +127,7 @@ pub struct ConstraintRelationship {
 }
 
 /// Type of constraint relationship
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RelationshipType {
     /// Constraints are mutually exclusive
     MutuallyExclusive,
@@ -356,12 +355,12 @@ impl TypeInferenceEngine {
     
     /// Infer base type without constraints or effects
     fn infer_base_type(&mut self, expr: &AstNode<Expr>) -> InferenceResult<InferredType> {
-        match &expr.data {
-            Expr::Literal(literal) => self.infer_literal_type(literal),
-            Expr::Identifier(name) => self.infer_identifier_type(name),
-            Expr::BinaryOp { left, op, right } => self.infer_binary_op_type(left, op, right),
-            Expr::UnaryOp { op, operand } => self.infer_unary_op_type(op, operand),
-            Expr::FunctionCall { function, args } => self.infer_function_call_type(function, args),
+        match &expr.kind {
+            Expr::Literal(literal) => self.infer_literal_type(&literal.value),
+            Expr::Variable(var) => self.infer_identifier_type(&var.name),
+            Expr::Binary(binary) => self.infer_binary_op_type(&binary.left, &binary.operator, &binary.right),
+            Expr::Unary(unary) => self.infer_unary_op_type(&unary.operator, &unary.operand),
+            Expr::Call(call) => self.infer_function_call_type(&call.callee, &call.arguments),
             _ => Err(InferenceError::CannotInferType { span: expr.span }),
         }
     }
@@ -396,6 +395,7 @@ impl TypeInferenceEngine {
                 type_node: AstNode::new(
                     Type::Effect(effect_type),
                     base_type.type_node.span,
+                    NodeId::new(0), // TODO: Generate proper node ID
                 ),
                 confidence: base_type.confidence * 0.95, // Slight confidence reduction
                 source: InferenceSource::Unified(vec![

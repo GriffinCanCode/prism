@@ -6,11 +6,14 @@ members = [
     "crates/prism-parser",
     "crates/prism-semantic",
     "crates/prism-effects",
-    # "crates/prism-codegen",  # Temporarily disabled due to LLVM dependency issues
-    # "crates/prism-ai",       # Temporarily disabled due to candle dependency issues
-    "crates/prism-cli",
     "crates/prism-common",
+    "crates/prism-pir",
     "crates/prism-runtime",
+    "crates/prism-compiler",
+    "crates/prism-codegen",
+    "crates/prism-syntax",
+    # "crates/prism-ai",       # Temporarily disabled due to candle dependency issues
+    # "crates/prism-cli",      # Temporarily disabled due to AI dependency issues
 ]
 
 [workspace.package]
@@ -62,8 +65,8 @@ proptest = "1.0"
 insta = "1.34"
 
 # Memory management and performance
-arena = "0.3"
-string-interner = "0.17"
+# arena = "0.3"  # Not available
+string-interner = { version = "0.17", features = ["serde"] }
 dashmap = "5.5"
 rayon = "1.8"
 
@@ -81,8 +84,11 @@ prism-parser = { path = "crates/prism-parser" }
 prism-semantic = { path = "crates/prism-semantic" }
 prism-effects = { path = "crates/prism-effects" }
 prism-codegen = { path = "crates/prism-codegen" }
+prism-syntax = { path = "crates/prism-syntax" }
 prism-ai = { path = "crates/prism-ai" }
 prism-runtime = { path = "crates/prism-runtime" }
+prism-pir = { path = "crates/prism-pir" }
+prism-compiler = { path = "crates/prism-compiler" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

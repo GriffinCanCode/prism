@@ -1,13 +1,16 @@
 //! Symbol table and string interning utilities
 
 use std::fmt;
+use std::sync::{Mutex, OnceLock};
 use rustc_hash::FxHashMap;
-use string_interner::{DefaultSymbol, StringInterner, backend::StringBackend};
+use string_interner::{DefaultSymbol, StringInterner, backend::StringBackend, Symbol as SymbolTrait};
 
 /// A symbol representing an interned string
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Symbol(DefaultSymbol);
+
+/// Global symbol table
+static GLOBAL_SYMBOL_TABLE: OnceLock<Mutex<SymbolTable>> = OnceLock::new();
 
 impl Symbol {
     /// Create a new symbol from a raw value (used internally)
@@ -19,11 +22,50 @@ impl Symbol {
     pub fn raw(self) -> DefaultSymbol {
         self.0
     }
+
+    /// Intern a string using the global symbol table
+    pub fn intern(s: &str) -> Self {
+        let table = GLOBAL_SYMBOL_TABLE.get_or_init(|| Mutex::new(SymbolTable::new()));
+        let mut table = table.lock().unwrap();
+        table.intern(s)
+    }
+
+    /// Resolve a symbol to its string representation
+    pub fn resolve(self) -> Option<String> {
+        let table = GLOBAL_SYMBOL_TABLE.get_or_init(|| Mutex::new(SymbolTable::new()));
+        let table = table.lock().unwrap();
+        table.resolve(self).map(|s| s.to_string())
+    }
 }
 
 impl fmt::Display for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "sym:{:?}", self.0)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl serde::Serialize for Symbol {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // Serialize the symbol as its string representation
+        match self.resolve() {
+            Some(string) => serializer.serialize_str(&string),
+            None => serializer.serialize_str(&format!("unknown_symbol_{}", self.0.to_usize())),
+        }
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for Symbol {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let string = String::deserialize(deserializer)?;
+        Ok(Symbol::intern(&string))
     }
 }
 

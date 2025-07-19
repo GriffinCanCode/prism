@@ -29,7 +29,7 @@ pub enum Type {
     /// Effect types
     Effect(EffectType),
     /// Union types
-    Union(UnionType),
+    Union(Box<UnionType>),
     /// Intersection types
     Intersection(IntersectionType),
     /// Error type (for recovery)
@@ -257,7 +257,7 @@ pub struct SemanticTypeMetadata {
 }
 
 /// Security classification
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SecurityClassification {
     /// Public data
@@ -337,7 +337,7 @@ pub enum ParameterBound {
 }
 
 /// Parameter role in dependent type
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ParameterRole {
     /// Size parameter (e.g., array length)
@@ -393,7 +393,7 @@ pub struct RefinementCondition {
 }
 
 /// Constraint severity
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ConstraintSeverity {
     /// Error - must be satisfied
@@ -405,7 +405,7 @@ pub enum ConstraintSeverity {
 }
 
 /// Validation level
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ValidationLevel {
     /// Compile-time validation
@@ -852,6 +852,8 @@ pub enum PermissionLevel {
     Read,
     /// Write permission
     Write,
+    /// Read and write permission
+    ReadWrite,
     /// Execute permission
     Execute,
     /// Admin permission
@@ -907,7 +909,7 @@ pub struct UnionType {
     /// Union members
     pub members: Vec<AstNode<Type>>,
     /// Union discriminant (for tagged unions)
-    pub discriminant: Option<UnionDiscriminant>,
+    pub discriminant: Option<Box<UnionDiscriminant>>,
     /// Union constraints
     pub constraints: Vec<UnionConstraint>,
     /// Common operations supported by all members
@@ -937,7 +939,7 @@ pub struct UnionDiscriminant {
     /// Discriminant field name
     pub field_name: Symbol,
     /// Discriminant type
-    pub discriminant_type: AstNode<Type>,
+    pub discriminant_type: Box<AstNode<Type>>,
     /// Tag mapping
     pub tag_mapping: HashMap<String, usize>,
 }
@@ -1092,6 +1094,17 @@ pub struct IntersectionMetadata {
     pub ai_context: Option<String>,
 }
 
+impl Default for UnionMetadata {
+    fn default() -> Self {
+        Self {
+            name: None,
+            description: None,
+            semantics: UnionSemantics::Disjoint,
+            ai_context: None,
+        }
+    }
+}
+
 /// Union semantics
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1215,7 +1228,7 @@ pub struct TraitMethod {
 }
 
 /// Visibility
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Visibility {
     /// Public visibility

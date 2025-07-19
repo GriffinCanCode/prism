@@ -1,7 +1,17 @@
 //! Lexical analyzer for the Prism programming language
 //!
-//! This crate provides tokenization capabilities with rich semantic information
-//! designed for AI-first development and analysis.
+//! This crate provides tokenization capabilities focused purely on
+//! converting characters to tokens. It does NOT handle:
+//! - Syntax style detection (belongs in parser)
+//! - Semantic analysis (belongs in parser)
+//! - Token relationship analysis (belongs in parser)
+//!
+//! ## Responsibility
+//! 
+//! This crate has ONE responsibility: **Character-to-Token Conversion**
+//! 
+//! It takes source code as a string and produces a stream of tokens,
+//! handling lexical errors and providing basic error recovery.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
@@ -10,16 +20,12 @@
 
 pub mod lexer;
 pub mod recovery;
-pub mod semantic;
-pub mod syntax;
 pub mod token;
 
 #[cfg(test)]
 mod tests;
 
-// Re-export main types
-pub use lexer::{Lexer, LexerError, LexerConfig, LexerResult, SemanticLexer, SemanticSummary};
+// Re-export main types for clean API
+pub use lexer::{Lexer, LexerError, LexerConfig, LexerResult};
 pub use recovery::{ErrorRecovery, RecoveryStrategy, RecoveryAction, ErrorPattern, LexerDiagnostics};
-pub use semantic::{SemanticAnalyzer, SemanticPattern, PatternType, IdentifierUsage};
-pub use syntax::{SyntaxDetector, SyntaxEvidence, StyleRules, MixedStyleWarning};
-pub use token::{SemanticContext, SyntaxStyle, Token, TokenKind}; 
+pub use token::{Token, TokenKind}; 

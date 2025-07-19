@@ -3,13 +3,31 @@
 //! This module provides robust error recovery strategies and comprehensive
 //! diagnostic reporting for the Prism lexer.
 
-use crate::token::{Token, TokenKind, SyntaxStyle};
+use crate::token::{Token, TokenKind};
 use prism_common::{
-    diagnostics::{Diagnostic, DiagnosticBag, DiagnosticLevel},
+    diagnostics::{Diagnostic, DiagnosticBag, Severity},
     span::{Position, Span},
     SourceId,
 };
 use std::collections::VecDeque;
+
+/// Syntax styles for error recovery context
+/// 
+/// This is a simplified version used only for error recovery.
+/// The full SyntaxStyle definition is in prism-syntax crate.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SyntaxStyle {
+    /// C-like syntax with braces and semicolons
+    CLike,
+    /// Python-like syntax with indentation
+    PythonLike,
+    /// Rust-like syntax
+    RustLike,
+    /// Canonical Prism syntax
+    Canonical,
+    /// Mixed syntax styles
+    Mixed,
+}
 
 /// Error recovery strategies
 #[derive(Debug, Clone, PartialEq)]
@@ -105,7 +123,7 @@ impl ErrorRecovery {
             recovery_state: RecoveryState {
                 attempts: 0,
                 in_recovery: false,
-                last_good_position: Position::new(1, 1),
+                last_good_position: Position::new(1, 1, 0),
                 recovery_tokens: VecDeque::new(),
             },
             diagnostics: DiagnosticBag::new(),
@@ -214,7 +232,7 @@ impl ErrorRecovery {
         strategy: &RecoveryStrategy,
         source_id: SourceId,
         position: Position,
-        syntax_style: SyntaxStyle,
+        _syntax_style: SyntaxStyle,
     ) -> Option<RecoveryResult> {
         match strategy {
             RecoveryStrategy::Skip => {
@@ -227,8 +245,7 @@ impl ErrorRecovery {
             RecoveryStrategy::Insert(token_kind) => {
                 let token = Token::new(
                     token_kind.clone(),
-                    Span::new(source_id, position, position),
-                    syntax_style,
+                    Span::new(position, position, source_id),
                 );
                 
                 Some(RecoveryResult {
@@ -240,8 +257,7 @@ impl ErrorRecovery {
             RecoveryStrategy::Replace(token_kind) => {
                 let token = Token::new(
                     token_kind.clone(),
-                    Span::new(source_id, position, position),
-                    syntax_style,
+                    Span::new(position, position, source_id),
                 );
                 
                 Some(RecoveryResult {
@@ -337,7 +353,7 @@ impl LexerDiagnostics {
     /// Report an invalid character error
     pub fn invalid_character(&mut self, ch: char, span: Span) {
         self.diagnostics.add(Diagnostic::new(
-            DiagnosticLevel::Error,
+            Severity::Error,
             format!("Invalid character '{}'", ch),
             span,
         ).with_help("Remove this character or escape it if it's part of a string"));
@@ -346,7 +362,7 @@ impl LexerDiagnostics {
     /// Report an unterminated string error
     pub fn unterminated_string(&mut self, span: Span) {
         self.diagnostics.add(Diagnostic::new(
-            DiagnosticLevel::Error,
+            Severity::Error,
             "Unterminated string literal".to_string(),
             span,
         ).with_help("Add a closing quote to terminate the string"));
@@ -355,7 +371,7 @@ impl LexerDiagnostics {
     /// Report an invalid number error
     pub fn invalid_number(&mut self, span: Span) {
         self.diagnostics.add(Diagnostic::new(
-            DiagnosticLevel::Error,
+            Severity::Error,
             "Invalid number literal".to_string(),
             span,
         ).with_help("Check the number format - ensure it's a valid integer or float"));
@@ -364,7 +380,7 @@ impl LexerDiagnostics {
     /// Report an invalid escape sequence error
     pub fn invalid_escape(&mut self, span: Span) {
         self.diagnostics.add(Diagnostic::new(
-            DiagnosticLevel::Error,
+            Severity::Error,
             "Invalid escape sequence".to_string(),
             span,
         ).with_help("Use a valid escape sequence like \\n, \\t, \\r, \\\\, or \\\""));
@@ -373,7 +389,7 @@ impl LexerDiagnostics {
     /// Report a mixed syntax style warning
     pub fn mixed_syntax_style(&mut self, span: Span, styles: &[SyntaxStyle]) {
         self.diagnostics.add(Diagnostic::new(
-            DiagnosticLevel::Warning,
+            Severity::Warning,
             format!("Mixed syntax styles detected: {:?}", styles),
             span,
         ).with_help("Consider using a consistent syntax style throughout the file"));
@@ -382,7 +398,7 @@ impl LexerDiagnostics {
     /// Report a naming convention warning
     pub fn naming_convention(&mut self, span: Span, identifier: &str, suggestion: &str) {
         self.diagnostics.add(Diagnostic::new(
-            DiagnosticLevel::Warning,
+            Severity::Warning,
             format!("Identifier '{}' doesn't follow naming conventions", identifier),
             span,
         ).with_help(&format!("Consider using '{}' instead", suggestion)));
@@ -391,7 +407,7 @@ impl LexerDiagnostics {
     /// Report a semantic hint
     pub fn semantic_hint(&mut self, span: Span, hint: &str) {
         self.diagnostics.add(Diagnostic::new(
-            DiagnosticLevel::Info,
+            Severity::Info,
             format!("Semantic hint: {}", hint),
             span,
         ));

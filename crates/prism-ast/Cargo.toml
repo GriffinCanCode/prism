@@ -16,6 +16,7 @@ prism-common.workspace = true
 serde = { workspace = true, features = ["derive"], optional = true }
 indexmap.workspace = true
 smallvec.workspace = true
+thiserror.workspace = true
 
 [features]
 default = []

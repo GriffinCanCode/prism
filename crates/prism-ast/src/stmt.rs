@@ -146,7 +146,7 @@ pub struct ModuleDecl {
 }
 
 /// Module stability level
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum StabilityLevel {
     /// Experimental

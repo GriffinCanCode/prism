@@ -1,18 +1,19 @@
 //! Lexer implementation for the Prism programming language
 //!
-//! This module provides the main lexer that converts source code into tokens
-//! with rich semantic information for AI comprehension.
+//! This module provides the main lexer that converts source code into tokens.
+//! The lexer focuses purely on CHARACTER-TO-TOKEN conversion and does NOT:
+//! - Detect syntax styles (belongs in parser)
+//! - Generate semantic summaries (belongs in parser)
+//! - Analyze token relationships (belongs in parser)
 
-use crate::syntax::{SyntaxDetector, StyleRules};
-use crate::token::{SemanticContext, SyntaxStyle, Token, TokenKind};
-use logos::Logos;
+use crate::token::{Token, TokenKind};
+use crate::recovery::{ErrorRecovery, ErrorPattern, SyntaxStyle};
 use prism_common::{
     diagnostics::DiagnosticBag,
     span::{Position, Span},
     symbol::SymbolTable,
     SourceId,
 };
-use std::collections::VecDeque;
 use thiserror::Error;
 
 /// Lexer errors
@@ -28,30 +29,40 @@ pub enum LexerError {
     InvalidEscape(Position),
     #[error("Unexpected end of file")]
     UnexpectedEof,
-    #[error("Semantic analysis failed: {0}")]
-    SemanticAnalysisFailed(String),
+}
+
+impl From<LexerError> for ErrorPattern {
+    fn from(error: LexerError) -> Self {
+        match error {
+            LexerError::InvalidCharacter(ch, _) => ErrorPattern::InvalidCharacter(ch),
+            LexerError::UnterminatedString(_) => ErrorPattern::UnterminatedString,
+            LexerError::InvalidNumber(_) => ErrorPattern::InvalidNumber,
+            LexerError::InvalidEscape(_) => ErrorPattern::InvalidEscape,
+            LexerError::UnexpectedEof => ErrorPattern::UnexpectedEof,
+        }
+    }
 }
 
 /// Configuration for the lexer
 #[derive(Debug, Clone)]
 pub struct LexerConfig {
-    /// Preferred syntax style (None for auto-detection)
-    pub syntax_style: Option<SyntaxStyle>,
-    /// Enable semantic metadata extraction
-    pub semantic_metadata: bool,
     /// Enable aggressive error recovery
     pub aggressive_recovery: bool,
     /// Maximum number of errors before stopping
     pub max_errors: usize,
+    /// Whether to preserve whitespace tokens
+    pub preserve_whitespace: bool,
+    /// Whether to preserve comment tokens
+    pub preserve_comments: bool,
 }
 
 impl Default for LexerConfig {
     fn default() -> Self {
         Self {
-            syntax_style: None,
-            semantic_metadata: true,
             aggressive_recovery: true,
             max_errors: 100,
+            preserve_whitespace: false,
+            preserve_comments: false,
         }
     }
 }
@@ -63,28 +74,13 @@ pub struct LexerResult {
     pub tokens: Vec<Token>,
     /// Diagnostics (errors and warnings)
     pub diagnostics: DiagnosticBag,
-    /// Detected syntax style
-    pub syntax_style: SyntaxStyle,
-    /// Semantic summary for AI comprehension
-    pub semantic_summary: Option<SemanticSummary>,
-}
-
-/// Semantic summary of the tokenized code
-#[derive(Debug, Clone)]
-pub struct SemanticSummary {
-    /// Identified modules
-    pub modules: Vec<String>,
-    /// Identified functions
-    pub functions: Vec<String>,
-    /// Identified types
-    pub types: Vec<String>,
-    /// Identified capabilities
-    pub capabilities: Vec<String>,
-    /// Overall semantic score
-    pub semantic_score: f64,
 }
 
 /// The main lexer for Prism source code
+/// 
+/// This lexer has a SINGLE responsibility: convert characters to tokens.
+/// It does NOT analyze syntax styles, generate semantic summaries, or
+/// understand token relationships - those are parser responsibilities.
 pub struct Lexer<'source> {
     /// Source code being lexed
     source: &'source str,
@@ -100,12 +96,10 @@ pub struct Lexer<'source> {
     chars: std::iter::Peekable<std::str::CharIndices<'source>>,
     /// Current character
     current_char: Option<char>,
-    /// Detected syntax style
-    syntax_style: SyntaxStyle,
-    /// Style-specific rules
-    style_rules: StyleRules,
     /// Configuration
     config: LexerConfig,
+    /// Error recovery handler
+    error_recovery: ErrorRecovery,
 }
 
 impl<'source> Lexer<'source> {
@@ -119,23 +113,16 @@ impl<'source> Lexer<'source> {
         let mut chars = source.char_indices().peekable();
         let current_char = chars.next().map(|(_, c)| c);
         
-        // Detect syntax style if not specified
-        let syntax_style = config.syntax_style.clone()
-            .unwrap_or_else(|| SyntaxDetector::detect_syntax(source).detected_style);
-        
-        let style_rules = StyleRules::for_style(&syntax_style);
-        
         Self {
             source,
-            position: Position::new(1, 1),
+            position: Position::new(1, 1, 0),
             source_id,
             symbol_table,
             diagnostics: DiagnosticBag::new(),
             chars,
             current_char,
-            syntax_style,
-            style_rules,
             config,
+            error_recovery: ErrorRecovery::new(),
         }
     }
 
@@ -146,35 +133,49 @@ impl<'source> Lexer<'source> {
         while let Some(token) = self.next_token() {
             match token {
                 Ok(token) => {
-                    if !matches!(token.kind, TokenKind::Eof) {
-                        tokens.push(token);
-                    } else {
+                    // Always preserve EOF token
+                    if matches!(token.kind, TokenKind::Eof) {
                         tokens.push(token);
                         break;
+                    }
+                    
+                    // Filter whitespace/comments based on config
+                    match &token.kind {
+                        TokenKind::Whitespace if !self.config.preserve_whitespace => continue,
+                        TokenKind::LineComment(_) | TokenKind::BlockComment(_) 
+                            if !self.config.preserve_comments => continue,
+                        _ => tokens.push(token),
                     }
                 }
                 Err(error) => {
-                    self.diagnostics.error(error.to_string());
+                    self.diagnostics.error(error.to_string(), Span::from_position(self.position, self.source_id));
                     if self.diagnostics.error_count() >= self.config.max_errors {
                         break;
                     }
-                    // Try to recover by skipping the current character
+                    
+                    // Try error recovery
+                    if self.config.aggressive_recovery {
+                        if let Some(recovery_result) = self.error_recovery.recover_from_error(
+                            error.into(),
+                            self.source_id,
+                            self.position,
+                            SyntaxStyle::Canonical,
+                        ) {
+                            for token in recovery_result.tokens {
+                                tokens.push(token);
+                            }
+                        }
+                    }
+                    
+                    // Skip the problematic character
                     self.advance();
                 }
             }
         }
         
-        let semantic_summary = if self.config.semantic_metadata {
-            Some(self.generate_semantic_summary(&tokens))
-        } else {
-            None
-        };
-        
         LexerResult {
             tokens,
             diagnostics: self.diagnostics,
-            syntax_style: self.syntax_style,
-            semantic_summary,
         }
     }
 
@@ -187,8 +188,7 @@ impl<'source> Lexer<'source> {
         match self.current_char {
             None => Some(Ok(Token::new(
                 TokenKind::Eof,
-                Span::new(self.source_id, start_pos, self.position),
-                self.syntax_style.clone(),
+                Span::new(start_pos, self.position, self.source_id),
             ))),
             Some(ch) => {
                 let result = match ch {
@@ -207,41 +207,44 @@ impl<'source> Lexer<'source> {
                     '-' => self.read_minus(),
                     '*' => self.read_star(),
                     '/' => self.read_slash(),
-                    '%' => Some(self.single_char_token(TokenKind::Percent)),
+                    '%' => Some(Ok(self.single_char_token(TokenKind::Percent))),
                     '=' => self.read_equals(),
                     '!' => self.read_bang(),
                     '<' => self.read_less(),
                     '>' => self.read_greater(),
                     '&' => self.read_ampersand(),
                     '|' => self.read_pipe(),
-                    '^' => Some(self.single_char_token(TokenKind::Caret)),
-                    '~' => Some(self.single_char_token(TokenKind::Tilde)),
+                    '^' => Some(Ok(self.single_char_token(TokenKind::Caret))),
+                    '~' => Some(Ok(self.single_char_token(TokenKind::Tilde))),
                     
                     // Delimiters
-                    '(' => Some(self.single_char_token(TokenKind::LeftParen)),
-                    ')' => Some(self.single_char_token(TokenKind::RightParen)),
-                    '[' => Some(self.single_char_token(TokenKind::LeftBracket)),
-                    ']' => Some(self.single_char_token(TokenKind::RightBracket)),
-                    '{' => Some(self.single_char_token(TokenKind::LeftBrace)),
-                    '}' => Some(self.single_char_token(TokenKind::RightBrace)),
+                    '(' => Some(Ok(self.single_char_token(TokenKind::LeftParen))),
+                    ')' => Some(Ok(self.single_char_token(TokenKind::RightParen))),
+                    '[' => Some(Ok(self.single_char_token(TokenKind::LeftBracket))),
+                    ']' => Some(Ok(self.single_char_token(TokenKind::RightBracket))),
+                    '{' => Some(Ok(self.single_char_token(TokenKind::LeftBrace))),
+                    '}' => Some(Ok(self.single_char_token(TokenKind::RightBrace))),
                     
                     // Punctuation
-                    ',' => Some(self.single_char_token(TokenKind::Comma)),
-                    ';' => Some(self.single_char_token(TokenKind::Semicolon)),
+                    ',' => Some(Ok(self.single_char_token(TokenKind::Comma))),
+                    ';' => Some(Ok(self.single_char_token(TokenKind::Semicolon))),
                     ':' => self.read_colon(),
                     '.' => self.read_dot(),
-                    '?' => self.read_question(),
-                    '@' => self.read_at(),
+                    '?' => Some(Ok(self.single_char_token(TokenKind::Question))),
+                    '@' => Some(Ok(self.single_char_token(TokenKind::At))),
                     
-                    // Newlines (significant in some syntax styles)
-                    '\n' => {
-                        if self.style_rules.indentation_semantic {
-                            Some(self.single_char_token(TokenKind::Newline))
+                    // Whitespace (preserve if configured)
+                    ' ' | '\t' | '\r' => {
+                        if self.config.preserve_whitespace {
+                            Some(Ok(self.read_whitespace()))
                         } else {
                             self.advance();
                             self.next_token()
                         }
                     }
+                    
+                    // Newlines (always significant for some parsing)
+                    '\n' => Some(Ok(self.single_char_token(TokenKind::Newline))),
                     
                     // Invalid characters
                     _ => Some(Err(LexerError::InvalidCharacter(ch, self.position))),
@@ -256,16 +259,13 @@ impl<'source> Lexer<'source> {
     fn skip_whitespace_and_comments(&mut self) {
         while let Some(ch) = self.current_char {
             match ch {
-                ' ' | '\t' | '\r' => {
+                ' ' | '\t' | '\r' if !self.config.preserve_whitespace => {
                     self.advance();
                 }
-                '\n' if !self.style_rules.indentation_semantic => {
-                    self.advance();
-                }
-                '/' if self.peek_char() == Some('/') => {
+                '/' if self.peek_char() == Some('/') && !self.config.preserve_comments => {
                     self.skip_line_comment();
                 }
-                '/' if self.peek_char() == Some('*') => {
+                '/' if self.peek_char() == Some('*') && !self.config.preserve_comments => {
                     self.skip_block_comment();
                 }
                 _ => break,
@@ -275,11 +275,22 @@ impl<'source> Lexer<'source> {
 
     /// Skip a line comment
     fn skip_line_comment(&mut self) {
+        let mut content = String::new();
+        
+        self.advance(); // Skip first '/'
+        self.advance(); // Skip second '/'
+        
         while let Some(ch) = self.current_char {
-            self.advance();
             if ch == '\n' {
                 break;
             }
+            content.push(ch);
+            self.advance();
+        }
+        
+        if self.config.preserve_comments {
+            // This would need to be handled differently if we want to preserve comments
+            // For now, we skip them
         }
     }
 
@@ -298,6 +309,234 @@ impl<'source> Lexer<'source> {
         }
     }
 
+    /// Read whitespace token
+    fn read_whitespace(&mut self) -> Token {
+        let start_pos = self.position;
+        let mut content = String::new();
+        
+        while let Some(ch) = self.current_char {
+            match ch {
+                ' ' | '\t' | '\r' => {
+                    content.push(ch);
+                    self.advance();
+                }
+                _ => break,
+            }
+        }
+        
+        Token::new(
+            TokenKind::Whitespace,
+            Span::new(start_pos, self.position, self.source_id),
+        )
+    }
+
+    /// Read plus or plus-assign
+    fn read_plus(&mut self) -> Option<Result<Token, LexerError>> {
+        if self.peek_char() == Some('=') {
+            self.advance(); // Skip '+'
+            self.advance(); // Skip '='
+            Some(Ok(self.make_token(TokenKind::PlusAssign)))
+        } else {
+            Some(Ok(self.single_char_token(TokenKind::Plus)))
+        }
+    }
+
+    /// Read minus or minus-assign
+    fn read_minus(&mut self) -> Option<Result<Token, LexerError>> {
+        if self.peek_char() == Some('=') {
+            self.advance(); // Skip '-'
+            self.advance(); // Skip '='
+            Some(Ok(self.make_token(TokenKind::MinusAssign)))
+        } else {
+            Some(Ok(self.single_char_token(TokenKind::Minus)))
+        }
+    }
+
+    /// Read star, star-assign, or power
+    fn read_star(&mut self) -> Option<Result<Token, LexerError>> {
+        match self.peek_char() {
+            Some('=') => {
+                self.advance(); // Skip '*'
+                self.advance(); // Skip '='
+                Some(Ok(self.make_token(TokenKind::StarAssign)))
+            }
+            Some('*') => {
+                self.advance(); // Skip first '*'
+                self.advance(); // Skip second '*'
+                Some(Ok(self.make_token(TokenKind::Power)))
+            }
+            _ => Some(Ok(self.single_char_token(TokenKind::Star))),
+        }
+    }
+
+    /// Read slash, slash-assign, or comments
+    fn read_slash(&mut self) -> Option<Result<Token, LexerError>> {
+        match self.peek_char() {
+            Some('=') => {
+                self.advance(); // Skip '/'
+                self.advance(); // Skip '='
+                Some(Ok(self.make_token(TokenKind::SlashAssign)))
+            }
+            Some('/') => {
+                // Line comment - handle based on config
+                if self.config.preserve_comments {
+                    self.read_line_comment()
+                } else {
+                    self.skip_line_comment();
+                    self.next_token()
+                }
+            }
+            Some('*') => {
+                // Block comment - handle based on config
+                if self.config.preserve_comments {
+                    self.read_block_comment()
+                } else {
+                    self.skip_block_comment();
+                    self.next_token()
+                }
+            }
+            _ => Some(Ok(self.single_char_token(TokenKind::Slash))),
+        }
+    }
+
+    /// Read equals or double equals
+    fn read_equals(&mut self) -> Option<Result<Token, LexerError>> {
+        if self.peek_char() == Some('=') {
+            self.advance(); // Skip '='
+            self.advance(); // Skip '='
+            Some(Ok(self.make_token(TokenKind::Equal)))
+        } else {
+            Some(Ok(self.single_char_token(TokenKind::Assign)))
+        }
+    }
+
+    /// Read bang or not-equals
+    fn read_bang(&mut self) -> Option<Result<Token, LexerError>> {
+        if self.peek_char() == Some('=') {
+            self.advance(); // Skip '!'
+            self.advance(); // Skip '='
+            Some(Ok(self.make_token(TokenKind::NotEqual)))
+        } else {
+            Some(Ok(self.single_char_token(TokenKind::Bang)))
+        }
+    }
+
+    /// Read less, less-equal, or left-shift
+    fn read_less(&mut self) -> Option<Result<Token, LexerError>> {
+        if self.peek_char() == Some('=') {
+            self.advance(); // Skip '<'
+            self.advance(); // Skip '='
+            Some(Ok(self.make_token(TokenKind::LessEqual)))
+        } else {
+            Some(Ok(self.single_char_token(TokenKind::Less)))
+        }
+    }
+
+    /// Read greater, greater-equal, or right-shift
+    fn read_greater(&mut self) -> Option<Result<Token, LexerError>> {
+        if self.peek_char() == Some('=') {
+            self.advance(); // Skip '>'
+            self.advance(); // Skip '='
+            Some(Ok(self.make_token(TokenKind::GreaterEqual)))
+        } else {
+            Some(Ok(self.single_char_token(TokenKind::Greater)))
+        }
+    }
+
+    /// Read ampersand or logical and
+    fn read_ampersand(&mut self) -> Option<Result<Token, LexerError>> {
+        if self.peek_char() == Some('&') {
+            self.advance(); // Skip '&'
+            self.advance(); // Skip '&'
+            Some(Ok(self.make_token(TokenKind::AndAnd)))
+        } else {
+            Some(Ok(self.single_char_token(TokenKind::Ampersand)))
+        }
+    }
+
+    /// Read pipe or logical or
+    fn read_pipe(&mut self) -> Option<Result<Token, LexerError>> {
+        if self.peek_char() == Some('|') {
+            self.advance(); // Skip '|'
+            self.advance(); // Skip '|'
+            Some(Ok(self.make_token(TokenKind::OrOr)))
+        } else {
+            Some(Ok(self.single_char_token(TokenKind::Pipe)))
+        }
+    }
+
+    /// Read colon or double colon
+    fn read_colon(&mut self) -> Option<Result<Token, LexerError>> {
+        if self.peek_char() == Some(':') {
+            self.advance(); // Skip ':'
+            self.advance(); // Skip ':'
+            Some(Ok(self.make_token(TokenKind::DoubleColon)))
+        } else {
+            Some(Ok(self.single_char_token(TokenKind::Colon)))
+        }
+    }
+
+    /// Read dot
+    fn read_dot(&mut self) -> Option<Result<Token, LexerError>> {
+        Some(Ok(self.single_char_token(TokenKind::Dot)))
+    }
+
+    /// Read question mark
+    fn read_question(&mut self) -> Option<Result<Token, LexerError>> {
+        Some(Ok(self.single_char_token(TokenKind::Question)))
+    }
+
+    /// Read at symbol
+    fn read_at(&mut self) -> Option<Result<Token, LexerError>> {
+        Some(Ok(self.single_char_token(TokenKind::At)))
+    }
+
+    /// Read line comment as token
+    fn read_line_comment(&mut self) -> Option<Result<Token, LexerError>> {
+        let start_pos = self.position;
+        let mut content = String::new();
+        
+        self.advance(); // Skip first '/'
+        self.advance(); // Skip second '/'
+        
+        while let Some(ch) = self.current_char {
+            if ch == '\n' {
+                break;
+            }
+            content.push(ch);
+            self.advance();
+        }
+        
+        Some(Ok(Token::new(
+            TokenKind::LineComment(content),
+            Span::new(start_pos, self.position, self.source_id),
+        )))
+    }
+
+    /// Read block comment as token
+    fn read_block_comment(&mut self) -> Option<Result<Token, LexerError>> {
+        let start_pos = self.position;
+        let mut content = String::new();
+        
+        self.advance(); // Skip '/'
+        self.advance(); // Skip '*'
+        
+        while let Some(ch) = self.current_char {
+            if ch == '*' && self.peek_char() == Some('/') {
+                self.advance(); // Skip '*'
+                self.advance(); // Skip '/'
+                break;
+            }
+            content.push(ch);
+            self.advance();
+        }
+        
+        Some(Ok(Token::new(
+            TokenKind::BlockComment(content),
+            Span::new(start_pos, self.position, self.source_id),
+        )))
+    }
+
     /// Read a string literal
     fn read_string(&mut self) -> Option<Result<Token, LexerError>> {
         let start_pos = self.position;
@@ -311,8 +550,7 @@ impl<'source> Lexer<'source> {
                     self.advance(); // Skip closing quote
                     return Some(Ok(Token::new(
                         TokenKind::StringLiteral(value),
-                        Span::new(self.source_id, start_pos, self.position),
-                        self.syntax_style.clone(),
+                        Span::new(start_pos, self.position, self.source_id),
                     )));
                 }
                 '\\' => {
@@ -323,7 +561,7 @@ impl<'source> Lexer<'source> {
                         Some('r') => value.push('\r'),
                         Some('\\') => value.push('\\'),
                         Some('"') => value.push('"'),
-                        Some(ch) => return Some(Err(LexerError::InvalidEscape(self.position))),
+                        Some(_) => return Some(Err(LexerError::InvalidEscape(self.position))),
                         None => return Some(Err(LexerError::UnexpectedEof)),
                     }
                     self.advance();
@@ -341,7 +579,7 @@ impl<'source> Lexer<'source> {
         Some(Err(LexerError::UnterminatedString(start_pos)))
     }
 
-    /// Read a character or string literal (single quotes)
+    /// Read a character or string literal
     fn read_char_or_string(&mut self) -> Option<Result<Token, LexerError>> {
         // For now, treat single quotes as string literals
         // This could be enhanced to distinguish between char and string literals
@@ -356,8 +594,7 @@ impl<'source> Lexer<'source> {
                     self.advance(); // Skip closing quote
                     return Some(Ok(Token::new(
                         TokenKind::StringLiteral(value),
-                        Span::new(self.source_id, start_pos, self.position),
-                        self.syntax_style.clone(),
+                        Span::new(start_pos, self.position, self.source_id),
                     )));
                 }
                 '\\' => {
@@ -434,8 +671,7 @@ impl<'source> Lexer<'source> {
         
         Some(Ok(Token::new(
             token_kind,
-            Span::new(self.source_id, start_pos, self.position),
-            self.syntax_style.clone(),
+            Span::new(start_pos, self.position, self.source_id),
         )))
     }
 
@@ -453,13 +689,12 @@ impl<'source> Lexer<'source> {
             }
         }
         
-        // Check if it's a keyword
+        // Check if it's a keyword - this is the ONLY analysis we do
         let token_kind = match value.as_str() {
+            // Core language keywords
             "module" => TokenKind::Module,
-            "mod" => TokenKind::Module,
             "section" => TokenKind::Section,
             "capability" => TokenKind::Capability,
-            "cap" => TokenKind::Capability,
             "function" => TokenKind::Function,
             "fn" => TokenKind::Fn,
             "type" => TokenKind::Type,
@@ -511,178 +746,14 @@ impl<'source> Lexer<'source> {
             "in" => TokenKind::In,
             "as" => TokenKind::As,
             "is" => TokenKind::Is,
-            // Semantic type constraint keywords
-            "min_value" => TokenKind::Identifier(value),
-            "max_value" => TokenKind::Identifier(value),
-            "min_length" => TokenKind::Identifier(value),
-            "max_length" => TokenKind::Identifier(value),
-            "pattern" => TokenKind::Identifier(value),
-            "format" => TokenKind::Identifier(value),
-            "precision" => TokenKind::Identifier(value),
-            "currency" => TokenKind::Identifier(value),
-            "non_negative" => TokenKind::Identifier(value),
-            "immutable" => TokenKind::Identifier(value),
-            "validated" => TokenKind::Identifier(value),
-            "business_rule" => TokenKind::Identifier(value),
-            "security_classification" => TokenKind::Identifier(value),
-            "compliance" => TokenKind::Identifier(value),
-            "ai_context" => TokenKind::Identifier(value),
+            // Everything else is an identifier
             _ => TokenKind::Identifier(value),
         };
         
         Some(Ok(Token::new(
             token_kind,
-            Span::new(self.source_id, start_pos, self.position),
-            self.syntax_style.clone(),
+            Span::new(start_pos, self.position, self.source_id),
         )))
-    }
-
-    /// Read plus or plus-assign
-    fn read_plus(&mut self) -> Option<Result<Token, LexerError>> {
-        if self.peek_char() == Some('=') {
-            self.advance(); // Skip '+'
-            self.advance(); // Skip '='
-            Some(Ok(self.make_token(TokenKind::PlusAssign)))
-        } else {
-            Some(Ok(self.single_char_token(TokenKind::Plus)))
-        }
-    }
-
-    /// Read minus or arrow or minus-assign
-    fn read_minus(&mut self) -> Option<Result<Token, LexerError>> {
-        match self.peek_char() {
-            Some('=') => {
-                self.advance(); // Skip '-'
-                self.advance(); // Skip '='
-                Some(Ok(self.make_token(TokenKind::MinusAssign)))
-            }
-            Some('>') => {
-                self.advance(); // Skip '-'
-                self.advance(); // Skip '>'
-                Some(Ok(self.make_token(TokenKind::Arrow)))
-            }
-            _ => Some(Ok(self.single_char_token(TokenKind::Minus))),
-        }
-    }
-
-    /// Read star or star-assign or power
-    fn read_star(&mut self) -> Option<Result<Token, LexerError>> {
-        match self.peek_char() {
-            Some('=') => {
-                self.advance(); // Skip '*'
-                self.advance(); // Skip '='
-                Some(Ok(self.make_token(TokenKind::StarAssign)))
-            }
-            Some('*') => {
-                self.advance(); // Skip '*'
-                self.advance(); // Skip '*'
-                Some(Ok(self.make_token(TokenKind::Power)))
-            }
-            _ => Some(Ok(self.single_char_token(TokenKind::Star))),
-        }
-    }
-
-    /// Read slash or slash-assign
-    fn read_slash(&mut self) -> Option<Result<Token, LexerError>> {
-        if self.peek_char() == Some('=') {
-            self.advance(); // Skip '/'
-            self.advance(); // Skip '='
-            Some(Ok(self.make_token(TokenKind::SlashAssign)))
-        } else {
-            Some(Ok(self.single_char_token(TokenKind::Slash)))
-        }
-    }
-
-    /// Read equals or double equals
-    fn read_equals(&mut self) -> Option<Result<Token, LexerError>> {
-        if self.peek_char() == Some('=') {
-            self.advance(); // Skip '='
-            self.advance(); // Skip '='
-            Some(Ok(self.make_token(TokenKind::Equal)))
-        } else {
-            Some(Ok(self.single_char_token(TokenKind::Assign)))
-        }
-    }
-
-    /// Read bang or not-equals
-    fn read_bang(&mut self) -> Option<Result<Token, LexerError>> {
-        if self.peek_char() == Some('=') {
-            self.advance(); // Skip '!'
-            self.advance(); // Skip '='
-            Some(Ok(self.make_token(TokenKind::NotEqual)))
-        } else {
-            Some(Ok(self.single_char_token(TokenKind::Bang)))
-        }
-    }
-
-    /// Read less-than or less-equal
-    fn read_less(&mut self) -> Option<Result<Token, LexerError>> {
-        if self.peek_char() == Some('=') {
-            self.advance(); // Skip '<'
-            self.advance(); // Skip '='
-            Some(Ok(self.make_token(TokenKind::LessEqual)))
-        } else {
-            Some(Ok(self.single_char_token(TokenKind::Less)))
-        }
-    }
-
-    /// Read greater-than or greater-equal
-    fn read_greater(&mut self) -> Option<Result<Token, LexerError>> {
-        if self.peek_char() == Some('=') {
-            self.advance(); // Skip '>'
-            self.advance(); // Skip '='
-            Some(Ok(self.make_token(TokenKind::GreaterEqual)))
-        } else {
-            Some(Ok(self.single_char_token(TokenKind::Greater)))
-        }
-    }
-
-    /// Read ampersand or logical and
-    fn read_ampersand(&mut self) -> Option<Result<Token, LexerError>> {
-        if self.peek_char() == Some('&') {
-            self.advance(); // Skip '&'
-            self.advance(); // Skip '&'
-            Some(Ok(self.make_token(TokenKind::AndAnd)))
-        } else {
-            Some(Ok(self.single_char_token(TokenKind::Ampersand)))
-        }
-    }
-
-    /// Read pipe or logical or
-    fn read_pipe(&mut self) -> Option<Result<Token, LexerError>> {
-        if self.peek_char() == Some('|') {
-            self.advance(); // Skip '|'
-            self.advance(); // Skip '|'
-            Some(Ok(self.make_token(TokenKind::OrOr)))
-        } else {
-            Some(Ok(self.single_char_token(TokenKind::Pipe)))
-        }
-    }
-
-    /// Read colon or double colon
-    fn read_colon(&mut self) -> Option<Result<Token, LexerError>> {
-        if self.peek_char() == Some(':') {
-            self.advance(); // Skip ':'
-            self.advance(); // Skip ':'
-            Some(Ok(self.make_token(TokenKind::DoubleColon)))
-        } else {
-            Some(Ok(self.single_char_token(TokenKind::Colon)))
-        }
-    }
-
-    /// Read dot
-    fn read_dot(&mut self) -> Option<Result<Token, LexerError>> {
-        Some(Ok(self.single_char_token(TokenKind::Dot)))
-    }
-
-    /// Read question mark
-    fn read_question(&mut self) -> Option<Result<Token, LexerError>> {
-        Some(Ok(self.single_char_token(TokenKind::Question)))
-    }
-
-    /// Read at symbol
-    fn read_at(&mut self) -> Option<Result<Token, LexerError>> {
-        Some(Ok(self.single_char_token(TokenKind::At)))
     }
 
     /// Create a single character token
@@ -691,8 +762,7 @@ impl<'source> Lexer<'source> {
         self.advance();
         Token::new(
             kind,
-            Span::new(self.source_id, start_pos, self.position),
-            self.syntax_style.clone(),
+            Span::new(start_pos, self.position, self.source_id),
         )
     }
 
@@ -700,8 +770,7 @@ impl<'source> Lexer<'source> {
     fn make_token(&self, kind: TokenKind) -> Token {
         Token::new(
             kind,
-            Span::new(self.source_id, self.position, self.position),
-            self.syntax_style.clone(),
+            Span::new(self.position, self.position, self.source_id),
         )
     }
 
@@ -722,113 +791,6 @@ impl<'source> Lexer<'source> {
     /// Peek at the next character without advancing
     fn peek_char(&mut self) -> Option<char> {
         self.chars.peek().map(|(_, c)| *c)
-    }
-
-    /// Generate semantic summary
-    fn generate_semantic_summary(&self, tokens: &[Token]) -> SemanticSummary {
-        let mut modules = Vec::new();
-        let mut functions = Vec::new();
-        let mut types = Vec::new();
-        let mut capabilities = Vec::new();
-        
-        for token in tokens {
-            match &token.kind {
-                TokenKind::Module => {
-                    // Look for the next identifier as the module name
-                    // This is a simplified approach
-                }
-                TokenKind::Function | TokenKind::Fn => {
-                    // Look for the next identifier as the function name
-                }
-                TokenKind::Type => {
-                    // Look for the next identifier as the type name
-                }
-                TokenKind::Capability => {
-                    // Look for the next identifier as the capability name
-                }
-                _ => {}
-            }
-        }
-        
-        SemanticSummary {
-            modules,
-            functions,
-            types,
-            capabilities,
-            semantic_score: 0.8, // Placeholder
-        }
-    }
-}
-
-/// Semantic lexer that enriches tokens with AI-comprehensible metadata
-pub struct SemanticLexer<'source> {
-    /// Base lexer
-    lexer: Lexer<'source>,
-}
-
-impl<'source> SemanticLexer<'source> {
-    /// Create a new semantic lexer
-    pub fn new(
-        source: &'source str,
-        source_id: SourceId,
-        symbol_table: &'source mut SymbolTable,
-        config: LexerConfig,
-    ) -> Self {
-        Self {
-            lexer: Lexer::new(source, source_id, symbol_table, config),
-        }
-    }
-
-    /// Tokenize with semantic enrichment
-    pub fn tokenize_with_semantics(self) -> LexerResult {
-        let mut result = self.lexer.tokenize();
-        
-        // Enrich tokens with semantic context
-        for token in &mut result.tokens {
-            if let Some(context) = self.infer_semantic_context(token) {
-                token.semantic_context = Some(context);
-            }
-        }
-        
-        result
-    }
-
-    /// Infer semantic context for a token
-    fn infer_semantic_context(&self, token: &Token) -> Option<SemanticContext> {
-        match &token.kind {
-            TokenKind::Module => {
-                let mut context = SemanticContext::with_purpose("Define module boundary and capabilities");
-                context.domain = Some("Module System".to_string());
-                context.add_concept("Conceptual Cohesion");
-                context.add_concept("Capability Isolation");
-                context.add_ai_hint("Modules represent single business capabilities");
-                Some(context)
-            }
-            TokenKind::Function | TokenKind::Fn => {
-                let mut context = SemanticContext::with_purpose("Define function with semantic contracts");
-                context.domain = Some("Function Definition".to_string());
-                context.add_concept("Semantic Types");
-                context.add_concept("Effect System");
-                context.add_ai_hint("Functions should have single responsibility");
-                Some(context)
-            }
-            TokenKind::Type => {
-                let mut context = SemanticContext::with_purpose("Define semantic type with constraints");
-                context.domain = Some("Type System".to_string());
-                context.add_concept("Semantic Types");
-                context.add_concept("Business Rules");
-                context.add_ai_hint("Types should express business meaning");
-                Some(context)
-            }
-            TokenKind::Effects => {
-                let mut context = SemanticContext::with_purpose("Declare computational effects");
-                context.domain = Some("Effect System".to_string());
-                context.add_concept("Capability-Based Security");
-                context.add_security_implication("Effects must be explicitly declared");
-                Some(context)
-            }
-            _ => None,
-        }
     }
 }
 
@@ -876,26 +838,5 @@ mod tests {
         
         assert_eq!(result.tokens[0].kind, TokenKind::IntegerLiteral(42));
         assert_eq!(result.tokens[1].kind, TokenKind::FloatLiteral(3.14));
-    }
-
-    #[test]
-    fn test_semantic_enrichment() {
-        let source = "module UserAuth { function authenticate() {} }";
-        let source_id = SourceId::new(1);
-        let mut symbol_table = SymbolTable::new();
-        let config = LexerConfig::default();
-        
-        let lexer = SemanticLexer::new(source, source_id, &mut symbol_table, config);
-        let result = lexer.tokenize_with_semantics();
-        
-        // Find the module token
-        let module_token = result.tokens.iter()
-            .find(|t| matches!(t.kind, TokenKind::Module))
-            .unwrap();
-            
-        assert!(module_token.semantic_context.is_some());
-        let context = module_token.semantic_context.as_ref().unwrap();
-        assert!(context.purpose.is_some());
-        assert_eq!(context.domain, Some("Module System".to_string()));
     }
 } 

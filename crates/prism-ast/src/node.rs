@@ -214,6 +214,11 @@ impl AstNodeRef {
     pub fn source_id(&self) -> SourceId {
         self.source_id
     }
+
+    /// Get the node ID (alias for index)
+    pub fn id(&self) -> u32 {
+        self.index
+    }
 }
 
 impl fmt::Display for AstNodeRef {

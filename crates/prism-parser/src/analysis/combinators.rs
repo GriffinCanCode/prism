@@ -4,8 +4,8 @@
 //! in Prism syntax, making the parser more modular and maintainable.
 
 use crate::{
-    error::{ParseError, ParseErrorKind, ParseResult},
-    Parser,
+    core::error::{ParseError, ParseErrorKind, ParseResult},
+    parser::Parser,
 };
 use prism_ast::{AstNode, Annotation, Parameter, TypeConstraint, Attribute};
 use prism_lexer::{Token, TokenKind};
@@ -565,7 +565,7 @@ impl Parser {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Parser;
+    use crate::parser::Parser;
     use prism_lexer::{SemanticLexer, Lexer};
     use prism_common::SourceId;
     

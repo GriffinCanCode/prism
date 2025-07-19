@@ -1,0 +1,56 @@
+[package]
+name = "prism-pir"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Prism Intermediate Representation - semantic bridge between compilation and code generation"
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# Core dependencies for semantic representation
+prism-common = { workspace = true }
+prism-ast = { workspace = true }
+
+# Serialization for PIR persistence and caching
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+# Data structures for semantic graphs and registries
+indexmap = { workspace = true }
+petgraph = { workspace = true }
+rustc-hash = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Time handling for metadata
+chrono = { version = "0.4", features = ["serde"] }
+
+# UUID generation for transformation tracking
+uuid = { version = "1.0", features = ["v4"] }
+
+# Logging
+tracing = { workspace = true }
+
+[features]
+default = []
+serde = ["prism-common/serde", "prism-ast/serde"]
+
+[dev-dependencies]
+insta = { workspace = true }
+proptest = { workspace = true }
+criterion = { workspace = true }
+
+# Benchmarks will be added later
+# [[bench]]
+# name = "pir_transformations"
+# harness = false
+
+# [[bench]]
+# name = "semantic_preservation"
+# harness = false 

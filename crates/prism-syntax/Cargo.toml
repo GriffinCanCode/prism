@@ -1,0 +1,66 @@
+[package]
+name = "prism-syntax"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Multi-syntax parser for Prism language with semantic normalization"
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+# Core Prism dependencies
+prism-common = { workspace = true }
+prism-lexer = { workspace = true }
+
+# Parsing and text processing
+nom = { workspace = true }
+logos = { workspace = true }
+regex = "1.10"
+unicode-segmentation = "1.10"
+unicode-normalization = "0.1"
+
+# Error handling and diagnostics
+thiserror = { workspace = true }
+miette = { version = "5.0", features = ["fancy"] }
+
+# Serialization and metadata
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+
+# Performance and memory management
+smallvec = { workspace = true }
+rustc-hash = { workspace = true }
+string-interner = { workspace = true }
+
+# Utilities
+once_cell = { workspace = true }
+tracing = { workspace = true }
+chrono = { version = "0.4", features = ["serde"] }
+
+[dev-dependencies]
+criterion = { workspace = true }
+proptest = { workspace = true }
+insta = { workspace = true }
+pretty_assertions = "1.4"
+
+[features]
+default = ["all-styles"]
+all-styles = ["c-like", "python-like", "rust-like", "canonical"]
+c-like = []
+python-like = []
+rust-like = []
+canonical = []
+debug-parsing = ["tracing/log"]
+
+# Benchmarks will be added later
+# [[bench]]
+# name = "parsing_performance"
+# harness = false
+
+# [[bench]]
+# name = "detection_speed"
+# harness = false 

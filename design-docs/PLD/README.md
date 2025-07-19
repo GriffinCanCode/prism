@@ -36,12 +36,16 @@ Coding conventions, best practices, and idiomatic patterns.
 | [PLD-001](./PLD-001.md) | Semantic Type System | Draft | Core | 0.1.0 | None |
 | [PLD-002](./PLD-002.md) | Smart Module System | Draft | Core | 0.1.0 | PLD-001 |
 | [PLD-003](./PLD-003.md) | Effect System & Capabilities | Draft | Core | 0.2.0 | PLD-001 |
-| [PLD-004](./PLD-004.md) | Compiler Architecture | Planned | Core | 0.1.0 | PLD-001 |
-| PLD-005 | Memory Management Model | Planned | Core | 0.1.0 | PLD-004 |
+| [PLD-004](./PLD-004.md) | Compiler Architecture | Draft | Core | 0.1.0 | PLD-001 |
+| [PLD-005](./PLD-005.md) | Runtime System Architecture | Draft | Core | 0.1.0 | PLD-001, PLD-003, PLD-004 |
 | PLD-006 | Error Handling Philosophy | Planned | Core | 0.1.0 | PLD-001, PLD-003 |
 | PLD-007 | Concurrency Model | Planned | High | 0.3.0 | PLD-003, PLD-005 |
 | PLD-008 | Metaprogramming | Planned | Medium | 0.4.0 | PLD-001, PLD-004 |
 | PLD-009 | Interoperability System | Planned | High | 0.2.0 | PLD-004 |
+| [PLD-010](./PLD-010.md) | Multi-Target Code Generation System | Draft | Core | 0.1.0 | PLD-001, PLD-002, PLD-003, PLD-004 |
+| [PLD-011](./PLD-011.md) | Code Generation Architecture | Draft | Core | 0.1.0 | PLD-004, PLD-010 |
+| [PLD-012](./PLD-012.md) | Multi-Syntax Parser Architecture | Draft | Core | 0.1.0 | PLD-001, PLD-002, PLD-003, PSG-001, PSG-002, PSG-003, PLT-001, PLT-002 |
+| [PLD-013](./PLD-013.md) | PIR Architecture | Draft | Core | 0.1.0 | PLD-001, PLD-002, PLD-003, PSG-001, PSG-002, PSG-003, PLT-001, PLT-002 |  
 
 ### Standard Library (PLD-100 to PLD-199)
 
@@ -72,8 +76,11 @@ Coding conventions, best practices, and idiomatic patterns.
 - [ ] PLD-001: Semantic Type System
 - [ ] PLD-002: Smart Module System  
 - [ ] PLD-004: Compiler Architecture
-- [ ] PLD-005: Memory Management
+- [ ] PLD-005: Runtime System Architecture
 - [ ] PLD-006: Error Handling
+- [ ] PLD-011: Code Generation Architecture
+- [ ] PLD-012: Multi Syntax Parser Architecture
+- [ ] PLD-013: Pir Architecture
 - [ ] PLD-101: Core Types
 - [ ] PLD-200: LSP Implementation
 - [ ] PLD-203: Testing Framework
