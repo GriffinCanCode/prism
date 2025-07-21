@@ -136,6 +136,11 @@ pub use symbols::{
     FunctionInfo, TypeInfo, ModuleInfo, VariableInfo,
     SymbolMetadata, AISymbolContext,
     SymbolBuilder, SymbolRegistry, SymbolCache,
+    // NEW: Export enhanced symbol management
+    SymbolExtractor, ExtractionConfig, ExtractionStats,
+    IntegratedSymbolSystem, IntegratedSymbolSystemBuilder,
+    IntegratedSystemConfig, IntegratedProcessingResult,
+    SymbolMetadataProvider, SymbolProviderConfig,
 };
 
 use prism_ast::{Program, AstNode};

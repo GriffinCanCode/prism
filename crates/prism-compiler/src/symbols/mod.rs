@@ -46,6 +46,9 @@ pub mod table;
 pub mod builder;
 pub mod registry;
 pub mod cache;
+pub mod extractor;
+pub mod integration;
+pub mod ai_provider;
 
 // Public API re-exports
 pub use kinds::*;
@@ -55,6 +58,9 @@ pub use table::*;
 pub use builder::*;
 pub use registry::*;
 pub use cache::*;
+pub use extractor::*;
+pub use integration::*;
+pub use ai_provider::*;
 
 use crate::error::CompilerResult;
 use crate::semantic::SemanticDatabase;
