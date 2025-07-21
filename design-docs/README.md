@@ -4,13 +4,13 @@
 
 **Compiler**: Translates source code into executable programs. *In Prism*: Acts as an intelligent guide that understands your code's intent and suggests improvements.
 
-**AST (Abstract Syntax Tree)**: Internal representation of code structure used by compilers. *In Prism*: Rich tree that preserves business context and metadata for AI comprehension.
+**AST (Abstract Syntax Tree)**: Internal representation of code structure used by compilers. *In Prism*: Rich tree that preserves business context and generates structured metadata for external AI tools.
 
 **Lexer**: Breaks source code into tokens (keywords, identifiers, operators). *In Prism*: Semantically-aware tokenizer that understands context across multiple syntax styles.
 
 **Parser**: Analyzes token sequences to build the AST according to language grammar rules. *In Prism*: Multi-level parser with error recovery that extracts semantic context.
 
-**Semantic Analysis**: Checks code for meaning and correctness (types, variable usage, etc.). *In Prism*: Creates AI-comprehensible metadata while enforcing safety through effects and capabilities.
+**Semantic Analysis**: Checks code for meaning and correctness (types, variable usage, etc.). *In Prism*: Generates structured metadata for external AI tools while enforcing safety through effects and capabilities.
 
 **Effect System**: Tracks what functions can do (I/O, memory allocation, etc.). *In Prism*: Capability-based security system that manages resource access and composition.
 
@@ -27,7 +27,7 @@
 
 ---
 
-Prism is an AI-first programming language built for clarity, safety, and seamless collaboration between humans and AI systems.
+Prism is an AI-first programming language that generates rich, structured metadata enabling seamless collaboration between humans and external AI tools.
 
 ## Core Philosophy
 
@@ -306,7 +306,7 @@ module UserManagement {
 
 **Inspired by**: LLVM's IR design and semantic compilation research
 
-PIR serves as a stable contract between compilation orchestration and code generation, preserving all semantic information from source code through the compilation pipeline. Unlike traditional IRs that focus on optimization, PIR maintains business context, AI metadata, and architectural relationships. This enables consistent code generation across multiple targets (TypeScript, WebAssembly, native) while supporting AI-powered analysis and automated refactoring tools.
+PIR serves as a stable contract between compilation orchestration and code generation, preserving all semantic information from source code through the compilation pipeline. Unlike traditional IRs that focus on optimization, PIR maintains business context, AI metadata, and architectural relationships. This enables consistent code generation across multiple targets (TypeScript, WebAssembly, native) while supporting external tool analysis and automated refactoring capabilities.
 
 ### Responsibility-Driven Development
 
@@ -324,13 +324,13 @@ validate → validateStrict, validateSoft, validateBefore
 
 **Inspired by**: WebAssembly's portability model and capability-based security research
 
-The runtime implements a multi-target execution model that maintains security guarantees across JavaScript, WebAssembly, and native compilation targets. Each target has specialized adapters that preserve capability-based security and effect tracking while optimizing for platform-specific performance characteristics. The runtime collects AI metadata during execution and enforces compile-time security policies at runtime.
+The runtime implements a multi-target execution model that maintains security guarantees across JavaScript, WebAssembly, and native compilation targets. Each target has specialized adapters that preserve capability-based security and effect tracking while optimizing for platform-specific performance characteristics. The runtime generates structured metadata during execution and enforces compile-time security policies at runtime.
 
 ### Technical Implementation Integration
 
 **Inspired by**: Rust's integrated toolchain and modern compiler architecture research
 
-The technical implementation deeply integrates all language features from lexical analysis through code generation. The multi-syntax lexer generates semantic tokens, the parser creates AI-readable ASTs with full metadata preservation, and the compilation pipeline maintains semantic information through all transformation stages. This integration enables advanced tooling capabilities like real-time cohesion measurement, semantic refactoring, and AI-powered development assistance.
+The technical implementation deeply integrates all language features from lexical analysis through code generation. The multi-syntax lexer generates semantic tokens, the parser creates ASTs with comprehensive metadata export, and the compilation pipeline maintains semantic information through all transformation stages. This integration enables advanced tooling capabilities like real-time cohesion measurement, semantic refactoring, and sophisticated external tool integration.
 
 ## Developer Experience
 
@@ -338,7 +338,7 @@ The technical implementation deeply integrates all language features from lexica
 The Prism compiler acts as a coding partner:
 - Measures code cohesion and suggests improvements
 - Provides context-aware error messages that explain both the problem and the solution
-- Offers AI-powered refactoring suggestions
+- Exports rich metadata that enables sophisticated external tool suggestions
 
 ### Safety by Design
 - **Immutability by default**: Variables can't change unless explicitly marked mutable

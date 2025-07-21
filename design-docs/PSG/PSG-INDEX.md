@@ -39,7 +39,7 @@ Community-driven proposals for improvements (see [PEP-INDEX](../PEP/PEP-INDEX.md
 |----|-------|--------|----------|----------------|--------------|
 | [PSG-001](./PSG-001.md) | Fundamental Syntax & Formatting | Draft | Core | 1 | None |
 | [PSG-002](./PSG-002.md) | Naming Conventions & Identifiers | Draft | Core | 1 | PSG-001 |
-| [PSG-003](./PSG-003.md) | PrismDoc Standards | Draft | Core | 1 | PSG-001, PSG-002, PLD-004 |
+| [PSG-003](./PSG-003.md) | PrismDoc Standards | Draft | Core | 1 | PSG-001, PSG-002, PLT-006 |
 | PSG-004 | Function Design & Signatures | Planned | Core | 1 | PSG-001, PSG-002 |
 | PSG-005 | Type Definitions & Annotations | Planned | Core | 1 | PSG-001, PSG-002, PLD-001 |
 | PSG-006 | Error Handling Patterns | Planned | High | 1 | PSG-001, PSG-004 |
@@ -169,7 +169,7 @@ Prism includes operators that express semantic relationships:
 - Linting rules for core conventions
 
 ### Phase 2: Semantic Enhancement (Months 3-4)
-**Focus**: Add semantic type and AI integration conventions
+**Focus**: Add semantic type and AI metadata export conventions
 
 - [ ] PSG-005: Type Definitions & Annotations
 - [ ] PSG-006: Error Handling Patterns

@@ -99,7 +99,7 @@ impl Default for TokenMetadata {
             semantic_context: None,
             ai_hints: Vec::new(),
             is_error_recovery: false,
-            original_span: Span::default(), // TODO: Use actual span
+            original_span: Span::dummy(), // TODO: Use actual span
         }
     }
 } 

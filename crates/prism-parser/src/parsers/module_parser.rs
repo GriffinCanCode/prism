@@ -12,7 +12,8 @@ use crate::{
     core::{error::{ParseError, ParseResult}, token_stream_manager::TokenStreamManager, parsing_coordinator::ParsingCoordinator},
     parsers::{statement_parser::StatementParser, type_parser::TypeParser},
 };
-use prism_ast::{AstNode, ModuleKind, SectionKind, CapabilityKind, NodeId};
+use prism_ast::{AstNode, ModuleDecl, SectionDecl, SectionKind};
+use prism_common::NodeId;
 use prism_lexer::{Token, TokenKind};
 use prism_common::span::Span;
 use std::collections::HashMap;
@@ -49,85 +50,85 @@ impl<'a> ModuleParser<'a> {
         }
     }
 
-    /// Parse a module definition
+    /// Parse a module declaration
     pub fn parse_module(&mut self) -> ParseResult<NodeId> {
         let start_span = self.token_stream.current_span();
         
-        // Parse module keyword (either 'module' or 'mod')
         match self.token_stream.current_kind() {
-            TokenKind::Module | TokenKind::Mod => {
-                self.token_stream.advance();
+            TokenKind::Module => {
+                self.token_stream.advance(); // consume 'module'
+                
+                // Parse module name
+                let name = self.token_stream.expect_identifier()?;
+                let name_symbol = prism_common::symbol::Symbol::intern(&name);
+                
+                // Parse optional module metadata
+                let metadata = self.parse_module_metadata()?;
+                
+                // Parse optional capability declaration
+                let capability = if self.token_stream.check(TokenKind::Capability) {
+                    Some(self.parse_capability()?)
+                } else {
+                    None
+                };
+                
+                // Parse module body (sections, imports, exports)
+                let mut sections = Vec::new();
+                let mut dependencies = Vec::new();
+                
+                if self.token_stream.check(TokenKind::LeftBrace) {
+                    self.token_stream.advance(); // consume '{'
+                    
+                    while !self.token_stream.check(TokenKind::RightBrace) && !self.token_stream.is_at_end() {
+                        match self.token_stream.current_kind() {
+                            TokenKind::Section => {
+                                let section = self.parse_section()?;
+                                sections.push(section);
+                            }
+                            TokenKind::Import => {
+                                let import = self.parse_import()?;
+                                dependencies.push(import);
+                            }
+                            TokenKind::Export => {
+                                let _export = self.parse_export()?;
+                                // Handle exports
+                            }
+                            _ => {
+                                // Skip unknown tokens for now
+                                self.token_stream.advance();
+                            }
+                        }
+                    }
+                    
+                    self.token_stream.expect(TokenKind::RightBrace)?;
+                }
+                
+                let end_span = self.token_stream.current_span();
+                let span = self.combine_spans(start_span, end_span);
+                
+                // Create module declaration
+                let module_decl = prism_ast::ModuleDecl {
+                    name: name_symbol,
+                    capability,
+                    description: metadata.get("description").cloned(),
+                    dependencies: Vec::new(), // TODO: Convert imports to dependencies
+                    stability: prism_ast::StabilityLevel::Experimental,
+                    version: metadata.get("version").cloned(),
+                    sections,
+                    ai_context: metadata.get("ai_context").cloned(),
+                    visibility: prism_ast::Visibility::Public,
+                };
+                
+                let module_item = prism_ast::Item::Module(module_decl);
+                let node = self.coordinator.create_node(module_item, span);
+                Ok(node.id)
             }
             _ => return Err(ParseError::unexpected_token(
-                self.token_stream.current_token().clone(),
-                "module or mod".to_string(),
+                vec![TokenKind::Module],
+                self.token_stream.current_kind().clone(),
+                self.token_stream.current_span(),
             )),
         }
-        
-        // Parse module name
-        let name = self.token_stream.expect_identifier()?;
-        
-        // Optional module metadata
-        let mut metadata = HashMap::new();
-        if self.token_stream.consume(TokenKind::At) {
-            metadata = self.parse_module_metadata()?;
-        }
-        
-        // Parse module body
-        self.token_stream.expect(TokenKind::LeftBrace)?;
-        
-        let mut sections = Vec::new();
-        let mut capabilities = Vec::new();
-        let mut imports = Vec::new();
-        let mut exports = Vec::new();
-        let mut statements = Vec::new();
-        
-        while !self.token_stream.check(TokenKind::RightBrace) && !self.token_stream.is_at_end() {
-            match self.token_stream.current_kind() {
-                // Section declarations
-                TokenKind::Section => {
-                    sections.push(self.parse_section()?);
-                }
-                
-                // Capability declarations
-                TokenKind::Capability => {
-                    capabilities.push(self.parse_capability()?);
-                }
-                
-                // Import statements
-                TokenKind::Import | TokenKind::Use => {
-                    imports.push(self.parse_import()?);
-                }
-                
-                // Export statements
-                TokenKind::Export | TokenKind::Pub => {
-                    exports.push(self.parse_export()?);
-                }
-                
-                // Regular statements
-                _ => {
-                    statements.push(self.stmt_parser.parse_statement()?);
-                }
-            }
-        }
-        
-        self.token_stream.expect(TokenKind::RightBrace)?;
-        
-        let end_span = self.token_stream.previous_span();
-        let span = Span::combine(start_span, end_span);
-        
-        Ok(self.coordinator.create_module_node(
-            ModuleKind {
-                name,
-                sections,
-                capabilities,
-                imports,
-                exports,
-                statements,
-                metadata,
-            },
-            span,
-        ))
     }
 
     /// Parse a section within a module
@@ -139,7 +140,7 @@ impl<'a> ModuleParser<'a> {
         let name = self.token_stream.expect_identifier()?;
         
         // Optional section purpose/description
-        let purpose = if self.token_stream.check(TokenKind::StringLiteral(_)) {
+        let purpose = if matches!(self.token_stream.current_kind(), TokenKind::StringLiteral(_)) {
             Some(self.parse_string_literal()?)
         } else {
             None
@@ -157,9 +158,9 @@ impl<'a> ModuleParser<'a> {
         self.token_stream.expect(TokenKind::RightBrace)?;
         
         let end_span = self.token_stream.previous_span();
-        let span = Span::combine(start_span, end_span);
+        let span = Span::combine(&start_span, &end_span).unwrap_or(start_span);
         
-        Ok(self.coordinator.create_section_node(
+        Ok(self.coordinator.create_node(
             SectionKind {
                 name,
                 purpose,
@@ -170,168 +171,124 @@ impl<'a> ModuleParser<'a> {
     }
 
     /// Parse a capability declaration
-    fn parse_capability(&mut self) -> ParseResult<NodeId> {
+    fn parse_capability(&mut self) -> ParseResult<AstNode<Item>> {
         let start_span = self.token_stream.current_span();
         
-        // Parse capability keyword (either 'capability' or 'cap')
         match self.token_stream.current_kind() {
             TokenKind::Capability => {
-                self.token_stream.advance();
+                self.token_stream.advance(); // consume 'capability'
+                
+                let name = self.token_stream.expect_identifier()?;
+                
+                // Parse capability requirements
+                let requirements = self.parse_capability_requirements()?;
+                
+                // Parse capability effects
+                let effects = self.parse_capability_effects()?;
+                
+                // Parse security level
+                let security_level = if matches!(self.token_stream.current_kind(), TokenKind::Identifier(name) if name == "security") {
+                    Some(self.parse_security_level()?)
+                } else {
+                    None
+                };
+                
+                let end_span = self.token_stream.current_span();
+                let span = self.combine_spans(start_span, end_span);
+                
+                // Create a placeholder capability item
+                let capability_stmt = prism_ast::Stmt::Error(prism_ast::ErrorStmt {
+                    message: format!("Capability '{}' not yet fully implemented", name),
+                    context: "capability parsing".to_string(),
+                });
+                
+                let capability_item = prism_ast::Item::Statement(capability_stmt);
+                Ok(self.coordinator.create_node(capability_item, span))
             }
             _ => return Err(ParseError::unexpected_token(
-                self.token_stream.current_token().clone(),
-                "capability".to_string(),
+                vec![TokenKind::Capability],
+                self.token_stream.current_kind().clone(),
+                self.token_stream.current_span(),
             )),
         }
-        
-        // Parse capability name
-        let name = self.token_stream.expect_identifier()?;
-        
-        // Optional capability signature/interface
-        let signature = if self.token_stream.consume(TokenKind::Colon) {
-            Some(self.type_parser.parse_type()?)
-        } else {
-            None
-        };
-        
-        // Optional capability requirements
-        let mut requirements = Vec::new();
-        if self.token_stream.consume(TokenKind::Requires) {
-            requirements = self.parse_capability_requirements()?;
-        }
-        
-        // Optional capability effects
-        let mut effects = Vec::new();
-        if self.token_stream.consume(TokenKind::Effects) {
-            effects = self.parse_capability_effects()?;
-        }
-        
-        // Optional capability security level
-        let security_level = if self.token_stream.consume(TokenKind::Secure) {
-            Some(self.parse_security_level()?)
-        } else {
-            None
-        };
-        
-        // Parse capability body
-        self.token_stream.expect(TokenKind::LeftBrace)?;
-        
-        let mut operations = Vec::new();
-        
-        while !self.token_stream.check(TokenKind::RightBrace) && !self.token_stream.is_at_end() {
-            // Parse capability operations (functions, types, etc.)
-            operations.push(self.stmt_parser.parse_statement()?);
-        }
-        
-        self.token_stream.expect(TokenKind::RightBrace)?;
-        
-        let end_span = self.token_stream.previous_span();
-        let span = Span::combine(start_span, end_span);
-        
-        Ok(self.coordinator.create_capability_node(
-            CapabilityKind {
-                name,
-                signature,
-                requirements,
-                effects,
-                security_level,
-                operations,
-            },
-            span,
-        ))
+    }
+
+    /// Helper function to combine spans safely
+    fn combine_spans(&self, start: Span, end: Span) -> Span {
+        start.combine(&end).unwrap_or(start)
     }
 
     /// Parse an import statement
-    fn parse_import(&mut self) -> ParseResult<NodeId> {
+    fn parse_import(&mut self) -> ParseResult<AstNode<Item>> {
         let start_span = self.token_stream.current_span();
         
-        // Parse import keyword
-        let is_use_syntax = match self.token_stream.current_kind() {
-            TokenKind::Import => {
-                self.token_stream.advance();
-                false
-            }
-            TokenKind::Use => {
-                self.token_stream.advance();
-                true
+        match self.token_stream.current_kind() {
+            TokenKind::Import | TokenKind::Use => {
+                self.token_stream.advance(); // consume import/use keyword
+                
+                let path = self.parse_import_path()?;
+                
+                // Check for alias
+                let alias = if self.token_stream.check(TokenKind::As) {
+                    self.token_stream.advance(); // consume 'as'
+                    Some(self.token_stream.expect_identifier()?)
+                } else {
+                    None
+                };
+                
+                let end_span = self.token_stream.current_span();
+                let span = self.combine_spans(start_span, end_span);
+                
+                // Create import declaration
+                let import_decl = prism_ast::ImportDecl {
+                    path: path.clone(),
+                    alias: alias.map(|a| prism_common::symbol::Symbol::intern(&a)),
+                    items: prism_ast::ImportItems::All, // For now, import everything
+                };
+                
+                let import_item = prism_ast::Item::Import(import_decl);
+                Ok(self.coordinator.create_node(import_item, span))
             }
             _ => return Err(ParseError::unexpected_token(
-                self.token_stream.current_token().clone(),
-                "import or use".to_string(),
+                vec![TokenKind::Import, TokenKind::Use],
+                self.token_stream.current_kind().clone(),
+                self.token_stream.current_span(),
             )),
-        };
-        
-        // Parse import path
-        let path = self.parse_import_path()?;
-        
-        // Optional import alias
-        let alias = if self.token_stream.consume(TokenKind::As) {
-            Some(self.token_stream.expect_identifier()?)
-        } else {
-            None
-        };
-        
-        // Optional from clause (for selective imports)
-        let from_module = if self.token_stream.consume(TokenKind::From) {
-            Some(self.parse_import_path()?)
-        } else {
-            None
-        };
-        
-        // Expect semicolon
-        self.token_stream.expect(TokenKind::Semicolon)?;
-        
-        let end_span = self.token_stream.previous_span();
-        let span = Span::combine(start_span, end_span);
-        
-        Ok(self.coordinator.create_import_node(
-            ImportKind {
-                path,
-                alias,
-                from_module,
-                is_use_syntax,
-            },
-            span,
-        ))
+        }
     }
 
     /// Parse an export statement
-    fn parse_export(&mut self) -> ParseResult<NodeId> {
+    fn parse_export(&mut self) -> ParseResult<AstNode<Item>> {
         let start_span = self.token_stream.current_span();
         
-        // Parse export keyword
-        let visibility = match self.token_stream.current_kind() {
-            TokenKind::Export => {
-                self.token_stream.advance();
-                "export"
-            }
-            TokenKind::Pub => {
-                self.token_stream.advance();
-                "pub"
-            }
-            TokenKind::Public => {
-                self.token_stream.advance();
-                "public"
+        match self.token_stream.current_kind() {
+            TokenKind::Export | TokenKind::Pub | TokenKind::Public => {
+                self.token_stream.advance(); // consume export keyword
+                
+                // For now, create a placeholder export
+                let item_name = if self.token_stream.check_identifier() {
+                    self.token_stream.expect_identifier()?
+                } else {
+                    "unknown".to_string()
+                };
+                
+                let end_span = self.token_stream.current_span();
+                let span = self.combine_spans(start_span, end_span);
+                
+                // Create export declaration - use ExportItems::All for now
+                let export_decl = prism_ast::ExportDecl {
+                    items: prism_ast::ExportItems::All,
+                };
+                
+                let export_item = prism_ast::Item::Export(export_decl);
+                Ok(self.coordinator.create_node(export_item, span))
             }
             _ => return Err(ParseError::unexpected_token(
-                self.token_stream.current_token().clone(),
-                "export, pub, or public".to_string(),
+                vec![TokenKind::Export, TokenKind::Pub, TokenKind::Public],
+                self.token_stream.current_kind().clone(),
+                self.token_stream.current_span(),
             )),
-        };
-        
-        // Parse the item being exported
-        let exported_item = self.stmt_parser.parse_statement()?;
-        
-        let end_span = self.token_stream.current_span();
-        let span = Span::combine(start_span, end_span);
-        
-        Ok(self.coordinator.create_export_node(
-            ExportKind {
-                visibility: visibility.to_string(),
-                item: exported_item,
-            },
-            span,
-        ))
+        }
     }
 
     /// Parse module metadata (annotations)
@@ -390,37 +347,46 @@ impl<'a> ModuleParser<'a> {
         Ok(effects)
     }
 
-    /// Parse security level
-    fn parse_security_level(&mut self) -> ParseResult<String> {
-        // Parse security level (identifier or string)
-        if self.token_stream.check_identifier() {
-            Ok(self.token_stream.expect_identifier()?)
-        } else if self.token_stream.check(TokenKind::StringLiteral(_)) {
-            self.parse_string_literal()
-        } else {
-            Err(ParseError::unexpected_token(
-                self.token_stream.current_token().clone(),
-                "security level".to_string(),
-            ))
+    /// Parse security level specification (placeholder for now)
+    fn parse_security_level(&mut self) -> Result<String, ParseError> {
+        // For now, just consume an identifier as security level
+        match self.token_stream.current_kind() {
+            TokenKind::Identifier(level) => {
+                let level_str = level.clone();
+                self.token_stream.advance();
+                Ok(level_str)
+            }
+            _ => Err(ParseError::unexpected_token(
+                vec![TokenKind::Identifier("security level".to_string())],
+                self.token_stream.current_kind().clone(),
+                self.token_stream.current_span(),
+            )),
         }
     }
 
-    /// Parse import path (dot-separated identifiers)
+    /// Parse import path
     fn parse_import_path(&mut self) -> ParseResult<String> {
-        let mut path_parts = Vec::new();
-        
-        // Parse first identifier
-        path_parts.push(self.token_stream.expect_identifier()?);
-        
-        // Parse additional path components
-        while self.token_stream.consume(TokenKind::Dot) {
-            path_parts.push(self.token_stream.expect_identifier()?);
+        // For now, just parse a string literal or identifier
+        match self.token_stream.current_kind() {
+            TokenKind::StringLiteral(path) => {
+                let path_str = path.clone();
+                self.token_stream.advance();
+                Ok(path_str)
+            }
+            TokenKind::Identifier(path) => {
+                let path_str = path.clone();
+                self.token_stream.advance();
+                Ok(path_str)
+            }
+            _ => Err(ParseError::unexpected_token(
+                vec![TokenKind::StringLiteral("path".to_string()), TokenKind::Identifier("path".to_string())],
+                self.token_stream.current_kind().clone(),
+                self.token_stream.current_span(),
+            )),
         }
-        
-        Ok(path_parts.join("."))
     }
 
-    /// Parse a string literal
+    /// Parse string literal
     fn parse_string_literal(&mut self) -> ParseResult<String> {
         match self.token_stream.current_kind() {
             TokenKind::StringLiteral(value) => {
@@ -429,8 +395,9 @@ impl<'a> ModuleParser<'a> {
                 Ok(result)
             }
             _ => Err(ParseError::unexpected_token(
-                self.token_stream.current_token().clone(),
-                "string literal".to_string(),
+                vec![TokenKind::StringLiteral("string".to_string())],
+                self.token_stream.current_kind().clone(),
+                self.token_stream.current_span(),
             )),
         }
     }

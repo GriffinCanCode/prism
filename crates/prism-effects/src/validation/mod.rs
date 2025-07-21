@@ -3,7 +3,8 @@
 //! This module provides comprehensive validation of effect usage against
 //! capability requirements, security policies, and business rules.
 
-use crate::{Effect, Capability};
+use crate::effects::{Effect};
+use crate::capability::Capability;
 use crate::capability::CapabilityManager;
 use prism_common::span::Span;
 use prism_ast::SecurityClassification;
@@ -590,7 +591,8 @@ impl BusinessRuleValidator {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{CapabilityConstraints, EffectInstanceMetadata};
+    use crate::capability::CapabilityConstraints;
+    use crate::effects::definition::EffectInstanceMetadata;
 
     #[test]
     fn test_validator_creation() {

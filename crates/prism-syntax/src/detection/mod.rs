@@ -12,6 +12,7 @@ pub mod heuristics;
 pub mod confidence;
 
 pub use detector::{SyntaxDetector, DetectionResult, SyntaxStyle, DetectionWarning};
-pub use patterns::{PatternMatcher, SyntaxPattern, PatternEvidence, SyntaxEvidence};
+pub use patterns::{PatternMatcher, SyntaxPattern, PatternEvidence};
+pub use detector::SyntaxEvidence;
 pub use heuristics::{HeuristicEngine, HeuristicRule, HeuristicWeight};
 pub use confidence::{ConfidenceScorer, ConfidenceLevel, DetectionConfidence}; 

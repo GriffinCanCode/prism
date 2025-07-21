@@ -665,7 +665,6 @@ impl SecurityPolicyEnforcer {
 }
 
 /// Security policy definition
-#[derive(Debug)]
 pub struct SecurityPolicy {
     /// Policy name
     pub name: String,
@@ -677,6 +676,18 @@ pub struct SecurityPolicy {
     pub enforce_fn: Box<dyn Fn(&SecurityOperation, &SecurityPolicyContext) -> Result<(), SecurityError> + Send + Sync>,
     /// Function to check if policy applies to operation
     pub applies_fn: Box<dyn Fn(&SecurityOperation) -> bool + Send + Sync>,
+}
+
+impl std::fmt::Debug for SecurityPolicy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SecurityPolicy")
+            .field("name", &self.name)
+            .field("description", &self.description)
+            .field("policy_type", &self.policy_type)
+            .field("enforce_fn", &"<function>")
+            .field("applies_fn", &"<function>")
+            .finish()
+    }
 }
 
 impl Clone for SecurityPolicy {

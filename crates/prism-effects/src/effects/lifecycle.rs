@@ -15,13 +15,17 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
-use crate::security_trust::{SecurityOperation, SecureExecutionContext, ValidatedCapability};
-use crate::effects::definition::{Effect, EffectDefinition, EffectCategory, EffectParameter, EffectRegistry, EffectHierarchy};
-use crate::effects::registry::EffectCompositionRule;
-use prism_ast::{AstNode, Type, Expr, SecurityClassification};
+use crate::effects::definition::{Effect, EffectDefinition, EffectCategory, EffectInstanceMetadata, EffectParameter};
+use crate::security_trust::SecureExecutionContext;
+use prism_ast::{AstNode, Type, SecurityClassification};
 use prism_common::span::Span;
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
 use thiserror::Error;
+
+#[cfg(feature = "monitoring")]
+use crate::effects::monitoring::EffectMonitor;
 
 /// Capability: Effect Lifecycle Management
 /// Description: Unified effect system managing the complete lifecycle from definition to execution  
@@ -129,16 +133,115 @@ impl EffectLifecycleSystem {
         effects: &[Effect],
         security_context: &SecureExecutionContext,
     ) -> Result<EffectExecutionResult, EffectError> {
-        // Compose effects for optimal execution
-        let composed_effects = self.composition_engine
-            .compose_for_execution(effects, &self.effect_registry)?;
+        let start_time = std::time::Instant::now();
+        let mut execution_results = Vec::new();
+        let mut security_events = Vec::new();
 
-        // Execute with full lifecycle tracking
-        self.execution_engine.execute_effects_with_tracking(
-            &composed_effects,
-            security_context,
-            &self.effect_registry,
-        )
+        // Start monitoring for each effect
+        #[cfg(feature = "monitoring")]
+        let mut monitoring_ids: Vec<(crate::effects::monitoring::ExecutionId, Arc<crate::effects::monitoring::EffectMonitor>)> = Vec::new();
+        
+        #[cfg(feature = "monitoring")]
+        {
+            let monitor = Arc::new(crate::effects::monitoring::EffectMonitor::new());
+            
+            for effect in effects {
+                if let Ok(execution_id) = monitor.start_execution(effect) {
+                    monitoring_ids.push((execution_id, monitor.clone()));
+                }
+            }
+        }
+
+        for (i, effect) in effects.iter().enumerate() {
+            // Get handler
+            let handler = self.execution_engine.handlers.get(&effect.definition)
+                .ok_or_else(|| EffectError::NoHandlerFound {
+                    effect: effect.definition.clone(),
+                })?;
+
+            // Execute effect with resource tracking
+            let effect_start = std::time::Instant::now();
+            let start_resources = crate::execution::handlers::ResourceUsage::capture_current()
+                .unwrap_or_else(|_| crate::execution::handlers::ResourceUsage::new());
+            
+            let result = handler.execute_effect(effect, security_context)?;
+            
+            let end_resources = crate::execution::handlers::ResourceUsage::capture_current()
+                .unwrap_or_else(|_| crate::execution::handlers::ResourceUsage::new());
+            let effect_duration = effect_start.elapsed();
+            let resource_consumption = end_resources.calculate_consumption(&start_resources);
+
+            // End monitoring for this effect
+            #[cfg(feature = "monitoring")]
+            if i < monitoring_ids.len() {
+                let (execution_id, ref monitor) = monitoring_ids[i];
+                if let Ok(execution_record) = monitor.end_execution(execution_id, result.success) {
+                    // Log execution metrics
+                    if !result.success {
+                        eprintln!("Effect execution failed: {} - Duration: {:?}, Efficiency: {:.2}", 
+                                effect.definition, 
+                                execution_record.duration,
+                                execution_record.performance_profile.execution_efficiency);
+                    }
+                    
+                    // Check for performance issues
+                    if !execution_record.performance_profile.bottlenecks.is_empty() {
+                        eprintln!("Performance bottlenecks detected for effect {}: {:?}", 
+                                effect.definition,
+                                execution_record.performance_profile.bottlenecks);
+                    }
+                }
+            }
+
+            // Convert ResourceConsumption to ResourceUsage for compatibility
+            let resource_usage = crate::execution::handlers::ResourceUsage {
+                memory_allocated: resource_consumption.memory_delta,
+                cpu_time: resource_consumption.cpu_time_delta,
+                network_sent: resource_consumption.network_sent_delta,
+                network_received: resource_consumption.network_received_delta,
+                disk_read: resource_consumption.disk_read_delta,
+                disk_written: resource_consumption.disk_written_delta,
+                timestamp: std::time::Instant::now(),
+            };
+
+            // Record execution with enhanced metrics
+            execution_results.push(SingleEffectResult {
+                effect: effect.clone(),
+                success: result.success,
+                output: result.output,
+                duration: effect_duration,
+                security_events: result.security_events.clone(),
+                resource_consumption: Some(resource_usage),
+                efficiency_score: Some(resource_consumption.efficiency_score()),
+            });
+
+            security_events.extend(result.security_events);
+        }
+
+        let total_duration = start_time.elapsed();
+
+        // Calculate performance metrics
+        let performance_metrics = self.execution_engine.calculate_performance_metrics(&execution_results, total_duration);
+
+        // Record execution history
+        let execution_record = ExecutionRecord {
+            effects: effects.to_vec(),
+            duration: total_duration,
+            success: execution_results.iter().all(|r| r.success),
+            timestamp: std::time::Instant::now(),
+            performance_metrics: Some(performance_metrics.clone()),
+        };
+        self.execution_engine.execution_history.push(execution_record);
+
+        let overall_success = execution_results.iter().all(|r| r.success);
+        
+        Ok(EffectExecutionResult {
+            individual_results: execution_results,
+            total_duration,
+            overall_success,
+            security_events,
+            performance_metrics,
+        })
     }
 
     /// Validate effects against security context
@@ -255,13 +358,7 @@ impl EffectRegistry {
             .with_ai_context("Provides read access to file system resources")
             .with_security_implication("Can access sensitive file contents")
             .with_capability_requirement("FileSystem", vec!["Read".to_string()])
-            .with_parameter(EffectParameter {
-                name: "path".to_string(),
-                parameter_type: "Path".to_string(),
-                description: "File path to read".to_string(),
-                required: true,
-                constraints: vec!["Must be within allowed paths".to_string()],
-            }),
+,
 
             EffectDefinition::new(
                 "IO.FileSystem.Write".to_string(),
@@ -271,13 +368,7 @@ impl EffectRegistry {
             .with_ai_context("Provides write access to file system resources")
             .with_security_implication("Can modify or create files")
             .with_capability_requirement("FileSystem", vec!["Write".to_string()])
-            .with_parameter(EffectParameter {
-                name: "path".to_string(),
-                parameter_type: "Path".to_string(),
-                description: "File path to write".to_string(),
-                required: true,
-                constraints: vec!["Must be within allowed paths".to_string()],
-            }),
+,
 
             EffectDefinition::new(
                 "IO.Network.Connect".to_string(),
@@ -394,161 +485,7 @@ impl EffectHierarchy {
     }
 }
 
-/// Definition of an effect type
-#[derive(Debug, Clone)]
-pub struct EffectDefinition {
-    /// Unique name of the effect
-    pub name: String,
-    /// Human-readable description
-    pub description: String,
-    /// Effect category for classification
-    pub category: EffectCategory,
-    /// Parent effect in the hierarchy
-    pub parent_effect: Option<String>,
-    /// AI-comprehensible context
-    pub ai_context: Option<String>,
-    /// Security implications of this effect
-    pub security_implications: Vec<String>,
-    /// Business rules associated with this effect
-    pub business_rules: Vec<String>,
-    /// Capability requirements
-    pub capability_requirements: HashMap<String, Vec<String>>,
-    /// Effect parameters
-    pub parameters: Vec<EffectParameter>,
-    /// Examples of effect usage
-    pub examples: Vec<String>,
-    /// Common mistakes to avoid
-    pub common_mistakes: Vec<String>,
-}
 
-impl EffectDefinition {
-    /// Create a new effect definition
-    pub fn new(name: String, description: String, category: EffectCategory) -> Self {
-        Self {
-            name,
-            description,
-            category,
-            parent_effect: None,
-            ai_context: None,
-            security_implications: Vec::new(),
-            business_rules: Vec::new(),
-            capability_requirements: HashMap::new(),
-            parameters: Vec::new(),
-            examples: Vec::new(),
-            common_mistakes: Vec::new(),
-        }
-    }
-
-    /// Add AI context for better comprehension
-    pub fn with_ai_context(mut self, context: impl Into<String>) -> Self {
-        self.ai_context = Some(context.into());
-        self
-    }
-
-    /// Add a security implication
-    pub fn with_security_implication(mut self, implication: impl Into<String>) -> Self {
-        self.security_implications.push(implication.into());
-        self
-    }
-
-    /// Add a capability requirement
-    pub fn with_capability_requirement(mut self, capability: impl Into<String>, permissions: Vec<String>) -> Self {
-        self.capability_requirements.insert(capability.into(), permissions);
-        self
-    }
-
-    /// Add an effect parameter
-    pub fn with_parameter(mut self, parameter: EffectParameter) -> Self {
-        self.parameters.push(parameter);
-        self
-    }
-}
-
-/// Categories of effects as defined in PLD-003
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum EffectCategory {
-    /// Pure computation with no side effects
-    Pure,
-    /// Input/Output operations
-    IO,
-    /// Database operations
-    Database,
-    /// Network operations
-    Network,
-    /// Cryptographic operations
-    Security,
-    /// AI and machine learning operations
-    AI,
-    /// Memory management operations
-    Memory,
-    /// System-level operations
-    System,
-    /// Unsafe operations requiring special handling
-    Unsafe,
-    /// Custom effect category
-    Custom(String),
-}
-
-/// Parameter for an effect
-#[derive(Debug, Clone)]
-pub struct EffectParameter {
-    /// Parameter name
-    pub name: String,
-    /// Parameter type
-    pub parameter_type: String,
-    /// Parameter description
-    pub description: String,
-    /// Whether the parameter is required
-    pub required: bool,
-    /// Constraints on the parameter
-    pub constraints: Vec<String>,
-}
-
-/// Concrete effect instance with runtime values
-#[derive(Debug, Clone)]
-pub struct Effect {
-    /// The effect definition this instance is based on
-    pub definition: String,
-    /// Runtime parameters for this effect
-    pub parameters: HashMap<String, String>, // Simplified - would be actual values
-    /// Source location where this effect occurs
-    pub span: Span,
-    /// Metadata for this specific effect instance
-    pub metadata: EffectInstanceMetadata,
-}
-
-impl Effect {
-    /// Create a new effect instance
-    pub fn new(definition: String, span: Span) -> Self {
-        Self {
-            definition,
-            parameters: HashMap::new(),
-            span,
-            metadata: EffectInstanceMetadata::default(),
-        }
-    }
-
-    /// Add a parameter to this effect
-    pub fn with_parameter(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
-        self.parameters.insert(name.into(), value.into());
-        self
-    }
-}
-
-/// Metadata for a specific effect instance
-#[derive(Debug, Clone, Default)]
-pub struct EffectInstanceMetadata {
-    /// AI-readable context for this specific instance
-    pub ai_context: Option<String>,
-    /// Security classification of data processed
-    pub security_classification: SecurityClassification,
-    /// Whether this effect was inferred or explicit
-    pub inferred: bool,
-    /// Confidence level in effect inference (0.0 to 1.0)
-    pub confidence: f64,
-    /// Source of effect inference
-    pub inference_source: Option<String>,
-}
 
 /// Rule for composing multiple effects
 #[derive(Debug, Clone)]
@@ -690,7 +627,6 @@ impl Default for InferenceConfig {
 }
 
 /// AI pattern for effect inference
-#[derive(Debug)]
 pub struct AIInferencePattern {
     /// Pattern name
     pub name: String,
@@ -700,6 +636,17 @@ pub struct AIInferencePattern {
     pub keywords: HashSet<String>,
     /// Inference function
     pub infer_fn: Box<dyn Fn(&AstNode<Type>, &EffectRegistry) -> Result<Vec<Effect>, EffectError> + Send + Sync>,
+}
+
+impl std::fmt::Debug for AIInferencePattern {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AIInferencePattern")
+            .field("name", &self.name)
+            .field("description", &self.description)
+            .field("keywords", &self.keywords)
+            .field("infer_fn", &"<function>")
+            .finish()
+    }
 }
 
 impl AIInferencePattern {
@@ -783,7 +730,6 @@ impl EffectCompositionAnalyzer {
 }
 
 /// Rule for composing effects
-#[derive(Debug)]
 pub struct CompositionRule {
     /// Rule name
     pub name: String,
@@ -795,6 +741,18 @@ pub struct CompositionRule {
     pub output_effect: String,
     /// Function to apply the rule
     pub apply_fn: Box<dyn Fn(Vec<Effect>) -> Result<Vec<Effect>, EffectError> + Send + Sync>,
+}
+
+impl std::fmt::Debug for CompositionRule {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CompositionRule")
+            .field("name", &self.name)
+            .field("description", &self.description)
+            .field("input_patterns", &self.input_patterns)
+            .field("output_effect", &self.output_effect)
+            .field("apply_fn", &"<function>")
+            .finish()
+    }
 }
 
 impl CompositionRule {
@@ -908,6 +866,8 @@ impl EffectExecutionEngine {
                 output: result.output,
                 duration: effect_duration,
                 security_events: result.security_events.clone(),
+                resource_consumption: None, // No resource tracking in this path
+                efficiency_score: None,     // No efficiency calculation in this path
             });
 
             security_events.extend(result.security_events);
@@ -921,9 +881,12 @@ impl EffectExecutionEngine {
             duration: total_duration,
             success: execution_results.iter().all(|r| r.success),
             timestamp: std::time::Instant::now(),
+            performance_metrics: None, // No performance metrics in this simple execution path
         };
         self.execution_history.push(execution_record);
 
+        let success_count = execution_results.iter().filter(|r| r.success).count() as f64;
+        
         Ok(EffectExecutionResult {
             individual_results: execution_results,
             total_duration,
@@ -933,6 +896,8 @@ impl EffectExecutionEngine {
                 total_effects_executed: effects.len(),
                 average_effect_duration: total_duration / effects.len() as u32,
                 parallel_execution_efficiency: 1.0, // Simplified
+                success_rate: success_count / effects.len() as f64,
+                average_efficiency_score: 1.0, // Simplified - no efficiency tracking in this path
             },
         })
     }
@@ -988,6 +953,42 @@ impl EffectExecutionEngine {
             "Database.Transaction".to_string(),
             Box::new(DatabaseTransactionHandler::new()),
         );
+    }
+
+    /// Calculate comprehensive performance metrics
+    fn calculate_performance_metrics(&self, results: &[SingleEffectResult], total_duration: std::time::Duration) -> PerformanceMetrics {
+        let total_effects = results.len();
+        let successful_effects = results.iter().filter(|r| r.success).count();
+        
+        let average_duration = if total_effects > 0 {
+            results.iter().map(|r| r.duration).sum::<std::time::Duration>() / total_effects as u32
+        } else {
+            std::time::Duration::from_millis(0)
+        };
+
+        let average_efficiency = if total_effects > 0 {
+            results.iter()
+                .filter_map(|r| r.efficiency_score)
+                .sum::<f64>() / total_effects as f64
+        } else {
+            0.0
+        };
+
+        // Calculate parallel execution efficiency
+        let sequential_time: std::time::Duration = results.iter().map(|r| r.duration).sum();
+        let parallel_efficiency = if sequential_time.as_nanos() > 0 {
+            (sequential_time.as_nanos() as f64 / total_duration.as_nanos() as f64).min(1.0)
+        } else {
+            1.0
+        };
+
+        PerformanceMetrics {
+            total_effects_executed: total_effects,
+            average_effect_duration: average_duration,
+            parallel_execution_efficiency: parallel_efficiency,
+            success_rate: successful_effects as f64 / total_effects as f64,
+            average_efficiency_score: average_efficiency,
+        }
     }
 }
 
@@ -1123,6 +1124,8 @@ pub struct ExecutionRecord {
     pub success: bool,
     /// When execution occurred
     pub timestamp: std::time::Instant,
+    /// Performance metrics for the execution
+    pub performance_metrics: Option<PerformanceMetrics>,
 }
 
 // Example handler implementations
@@ -1352,7 +1355,6 @@ impl EffectCompositionEngine {
 }
 
 /// Strategy for composing effects
-#[derive(Debug)]
 pub struct CompositionStrategy {
     /// Strategy name
     pub name: String,
@@ -1362,6 +1364,17 @@ pub struct CompositionStrategy {
     pub applies_fn: Box<dyn Fn(&[Effect]) -> bool + Send + Sync>,
     /// Function to apply the strategy
     pub apply_fn: Box<dyn Fn(Vec<Effect>, &EffectRegistry) -> Result<Vec<Effect>, EffectError> + Send + Sync>,
+}
+
+impl std::fmt::Debug for CompositionStrategy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CompositionStrategy")
+            .field("name", &self.name)
+            .field("description", &self.description)
+            .field("applies_fn", &"<function>")
+            .field("apply_fn", &"<function>")
+            .finish()
+    }
 }
 
 impl CompositionStrategy {
@@ -1377,7 +1390,6 @@ impl CompositionStrategy {
 }
 
 /// Rule for optimizing effects
-#[derive(Debug)]
 pub struct OptimizationRule {
     /// Rule name
     pub name: String,
@@ -1387,6 +1399,17 @@ pub struct OptimizationRule {
     pub can_optimize_fn: Box<dyn Fn(&[Effect]) -> bool + Send + Sync>,
     /// Function to apply the optimization
     pub optimize_fn: Box<dyn Fn(Vec<Effect>) -> Result<Vec<Effect>, EffectError> + Send + Sync>,
+}
+
+impl std::fmt::Debug for OptimizationRule {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OptimizationRule")
+            .field("name", &self.name)
+            .field("description", &self.description)
+            .field("can_optimize_fn", &"<function>")
+            .field("optimize_fn", &"<function>")
+            .finish()
+    }
 }
 
 impl OptimizationRule {
@@ -1469,6 +1492,10 @@ pub struct SingleEffectResult {
     pub duration: std::time::Duration,
     /// Security events for this effect
     pub security_events: Vec<SecurityEvent>,
+    /// Resource consumption for this effect
+    pub resource_consumption: Option<crate::execution::handlers::ResourceUsage>,
+    /// Efficiency score for this effect
+    pub efficiency_score: Option<f64>,
 }
 
 /// Performance metrics for effect execution
@@ -1480,6 +1507,10 @@ pub struct PerformanceMetrics {
     pub average_effect_duration: std::time::Duration,
     /// Efficiency of parallel execution (0.0 to 1.0)
     pub parallel_execution_efficiency: f64,
+    /// Success rate of overall execution
+    pub success_rate: f64,
+    /// Average efficiency score across all effects
+    pub average_efficiency_score: f64,
 }
 
 /// Errors that can occur in the effect lifecycle system
@@ -1559,7 +1590,7 @@ mod tests {
 
     #[test]
     fn test_effect_creation() {
-        let span = Span::new(0, 0, 0.into());
+        let span = Span::dummy();
         let effect = Effect::new("TestEffect".to_string(), span)
             .with_parameter("key", "value");
         
@@ -1570,7 +1601,7 @@ mod tests {
     #[test]
     fn test_composition_engine() {
         let mut engine = EffectCompositionEngine::new();
-        let span = Span::new(0, 0, 0.into());
+        let span = Span::dummy();
         let effects = vec![
             Effect::new("Database.Query".to_string(), span),
             Effect::new("Database.Query".to_string(), span), // Duplicate

@@ -4,7 +4,7 @@
 //! of different programming styles, maintaining conceptual cohesion around the
 //! single responsibility of "syntax pattern identification and evidence collection".
 
-use super::{SyntaxEvidence, SyntaxStyle, EvidenceType};
+use super::{detector::{SyntaxEvidence, EvidenceType}, SyntaxStyle};
 use prism_common::span::Span;
 use regex::Regex;
 use once_cell::sync::Lazy;

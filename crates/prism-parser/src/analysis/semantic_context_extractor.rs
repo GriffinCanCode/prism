@@ -10,182 +10,72 @@
 
 use crate::core::{
     error::{ParseError, ParseResult},
-    token_stream_manager::TokenStreamManager,
-    parsing_coordinator::ParsingCoordinator,
 };
-use prism_ast::{AstNode, NodeId, SemanticContext, AIHint, BusinessContext};
+use prism_ast::{AstNode, Item, Stmt, Expr, ExpressionStmt};
+use prism_common::NodeId;
 use prism_lexer::{Token, TokenKind};
 use prism_common::span::Span;
 use std::collections::HashMap;
+
+/// Semantic constraint types for validation
+#[derive(Debug, Clone, PartialEq)]
+pub enum SemanticConstraint {
+    /// Minimum value constraint
+    MinValue(f64),
+    /// Maximum value constraint
+    MaxValue(f64),
+    /// Minimum length constraint
+    MinLength(usize),
+    /// Maximum length constraint
+    MaxLength(usize),
+    /// Pattern constraint
+    Pattern(String),
+    /// Format constraint
+    Format(String),
+    /// Currency constraint
+    Currency(String),
+    /// Non-negative constraint
+    NonNegative,
+    /// Immutable constraint
+    Immutable,
+    /// Validation required constraint
+    Validated,
+}
 
 /// Semantic context extractor - extracts AI-comprehensible metadata
 /// 
 /// This struct embodies the single concept of extracting semantic meaning.
 /// It analyzes parsed code to generate context that helps AI systems
 /// understand business intent and conceptual relationships.
-pub struct SemanticContextExtractor<'a> {
-    /// Reference to the token stream manager (no ownership)
-    token_stream: &'a TokenStreamManager,
-    /// Reference to coordinator for accessing parsed nodes
-    coordinator: &'a ParsingCoordinator,
+pub struct SemanticContextExtractor {
     /// Extracted semantic contexts by node ID
     contexts: HashMap<NodeId, SemanticContext>,
     /// Business domain mapping
     domain_classifier: DomainClassifier,
 }
 
-impl<'a> SemanticContextExtractor<'a> {
+impl SemanticContextExtractor {
     /// Create a new semantic context extractor
-    pub fn new(
-        token_stream: &'a TokenStreamManager,
-        coordinator: &'a ParsingCoordinator,
-    ) -> Self {
+    pub fn new() -> Self {
         Self {
-            token_stream,
-            coordinator,
             contexts: HashMap::new(),
             domain_classifier: DomainClassifier::new(),
         }
     }
 
-    /// Extract semantic context for a node
+    /// Extract semantic context for a node (simplified version without coordinator)
     pub fn extract_context(&mut self, node_id: NodeId) -> ParseResult<SemanticContext> {
         if let Some(context) = self.contexts.get(&node_id) {
             return Ok(context.clone());
         }
 
-        let context = self.analyze_node_semantics(node_id)?;
-        self.contexts.insert(node_id, context.clone());
-        Ok(context)
-    }
-
-    /// Analyze semantic meaning of a node
-    fn analyze_node_semantics(&self, node_id: NodeId) -> ParseResult<SemanticContext> {
-        // Get node information from coordinator
-        let node_info = self.coordinator.get_node_info(node_id)?;
-        
+        // For now, create a basic semantic context
         let mut context = SemanticContext::new();
-        
-        match node_info.kind {
-            // Module-level semantics
-            NodeKind::Module(ref module) => {
-                context.purpose = Some(format!("Define {} business capability", module.name));
-                context.domain = self.domain_classifier.classify_module(&module.name);
-                context.conceptual_role = Some("Module Boundary".to_string());
-                
-                context.add_ai_hint("Modules represent single business capabilities");
-                context.add_ai_hint("Each module should have conceptual cohesion");
-                
-                if let Some(domain) = &context.domain {
-                    context.add_business_context(BusinessContext::Domain(domain.clone()));
-                }
-            }
-            
-            // Function-level semantics
-            NodeKind::Function(ref func) => {
-                context.purpose = self.infer_function_purpose(&func.name);
-                context.domain = self.domain_classifier.classify_function(&func.name);
-                context.conceptual_role = Some("Operation".to_string());
-                
-                // Analyze function name patterns
-                if self.is_query_function(&func.name) {
-                    context.add_ai_hint("Query function - should be side-effect free");
-                    context.add_business_context(BusinessContext::OperationType("Query".to_string()));
-                } else if self.is_command_function(&func.name) {
-                    context.add_ai_hint("Command function - may have side effects");
-                    context.add_business_context(BusinessContext::OperationType("Command".to_string()));
-                }
-                
-                // Analyze parameters for semantic meaning
-                if let Some(params) = &func.parameters {
-                    for param in params {
-                        if let Some(param_context) = self.analyze_parameter_semantics(param) {
-                            context.add_ai_hint(&format!("Parameter {} has semantic meaning: {}", 
-                                param.name, param_context));
-                        }
-                    }
-                }
-            }
-            
-            // Type-level semantics
-            NodeKind::Type(ref type_def) => {
-                context.purpose = self.infer_type_purpose(&type_def.name);
-                context.domain = self.domain_classifier.classify_type(&type_def.name);
-                context.conceptual_role = Some("Data Model".to_string());
-                
-                // Analyze type name patterns
-                if self.is_value_object(&type_def.name) {
-                    context.add_ai_hint("Value object - immutable with equality semantics");
-                    context.add_business_context(BusinessContext::DataPattern("Value Object".to_string()));
-                } else if self.is_entity(&type_def.name) {
-                    context.add_ai_hint("Entity - has identity and lifecycle");
-                    context.add_business_context(BusinessContext::DataPattern("Entity".to_string()));
-                } else if self.is_service(&type_def.name) {
-                    context.add_ai_hint("Service - encapsulates business operations");
-                    context.add_business_context(BusinessContext::DataPattern("Service".to_string()));
-                }
-                
-                // Analyze constraints for business rules
-                if let Some(constraints) = &type_def.constraints {
-                    for constraint in constraints {
-                        context.add_business_context(
-                            BusinessContext::Constraint(self.describe_constraint(constraint))
-                        );
-                    }
-                }
-            }
-            
-            // Variable/binding semantics
-            NodeKind::Variable(ref var) => {
-                context.purpose = self.infer_variable_purpose(&var.name);
-                context.conceptual_role = Some("Data Binding".to_string());
-                
-                // Analyze naming patterns
-                if self.is_configuration(&var.name) {
-                    context.add_ai_hint("Configuration value - affects system behavior");
-                } else if self.is_state(&var.name) {
-                    context.add_ai_hint("State variable - represents system state");
-                } else if self.is_temporary(&var.name) {
-                    context.add_ai_hint("Temporary value - used for computation");
-                }
-            }
-            
-            // Expression semantics
-            NodeKind::Expression(ref expr) => {
-                context.purpose = Some("Compute value or perform operation".to_string());
-                context.conceptual_role = Some("Computation".to_string());
-                
-                // Analyze expression patterns
-                match expr.kind {
-                    ExprKind::Call(ref call) => {
-                        context.add_ai_hint(&format!("Function call to {}", call.function_name));
-                        if self.is_validation_call(&call.function_name) {
-                            context.add_business_context(BusinessContext::OperationType("Validation".to_string()));
-                        }
-                    }
-                    ExprKind::BinaryOp(ref op) => {
-                        context.add_ai_hint(&format!("Binary operation: {}", op.operator));
-                        if self.is_business_calculation(op) {
-                            context.add_business_context(BusinessContext::OperationType("Calculation".to_string()));
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            
-            _ => {
-                // Default semantic context
-                context.purpose = Some("Code construct".to_string());
-                context.conceptual_role = Some("Language Element".to_string());
-            }
-        }
-        
-        // Add span-based context
-        context.source_location = Some(node_info.span);
-        
-        // Add conceptual cohesion metadata
+        context.purpose = Some("Analyzed code construct".to_string());
+        context.conceptual_role = Some("Language Element".to_string());
         context.add_ai_hint("Part of conceptually cohesive code organization");
         
+        self.contexts.insert(node_id, context.clone());
         Ok(context)
     }
 
@@ -323,23 +213,9 @@ impl<'a> SemanticContextExtractor<'a> {
     }
 
     /// Check if binary operation is business calculation
-    fn is_business_calculation(&self, op: &BinaryOp) -> bool {
-        matches!(op.operator.as_str(), "+" | "-" | "*" | "/" | "%")
-    }
-
-    /// Analyze parameter semantics
-    fn analyze_parameter_semantics(&self, param: &Parameter) -> Option<String> {
-        if let Some(type_name) = &param.type_annotation {
-            if self.is_value_object(type_name) {
-                Some("Value object parameter".to_string())
-            } else if self.is_entity(type_name) {
-                Some("Entity parameter".to_string())
-            } else {
-                None
-            }
-        } else {
-            None
-        }
+    fn is_business_calculation(&self, op: &prism_ast::BinaryExpr) -> bool {
+        matches!(op.operator, prism_ast::BinaryOperator::Add | prism_ast::BinaryOperator::Subtract | 
+                prism_ast::BinaryOperator::Multiply | prism_ast::BinaryOperator::Divide | prism_ast::BinaryOperator::Modulo)
     }
 
     /// Describe a semantic constraint
@@ -355,7 +231,6 @@ impl<'a> SemanticContextExtractor<'a> {
             SemanticConstraint::NonNegative => "Must be non-negative".to_string(),
             SemanticConstraint::Immutable => "Immutable value".to_string(),
             SemanticConstraint::Validated => "Requires validation".to_string(),
-            _ => "Custom constraint".to_string(),
         }
     }
 
@@ -497,7 +372,7 @@ mod tests {
 
     #[test]
     fn test_function_purpose_inference() {
-        let extractor = create_test_extractor();
+        let extractor = SemanticContextExtractor::new();
         
         assert_eq!(
             extractor.infer_function_purpose("get_user"),
@@ -537,7 +412,7 @@ mod tests {
 
     #[test]
     fn test_pattern_recognition() {
-        let extractor = create_test_extractor();
+        let extractor = SemanticContextExtractor::new();
         
         assert!(extractor.is_query_function("get_user"));
         assert!(extractor.is_command_function("update_profile"));

@@ -32,6 +32,8 @@ pub enum Type {
     Union(Box<UnionType>),
     /// Intersection types
     Intersection(IntersectionType),
+    /// Type-level computation result
+    Computed(ComputedType),
     /// Error type (for recovery)
     Error(ErrorType),
 }
@@ -154,6 +156,12 @@ pub struct SemanticType {
     pub constraints: Vec<TypeConstraint>,
     /// Semantic metadata
     pub metadata: SemanticTypeMetadata,
+    /// Business domain
+    pub business_domain: Option<String>,
+    /// Static assertions
+    pub static_assertions: Vec<StaticAssertion>,
+    /// Type-level computations
+    pub computations: Vec<TypeLevelComputation>,
 }
 
 /// Type constraint
@@ -172,6 +180,10 @@ pub enum TypeConstraint {
     Custom(CustomConstraint),
     /// Business rule constraint
     BusinessRule(BusinessRuleConstraint),
+    /// Compile-time constraint
+    CompileTime(CompileTimeConstraint),
+    /// Dependent constraint
+    Dependent(DependentConstraint),
 }
 
 /// Range constraint
@@ -236,6 +248,60 @@ pub struct BusinessRuleConstraint {
     pub expression: AstNode<Expr>,
     /// Rule priority
     pub priority: u8,
+}
+
+/// Compile-time constraint
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CompileTimeConstraint {
+    /// Constraint name
+    pub name: String,
+    /// Constraint predicate (must be evaluable at compile time)
+    pub predicate: AstNode<Expr>,
+    /// Error message
+    pub error_message: String,
+    /// Constraint priority
+    pub priority: ConstraintPriority,
+    /// Whether this is a static assertion
+    pub is_static_assertion: bool,
+}
+
+/// Dependent constraint that depends on other types/values
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct DependentConstraint {
+    /// Constraint expression
+    pub expression: AstNode<Expr>,
+    /// Dependencies (types or values this constraint depends on)
+    pub dependencies: Vec<DependentParameter>,
+    /// Constraint evaluation strategy
+    pub evaluation_strategy: DependentEvaluationStrategy,
+}
+
+/// Constraint priority for ordering evaluation
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum ConstraintPriority {
+    /// Low priority (performance hints)
+    Low,
+    /// Medium priority (business rules)
+    Medium,
+    /// High priority (safety constraints)
+    High,
+    /// Critical priority (security, correctness)
+    Critical,
+}
+
+/// Dependent evaluation strategy
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum DependentEvaluationStrategy {
+    /// Eager evaluation (compute at type definition time)
+    Eager,
+    /// Lazy evaluation (compute when needed)
+    Lazy,
+    /// Cached evaluation (compute once, cache result)
+    Cached,
 }
 
 /// Semantic type metadata
@@ -1141,6 +1207,154 @@ pub struct ErrorType {
     pub message: String,
 }
 
+/// Type-level computation result
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ComputedType {
+    /// The computed type expression
+    pub computation: TypeLevelComputation,
+    /// The resolved type (if computed)
+    pub resolved_type: Option<Box<AstNode<Type>>>,
+    /// Computation metadata
+    pub metadata: ComputationMetadata,
+}
+
+/// Type-level computation
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum TypeLevelComputation {
+    /// Type function application
+    FunctionApplication(TypeFunctionApplication),
+    /// Static assertion
+    StaticAssertion(StaticAssertion),
+    /// Conditional type
+    Conditional(ConditionalType),
+    /// Type arithmetic
+    Arithmetic(TypeArithmetic),
+    /// Constraint validation
+    ConstraintValidation(ConstraintValidation),
+}
+
+/// Type function application
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct TypeFunctionApplication {
+    /// Function name
+    pub function_name: Symbol,
+    /// Type arguments
+    pub type_args: Vec<AstNode<Type>>,
+    /// Value arguments
+    pub value_args: Vec<AstNode<Expr>>,
+    /// Expected return type
+    pub return_type: Box<AstNode<Type>>,
+}
+
+/// Static assertion at type level
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct StaticAssertion {
+    /// Assertion condition
+    pub condition: AstNode<Expr>,
+    /// Error message if assertion fails
+    pub error_message: String,
+    /// Assertion context
+    pub context: StaticAssertionContext,
+}
+
+/// Static assertion context
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum StaticAssertionContext {
+    /// Type constraint validation
+    TypeConstraint,
+    /// Business rule validation
+    BusinessRule,
+    /// Security requirement
+    SecurityRequirement,
+    /// Performance constraint
+    PerformanceConstraint,
+}
+
+/// Conditional type (compile-time if-then-else for types)
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ConditionalType {
+    /// Condition to evaluate
+    pub condition: AstNode<Expr>,
+    /// Type if condition is true
+    pub then_type: Box<AstNode<Type>>,
+    /// Type if condition is false
+    pub else_type: Box<AstNode<Type>>,
+}
+
+/// Type arithmetic for dependent types
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct TypeArithmetic {
+    /// Arithmetic operation
+    pub operation: TypeArithmeticOp,
+    /// Left operand
+    pub left: Box<AstNode<Type>>,
+    /// Right operand
+    pub right: Box<AstNode<Type>>,
+}
+
+/// Type arithmetic operations
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum TypeArithmeticOp {
+    /// Type union
+    Union,
+    /// Type intersection
+    Intersection,
+    /// Type subtraction
+    Subtraction,
+    /// Size addition (for arrays/vectors)
+    SizeAdd,
+    /// Size multiplication
+    SizeMultiply,
+}
+
+/// Constraint validation at type level
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ConstraintValidation {
+    /// Type to validate
+    pub target_type: Box<AstNode<Type>>,
+    /// Constraints to check
+    pub constraints: Vec<TypeConstraint>,
+    /// Validation strategy
+    pub strategy: ValidationStrategy,
+}
+
+/// Validation strategy
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum ValidationStrategy {
+    /// Validate all constraints (AND)
+    All,
+    /// Validate any constraint (OR)
+    Any,
+    /// Custom validation logic
+    Custom(AstNode<Expr>),
+}
+
+/// Computation metadata
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ComputationMetadata {
+    /// Whether computation was successful
+    pub computed: bool,
+    /// Computation time (if available)
+    pub computation_time_us: Option<u64>,
+    /// Dependencies used in computation
+    pub dependencies: Vec<Symbol>,
+    /// Errors during computation
+    pub errors: Vec<String>,
+    /// Warnings during computation
+    pub warnings: Vec<String>,
+}
+
 /// Type declaration
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -1482,5 +1696,18 @@ pub struct CustomEffectConstraint {
 impl Default for SecurityClassification {
     fn default() -> Self {
         Self::Public
+    }
+}
+
+impl Default for SemanticTypeMetadata {
+    fn default() -> Self {
+        Self {
+            business_rules: Vec::new(),
+            examples: Vec::new(),
+            validation_rules: Vec::new(),
+            ai_context: None,
+            security_classification: SecurityClassification::default(),
+            compliance_requirements: Vec::new(),
+        }
     }
 } 

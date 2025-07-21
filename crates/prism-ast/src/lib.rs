@@ -20,7 +20,7 @@ pub mod type_inference;
 pub mod transformations;
 
 // Re-export main types
-pub use arena::AstArena;
+pub use arena::{AstArena, ArenaConfig, ArenaStats, TypedNodeRef, ArenaError, ArenaResult};
 pub use expr::*;
 pub use metadata::*;
 pub use node::*;

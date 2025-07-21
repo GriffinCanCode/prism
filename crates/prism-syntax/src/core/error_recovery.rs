@@ -162,15 +162,82 @@ impl ErrorRecovery {
     /// Attempt to recover from a parsing error
     pub fn recover_from_error(
         &mut self,
-        _error: &str,
-        _position: usize
+        error: &str,
+        position: usize
     ) -> Result<RecoveryResult, RecoveryError> {
-        // TODO: Implement actual error recovery
+        if self.recovery_points.is_empty() {
+            return Err(RecoveryError::NoStrategyAvailable { 
+                error: error.to_string() 
+            });
+        }
+
+        let mut actions_taken = Vec::new();
+        let mut new_position = position;
+        let mut synthetic_tokens = Vec::new();
+
+        // Try recovery strategies in order of preference
+        let rules = match &self.strategy {
+            RecoveryStrategy::Custom(custom_rules) => &custom_rules.rules,
+            _ => {
+                // For non-custom strategies, create a default rule
+                actions_taken.push(RecoveryAction::Skip);
+                new_position = position + 1;
+                return Ok(RecoveryResult {
+                    success: true,
+                    actions_taken,
+                    new_position,
+                    synthetic_tokens,
+                });
+            }
+        };
+
+        for rule in rules {
+            if error.contains(&rule.pattern) {
+                match &rule.action {
+                    RecoveryAction::Skip => {
+                        actions_taken.push(RecoveryAction::Skip);
+                        new_position = position + 1;
+                        break;
+                    }
+                    RecoveryAction::Insert(token) => {
+                        actions_taken.push(RecoveryAction::Insert(token.clone()));
+                        synthetic_tokens.push(token.clone());
+                        break;
+                    }
+                    RecoveryAction::Replace(token) => {
+                        actions_taken.push(RecoveryAction::Replace(token.clone()));
+                        synthetic_tokens.push(token.clone());
+                        new_position = position + 1;
+                        break;
+                    }
+                    RecoveryAction::Restart => {
+                        if let Some(recovery_point) = self.recovery_points.last() {
+                            actions_taken.push(RecoveryAction::Restart);
+                            new_position = recovery_point.position;
+                            break;
+                        }
+                    }
+                    RecoveryAction::Custom(_) => {
+                        // For now, fall back to skip
+                        actions_taken.push(RecoveryAction::Skip);
+                        new_position = position + 1;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if actions_taken.is_empty() {
+            // Default recovery: skip
+            actions_taken.push(RecoveryAction::Skip);
+            new_position = position + 1;
+        }
+
         Ok(RecoveryResult {
             success: true,
-            actions_taken: vec![RecoveryAction::Skip],
-            new_position: _position + 1,
-            synthetic_tokens: Vec::new(),
+            actions_taken,
+            new_position,
+            synthetic_tokens,
         })
     }
     

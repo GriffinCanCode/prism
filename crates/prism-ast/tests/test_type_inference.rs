@@ -1,13 +1,12 @@
 //! Comprehensive tests for the type inference module
 
 use prism_ast::{
-    type_inference::*,
-    types::*,
+    type_inference::{self, *},
+    types::{self, *},
     expr::*,
     node::*,
     metadata::*,
     AstNode,
-    NodeId,
     Type,
     PrimitiveType,
     IntegerType,
@@ -21,7 +20,7 @@ use prism_ast::{
     SemanticTypeMetadata,
     PatternConstraint,
 };
-use prism_common::{span::Span, symbol::Symbol, SourceId, Position};
+use prism_common::{span::Span, symbol::Symbol, SourceId, Position, NodeId};
 
 #[test]
 fn test_type_environment_creation() {
@@ -90,7 +89,7 @@ fn test_function_type_creation() {
         ai_suggestions: vec![],
     };
     
-    let func_type = FunctionType {
+    let func_type = type_inference::FunctionType {
         parameters: vec![param_type],
         return_type,
         effects: vec![],
@@ -288,7 +287,7 @@ fn test_effect_composition_rule() {
         constraints: vec![],
     });
     
-    let rule = EffectCompositionRule {
+    let rule = type_inference::EffectCompositionRule {
         name: "Combine IO operations".to_string(),
         input_effects: vec![input_effect1, input_effect2],
         output_effect,
@@ -644,7 +643,7 @@ fn test_complex_inference_scenario() {
         ai_suggestions: vec![],
     };
     
-    let func_type = FunctionType {
+    let func_type = type_inference::FunctionType {
         parameters: vec![param_type],
         return_type,
         effects: vec![],

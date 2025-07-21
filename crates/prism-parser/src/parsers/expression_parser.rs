@@ -14,7 +14,7 @@ use crate::core::{
     precedence::{associativity, infix_precedence, prefix_precedence, Precedence},
     parsing_coordinator::ParsingCoordinator,
 };
-use prism_ast::{AstNode, Expr, LiteralExpr, LiteralValue, BinaryExpr, UnaryExpr, CallExpr, MemberExpr, IndexExpr, IfExpr, BlockExpr, ErrorExpr, VariableExpr, BinaryOperator, UnaryOperator};
+use prism_ast::{AstNode, Expr, LiteralExpr, LiteralValue, BinaryExpr, UnaryExpr, CallExpr, MemberExpr, IndexExpr, IfExpr, BlockExpr, ErrorExpr, VariableExpr, BinaryOperator, UnaryOperator, CallStyle};
 use prism_common::span::Span;
 use prism_lexer::TokenKind;
 
@@ -26,6 +26,11 @@ use prism_lexer::TokenKind;
 pub struct ExpressionParser;
 
 impl ExpressionParser {
+    /// Create a new expression parser
+    pub fn new() -> Self {
+        Self
+    }
+    
     /// Parse an expression with default precedence (for statement parser compatibility)
     pub fn parse_expression(&mut self) -> ParseResult<AstNode<Expr>> {
         // This is a placeholder - in the real implementation, we would need
@@ -69,6 +74,14 @@ impl ExpressionParser {
     
     /// Static method for parsing expressions (for compatibility with statement parser)
     pub fn parse_expression_static(
+        coordinator: &mut ParsingCoordinator,
+        precedence: Precedence,
+    ) -> ParseResult<AstNode<Expr>> {
+        Self::parse_expression_with_precedence(coordinator, precedence)
+    }
+
+    /// Overloaded static method that works with both coordinator and precedence
+    pub fn parse_expression(
         coordinator: &mut ParsingCoordinator,
         precedence: Precedence,
     ) -> ParseResult<AstNode<Expr>> {
@@ -184,6 +197,11 @@ impl ExpressionParser {
                 Self::parse_conditional_expression(coordinator)
             }
 
+            // F-strings (Python)
+            TokenKind::FStringStart(_) => {
+                Self::parse_f_string(coordinator)
+            }
+
             _ => {
                 // Create error expression for recovery
                 coordinator.add_error(ParseError::invalid_syntax(
@@ -214,7 +232,7 @@ impl ExpressionParser {
         match token_kind {
             // Binary operators
             TokenKind::Plus | TokenKind::Minus | TokenKind::Star | TokenKind::Slash |
-            TokenKind::Percent | TokenKind::Equal | TokenKind::NotEqual |
+            TokenKind::Percent | TokenKind::IntegerDivision | TokenKind::At | TokenKind::Equal | TokenKind::NotEqual |
             TokenKind::Less | TokenKind::Greater | TokenKind::LessEqual | TokenKind::GreaterEqual |
             TokenKind::AndAnd | TokenKind::OrOr | TokenKind::Ampersand | TokenKind::Pipe |
             TokenKind::Caret | TokenKind::Power => {
@@ -240,6 +258,11 @@ impl ExpressionParser {
                     }),
                     full_span,
                 ))
+            }
+            
+            // Walrus operator (Python named expression)
+            TokenKind::WalrusOperator => {
+                Self::parse_walrus_expression(coordinator, left)
             }
 
             // Function calls
@@ -272,29 +295,40 @@ impl ExpressionParser {
         coordinator.token_manager_mut().advance(); // consume '('
         
         let mut arguments = Vec::new();
+        let mut type_arguments = None;
+        let call_style = CallStyle::Function; // Default to function style
+        
+        // Check for type arguments before the opening paren (e.g., func<T, U>(args))
+        // This would need to be handled earlier in the parsing, but for now we'll keep it simple
         
         if !coordinator.token_manager().check(TokenKind::RightParen) {
             loop {
-                let arg = Self::parse_expression(coordinator, Precedence::Assignment)?;
+                // Parse argument expression
+                let arg = Self::parse_expression_with_precedence(coordinator, Precedence::Assignment)?;
                 arguments.push(arg);
                 
                 if coordinator.token_manager().check(TokenKind::Comma) {
                     coordinator.token_manager_mut().advance();
+                    
+                    // Check for trailing comma
+                    if coordinator.token_manager().check(TokenKind::RightParen) {
+                        break;
+                    }
                 } else {
                     break;
                 }
             }
         }
         
-        let end_token = coordinator.token_manager_mut().consume(TokenKind::RightParen, "Expected ')' after arguments")?;
+        let end_token = coordinator.token_manager_mut().expect(TokenKind::RightParen)?;
         let full_span = Span::new(function.span.start, end_token.span.end, function.span.source_id);
         
         Ok(coordinator.create_node(
             Expr::Call(CallExpr {
                 callee: Box::new(function),
                 arguments,
-                type_arguments: None,
-                call_style: prism_ast::CallStyle::Function,
+                type_arguments,
+                call_style,
             }),
             full_span,
         ))
@@ -336,8 +370,8 @@ impl ExpressionParser {
     ) -> ParseResult<AstNode<Expr>> {
         coordinator.token_manager_mut().advance(); // consume '['
         
-        let index = Self::parse_expression(coordinator, Precedence::Assignment)?;
-        let end_token = coordinator.token_manager_mut().consume(TokenKind::RightBracket, "Expected ']' after index")?;
+        let index = Self::parse_expression_with_precedence(coordinator, Precedence::Assignment)?;
+        let end_token = coordinator.token_manager_mut().expect(TokenKind::RightBracket)?;
         let full_span = Span::new(object.span.start, end_token.span.end, object.span.source_id);
         
         Ok(coordinator.create_node(
@@ -351,7 +385,7 @@ impl ExpressionParser {
 
     /// Parse block expression { ... }
     fn parse_block_expression(coordinator: &mut ParsingCoordinator) -> ParseResult<AstNode<Expr>> {
-        let start_token = coordinator.token_manager_mut().consume(TokenKind::LeftBrace, "Expected '{'")?;
+        let start_token = coordinator.token_manager_mut().expect(TokenKind::LeftBrace)?;
         let mut statements = Vec::new();
         
         while !coordinator.token_manager().check(TokenKind::RightBrace) && !coordinator.token_manager().is_at_end() {
@@ -360,13 +394,13 @@ impl ExpressionParser {
             break;
         }
         
-        let end_token = coordinator.token_manager_mut().consume(TokenKind::RightBrace, "Expected '}'")?;
+        let end_token = coordinator.token_manager_mut().expect(TokenKind::RightBrace)?;
         let full_span = Span::new(start_token.span.start, end_token.span.end, start_token.span.source_id);
         
         Ok(coordinator.create_node(
             Expr::Block(BlockExpr {
                 statements,
-                final_expression: None,
+                final_expr: None,
             }),
             full_span,
         ))
@@ -374,14 +408,14 @@ impl ExpressionParser {
 
     /// Parse conditional expression (if-then-else)
     fn parse_conditional_expression(coordinator: &mut ParsingCoordinator) -> ParseResult<AstNode<Expr>> {
-        let start_token = coordinator.token_manager_mut().consume(TokenKind::If, "Expected 'if'")?;
+        let start_token = coordinator.token_manager_mut().expect(TokenKind::If)?;
         
-        let condition = Self::parse_expression(coordinator, Precedence::Assignment)?;
-        let then_branch = Self::parse_expression(coordinator, Precedence::Assignment)?;
+        let condition = Self::parse_expression_with_precedence(coordinator, Precedence::Assignment)?;
+        let then_branch = Self::parse_expression_with_precedence(coordinator, Precedence::Assignment)?;
         
         let else_branch = if coordinator.token_manager().check(TokenKind::Else) {
             coordinator.token_manager_mut().advance();
-            Some(Box::new(Self::parse_expression(coordinator, Precedence::Assignment)?))
+            Some(Box::new(Self::parse_expression_with_precedence(coordinator, Precedence::Assignment)?))
         } else {
             None
         };
@@ -422,6 +456,8 @@ impl ExpressionParser {
             TokenKind::Star => Ok(BinaryOperator::Multiply),
             TokenKind::Slash => Ok(BinaryOperator::Divide),
             TokenKind::Percent => Ok(BinaryOperator::Modulo),
+            TokenKind::IntegerDivision => Ok(BinaryOperator::FloorDivide), // Python //
+            TokenKind::At => Ok(BinaryOperator::MatrixMultiply), // Python @
             TokenKind::Equal => Ok(BinaryOperator::Equal),
             TokenKind::NotEqual => Ok(BinaryOperator::NotEqual),
             TokenKind::Less => Ok(BinaryOperator::Less),
@@ -434,6 +470,7 @@ impl ExpressionParser {
             TokenKind::Pipe => Ok(BinaryOperator::BitOr),
             TokenKind::Caret => Ok(BinaryOperator::BitXor),
             TokenKind::Power => Ok(BinaryOperator::Power),
+            TokenKind::WalrusOperator => Ok(BinaryOperator::WalrusAssign), // Python :=
             _ => Err(ParseError::invalid_syntax(
                 "binary_operator".to_string(),
                 format!("Invalid binary operator: {:?}", token),
@@ -463,6 +500,204 @@ impl ExpressionParser {
             Precedence::Primary => Precedence::Primary,
         }
     }
+    
+    // Python-specific parsing methods
+    
+    /// Parse f-string expression (Python PEP 701)
+    fn parse_f_string(coordinator: &mut ParsingCoordinator) -> ParseResult<AstNode<Expr>> {
+        use prism_ast::{FormattedStringExpr, FStringPart, FStringConversion};
+        
+        let start_token = coordinator.token_manager_mut().advance().unwrap();
+        let mut parts = Vec::new();
+        
+        // Parse f-string parts until we reach the end
+        while !coordinator.token_manager().is_at_end() {
+            match &coordinator.token_manager().peek().kind {
+                TokenKind::FStringMiddle(text) => {
+                    coordinator.token_manager_mut().advance();
+                    parts.push(FStringPart::Literal(text.clone()));
+                }
+                TokenKind::FStringEnd(_) => {
+                    coordinator.token_manager_mut().advance();
+                    break;
+                }
+                TokenKind::LeftBrace => {
+                    // Parse expression inside f-string
+                    coordinator.token_manager_mut().advance(); // consume {
+                    let expr = Self::parse_expression_with_precedence(coordinator, Precedence::Assignment)?;
+                    
+                    // Check for conversion (!s, !r, !a)
+                    let conversion = if coordinator.token_manager().check(TokenKind::Bang) {
+                        coordinator.token_manager_mut().advance();
+                        match coordinator.token_manager().peek().kind {
+                            TokenKind::Identifier(ref name) if name == "s" => {
+                                coordinator.token_manager_mut().advance();
+                                Some(FStringConversion::Str)
+                            }
+                            TokenKind::Identifier(ref name) if name == "r" => {
+                                coordinator.token_manager_mut().advance();
+                                Some(FStringConversion::Repr)
+                            }
+                            TokenKind::Identifier(ref name) if name == "a" => {
+                                coordinator.token_manager_mut().advance();
+                                Some(FStringConversion::Ascii)
+                            }
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    };
+                    
+                    // Check for format spec (:format)
+                    let format_spec = if coordinator.token_manager().check(TokenKind::Colon) {
+                        coordinator.token_manager_mut().advance();
+                        // Parse format spec (simplified - would need more complex parsing)
+                        if let TokenKind::StringLiteral(spec) = &coordinator.token_manager().peek().kind {
+                            let spec = spec.clone();
+                            coordinator.token_manager_mut().advance();
+                            Some(spec)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    
+                    // Check for debug mode (=)
+                    let debug = if coordinator.token_manager().check(TokenKind::Assign) {
+                        coordinator.token_manager_mut().advance();
+                        true
+                    } else {
+                        false
+                    };
+                    
+                    coordinator.token_manager_mut().expect(TokenKind::RightBrace)?;
+                    
+                    parts.push(FStringPart::Expression {
+                        expression: expr,
+                        conversion,
+                        format_spec,
+                        debug,
+                    });
+                }
+                _ => break,
+            }
+        }
+        
+        let end_span = coordinator.token_manager().peek().span;
+        let full_span = Span::new(start_token.span.start, end_span.end, start_token.span.source_id);
+        
+        Ok(coordinator.create_node(
+            Expr::FormattedString(FormattedStringExpr { parts }),
+            full_span,
+        ))
+    }
+    
+    /// Parse list comprehension [expr for x in iterable if condition]
+    fn parse_list_comprehension(
+        coordinator: &mut ParsingCoordinator,
+        element: AstNode<Expr>,
+    ) -> ParseResult<AstNode<Expr>> {
+        use prism_ast::{ListComprehensionExpr, ComprehensionGenerator};
+        
+        let generators = Self::parse_comprehension_generators(coordinator)?;
+        let end_span = coordinator.token_manager().peek().span;
+        let full_span = Span::new(element.span.start, end_span.end, element.span.source_id);
+        
+        Ok(coordinator.create_node(
+            Expr::ListComprehension(ListComprehensionExpr {
+                element: Box::new(element),
+                generators,
+            }),
+            full_span,
+        ))
+    }
+    
+    /// Parse comprehension generators (for x in iterable if condition)
+    fn parse_comprehension_generators(
+        coordinator: &mut ParsingCoordinator,
+    ) -> ParseResult<Vec<prism_ast::ComprehensionGenerator>> {
+        use prism_ast::ComprehensionGenerator;
+        
+        let mut generators = Vec::new();
+        
+        while coordinator.token_manager().check_keyword("for") || coordinator.token_manager().check_keyword("async") {
+            let is_async = if coordinator.token_manager().check_keyword("async") {
+                coordinator.token_manager_mut().advance();
+                coordinator.token_manager_mut().expect_keyword("for")?;
+                true
+            } else {
+                coordinator.token_manager_mut().expect_keyword("for")?;
+                false
+            };
+            
+            // Parse target variable
+            let target = if let TokenKind::Identifier(name) = &coordinator.token_manager().peek().kind {
+                let name = name.clone();
+                coordinator.token_manager_mut().advance();
+                prism_common::symbol::Symbol::intern(&name)
+            } else {
+                return Err(ParseError::invalid_syntax(
+                    "comprehension_target".to_string(),
+                    "Expected identifier in comprehension".to_string(),
+                    coordinator.token_manager().peek().span,
+                ));
+            };
+            
+            coordinator.token_manager_mut().expect_keyword("in")?;
+            let iter = Self::parse_expression_with_precedence(coordinator, Precedence::Assignment)?;
+            
+            // Parse optional if conditions
+            let mut ifs = Vec::new();
+            while coordinator.token_manager().check_keyword("if") {
+                coordinator.token_manager_mut().advance();
+                ifs.push(Self::parse_expression_with_precedence(coordinator, Precedence::Assignment)?);
+            }
+            
+            generators.push(ComprehensionGenerator {
+                target,
+                iter,
+                ifs,
+                is_async,
+            });
+        }
+        
+        Ok(generators)
+    }
+    
+    /// Parse walrus operator expression (name := value)
+    fn parse_walrus_expression(
+        coordinator: &mut ParsingCoordinator,
+        left: AstNode<Expr>,
+    ) -> ParseResult<AstNode<Expr>> {
+        use prism_ast::{NamedExpressionExpr, VariableExpr};
+        
+        // Left side must be a simple variable
+        let target = match &left.kind {
+            Expr::Variable(VariableExpr { name }) => *name,
+            _ => {
+                return Err(ParseError::invalid_syntax(
+                    "walrus_target".to_string(),
+                    "Walrus operator target must be a simple variable".to_string(),
+                    left.span,
+                ));
+            }
+        };
+        
+        coordinator.token_manager_mut().advance(); // consume :=
+        let value = Self::parse_expression_with_precedence(coordinator, Precedence::Assignment)?;
+        
+        let end_span = value.span;
+        let full_span = Span::new(left.span.start, end_span.end, left.span.source_id);
+        
+        Ok(coordinator.create_node(
+            Expr::NamedExpression(NamedExpressionExpr {
+                target,
+                value: Box::new(value),
+            }),
+            full_span,
+        ))
+    }
 }
 
 #[cfg(test)]
@@ -479,7 +714,7 @@ mod tests {
                 Position::new(1, 2, 1),
                 SourceId::new(1),
             ),
-            semantic_context: None,
+
         }
     }
 

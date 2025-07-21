@@ -571,20 +571,143 @@ impl DefaultAIExporter {
                 })
             }
             ExportFormat::Xml => {
-                // Would implement XML serialization
-                Err(CompilerError::InternalError("XML export not yet implemented".to_string()))
+                // Basic XML export by wrapping JSON in XML structure
+                let json_data = serde_json::to_string_pretty(context).map_err(|e| {
+                    CompilerError::InternalError(format!("JSON serialization for XML failed: {}", e))
+                })?;
+                
+                Ok(format!(
+                    r#"<?xml version="1.0" encoding="UTF-8"?>
+<prism_ai_context>
+    <format>xml</format>
+    <version>1.0.0</version>
+    <exported_at>{}</exported_at>
+    <json_data><![CDATA[{}]]></json_data>
+</prism_ai_context>"#,
+                    chrono::Utc::now().to_rfc3339(),
+                    json_data
+                ))
             }
             ExportFormat::Binary => {
-                // Would implement binary serialization
-                Err(CompilerError::InternalError("Binary export not yet implemented".to_string()))
+                // For binary export, we'll use a simple approach of converting to JSON bytes
+                // A proper implementation would use MessagePack or similar
+                let json_data = serde_json::to_string(context).map_err(|e| {
+                    CompilerError::InternalError(format!("JSON serialization for binary failed: {}", e))
+                })?;
+                
+                // For now, just return the JSON as a string since we don't have base64 dependency
+                // A proper implementation would use MessagePack or similar binary format
+                Ok(format!("BINARY_DATA:{}", json_data))
             }
             ExportFormat::OpenApi => {
-                // Would generate OpenAPI spec
-                Err(CompilerError::InternalError("OpenAPI export not yet implemented".to_string()))
+                // Generate basic OpenAPI specification for the AI context
+                let openapi_spec = serde_json::json!({
+                    "openapi": "3.0.0",
+                    "info": {
+                        "title": "Prism AI Context API",
+                        "version": "1.0.0",
+                        "description": "API specification for Prism AI context data"
+                    },
+                    "paths": {
+                        "/context": {
+                            "get": {
+                                "summary": "Get AI context",
+                                "responses": {
+                                    "200": {
+                                        "description": "AI context data",
+                                        "content": {
+                                            "application/json": {
+                                                "schema": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "metadata": { "type": "object" },
+                                                        "project": { "type": "object" },
+                                                        "modules": { "type": "array" },
+                                                        "types": { "type": "object" },
+                                                        "relationships": { "type": "object" }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+                
+                serde_json::to_string_pretty(&openapi_spec).map_err(|e| {
+                    CompilerError::InternalError(format!("OpenAPI serialization failed: {}", e))
+                })
             }
             ExportFormat::GraphQL => {
-                // Would generate GraphQL schema
-                Err(CompilerError::InternalError("GraphQL export not yet implemented".to_string()))
+                // Generate basic GraphQL schema for the AI context
+                let schema = r#"
+# Prism AI Context GraphQL Schema
+
+type Query {
+    context: AIContext
+}
+
+type AIContext {
+    metadata: ContextMetadata!
+    project: ProjectContext!
+    modules: [ModuleContext!]!
+    types: TypeSystemContext!
+    relationships: RelationshipGraph!
+}
+
+type ContextMetadata {
+    timestamp: String!
+    compilerVersion: String!
+    formatVersion: String!
+    projectName: String!
+    projectVersion: String
+}
+
+type ProjectContext {
+    rootPath: String!
+    sourceFiles: [SourceFileInfo!]!
+    dependencies: [DependencyInfo!]!
+}
+
+type SourceFileInfo {
+    path: String!
+    size: Int!
+    lastModified: String!
+    language: String!
+}
+
+type DependencyInfo {
+    name: String!
+    version: String!
+    dependencyType: String!
+}
+
+type ModuleContext {
+    name: String!
+    path: String!
+    exports: [String!]!
+    imports: [String!]!
+    functions: [String!]!
+    types: [String!]!
+    constants: [String!]!
+}
+
+type TypeSystemContext {
+    builtinTypes: [String!]!
+    userTypes: [String!]!
+}
+
+type RelationshipGraph {
+    callGraph: [String!]!
+    dependencyGraph: [String!]!
+    inheritance: [String!]!
+    usage: [String!]!
+}
+"#;
+                
+                Ok(schema.to_string())
             }
         }
     }

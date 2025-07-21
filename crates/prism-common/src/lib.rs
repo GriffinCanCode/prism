@@ -1,7 +1,8 @@
-//! Common utilities and types for the Prism language compiler
-//! 
-//! This crate provides shared functionality used across all Prism compiler components,
-//! including source positions, error handling, and basic data structures.
+//! Common types and utilities shared across the Prism compiler infrastructure
+//!
+//! This crate provides foundational types, utilities, and interfaces that are
+//! used throughout the Prism compiler ecosystem. It maintains zero dependencies
+//! on other Prism crates to prevent circular dependencies.
 
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
@@ -11,6 +12,15 @@
 pub mod diagnostics;
 pub mod span;
 pub mod symbol;
+pub mod ai_metadata;     // NEW: Shared AI metadata interfaces
+pub mod suggestion;      // NEW: Shared suggestion interfaces
+
+// Re-export commonly used types
+pub use diagnostics::{Diagnostic, Suggestion, Severity as DiagnosticSeverity};
+pub use span::{Span, Position};
+pub use symbol::{Symbol, SymbolTable};
+pub use ai_metadata::{AIMetadata, SemanticContextEntry, BusinessRuleEntry}; // NEW
+pub use suggestion::{DiagnosticCollector, SuggestionMetadata}; // NEW
 
 use std::fmt;
 use thiserror::Error;

@@ -137,7 +137,7 @@ pub struct DetectionResult {
 }
 
 /// Evidence supporting a particular syntax style detection
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct SyntaxEvidence {
     /// The pattern that was matched
     pub pattern: String,
@@ -510,7 +510,7 @@ impl SyntaxDetector {
     
     /// Generate warnings about detection issues
     fn generate_warnings(
-        &self,
+        &mut self,
         source: &str,
         evidence: &[SyntaxEvidence],
         confidence: f64

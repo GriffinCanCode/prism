@@ -3,7 +3,8 @@
 //! Planning and orchestration of effect execution with capability validation
 
 use crate::effects::Effect;
-use crate::security::{Capability, SecureExecutionContext};
+use crate::capability::Capability;
+use crate::security::SecureExecutionContext;
 use super::handlers::EffectResult;
 use prism_common::span::Span;
 use std::collections::{HashMap, VecDeque};

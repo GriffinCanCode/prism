@@ -23,7 +23,6 @@ use prism_lexer::Token;
 /// This struct embodies the single concept of coordinating parsing.
 /// It delegates to specialized parsers but contains no parsing logic itself.
 /// It manages the overall parsing workflow, error collection, and recovery.
-#[derive(Debug)]
 pub struct ParsingCoordinator {
     /// Token stream manager for navigation
     token_manager: TokenStreamManager,
@@ -107,38 +106,26 @@ impl ParsingCoordinator {
 
     /// Coordinate parsing of a single expression
     pub fn parse_expression(&mut self) -> ParseResult<AstNode<Expr>> {
-        // For now, create a placeholder expression
-        let span = self.token_manager.current_span();
-        Ok(self.create_node(
-            Expr::Error(prism_ast::ErrorExpr {
-                message: "Expression parsing not yet implemented".to_string(),
-            }),
-            span,
-        ))
+        use crate::parsers::expression_parser::ExpressionParser;
+        use crate::core::precedence::Precedence;
+        
+        ExpressionParser::parse_expression_with_precedence(self, Precedence::Lowest)
     }
 
     /// Coordinate parsing of a single statement
     pub fn parse_statement(&mut self) -> ParseResult<AstNode<Stmt>> {
-        // For now, create a placeholder statement
-        let span = self.token_manager.current_span();
-        Ok(self.create_node(
-            Stmt::Error(prism_ast::ErrorStmt {
-                message: "Statement parsing not yet implemented".to_string(),
-            }),
-            span,
-        ))
+        use crate::parsers::statement_parser::StatementParser;
+        
+        let mut stmt_parser = StatementParser::new(&mut self.token_manager, self);
+        stmt_parser.parse_statement()
     }
 
     /// Coordinate parsing of a type annotation
     pub fn parse_type(&mut self) -> ParseResult<AstNode<Type>> {
-        // For now, create a placeholder type
-        let span = self.token_manager.current_span();
-        Ok(self.create_node(
-            Type::Error(prism_ast::ErrorType {
-                message: "Type parsing not yet implemented".to_string(),
-            }),
-            span,
-        ))
+        use crate::parsers::type_parser::TypeParser;
+        
+        let mut type_parser = TypeParser::new(&mut self.token_manager, self);
+        type_parser.parse_type()
     }
 
     // Private coordination methods
@@ -173,6 +160,7 @@ impl ParsingCoordinator {
                 Ok(self.create_node(
                     Item::Statement(prism_ast::Stmt::Error(prism_ast::ErrorStmt {
                         message: "Item parsing not yet implemented".to_string(),
+                        context: "item parsing".to_string(),
                     })),
                     span,
                 ))
@@ -200,13 +188,13 @@ impl ParsingCoordinator {
             security_implications: Vec::new(),
             performance_notes: Vec::new(),
             ai_insights: if self.config.extract_ai_context {
-                Some(format!(
+                vec![format!(
                     "Program with {} items, complexity score: {}",
                     items.len(),
                     self.calculate_complexity_score(items)
-                ))
+                )]
             } else {
-                None
+                Vec::new()
             },
         }
     }
@@ -287,7 +275,6 @@ mod tests {
                 Position::new(1, 2, 1),
                 SourceId::new(1),
             ),
-            semantic_context: None,
         }
     }
 

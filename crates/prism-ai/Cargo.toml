@@ -1,34 +1,27 @@
 [package]
 name = "prism-ai"
-version.workspace = true
-edition.workspace = true
-authors.workspace = true
-license.workspace = true
-repository.workspace = true
-homepage.workspace = true
-description = "AI integration and context export for the Prism programming language"
-keywords.workspace = true
-categories.workspace = true
-rust-version.workspace = true
+version = "0.1.0"
+edition = "2021"
+description = "AI integration and metadata export for the Prism language"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/prism-lang/prism"
+authors = ["Prism Language Team"]
 
 [dependencies]
-prism-common.workspace = true
-prism-ast.workspace = true
-prism-semantic.workspace = true
-candle-core.workspace = true
-candle-nn.workspace = true
-candle-transformers.workspace = true
-tokenizers.workspace = true
-hf-hub.workspace = true
-tokio.workspace = true
-async-trait.workspace = true
-thiserror.workspace = true
-serde = { workspace = true, features = ["derive"], optional = true }
-serde_json = { workspace = true, optional = true }
+# Core dependencies
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+tokio = { version = "1.0", features = ["full"] }
+async-trait = "0.1"
+thiserror = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
 
-[features]
-default = []
-serde = ["dep:serde", "dep:serde_json", "prism-common/serde", "prism-ast/serde"]
+# Prism dependencies
+prism-common = { path = "../prism-common" }
 
 [dev-dependencies]
-insta.workspace = true 
+tokio-test = "0.4"
+
+[features]
+default = [] 

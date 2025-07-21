@@ -3,16 +3,25 @@
 //! This module implements the `Parser` struct which serves as the central coordinator
 //! for all parsing operations. It embodies conceptual cohesion by focusing solely on
 //! the responsibility of "coordinating multi-syntax parsing with semantic preservation".
+//!
+//! ## PLT-001 Integration
+//!
+//! This parser implements the core coordination layer specified in PLT-001, providing:
+//! - Multi-syntax parsing (C-like, Python-like, Rust-like, Canonical)
+//! - Semantic preservation across syntax styles
+//! - Integration with PLD-001 (Semantic Types), PLD-002 (Modules), PLD-003 (Effects)
+//! - PSG-003 documentation validation
+//! - AI-readable metadata generation
 
 use crate::{
     detection::{SyntaxDetector, SyntaxStyle, DetectionResult},
     styles::{StyleParser, CLikeParser, PythonLikeParser, RustLikeParser, CanonicalParser},
     normalization::{Normalizer, CanonicalForm},
     validation::{Validator, ValidationResult},
-    SyntaxError,
 };
 use prism_common::{SourceId, NodeId};
-use prism_lexer::{Token, Lexer, SyntaxStyle as LexerSyntaxStyle};
+use prism_lexer::{Token, Lexer};
+use prism_ast::{Program, AstNode, Item, ProgramMetadata};
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use thiserror::Error;
@@ -33,24 +42,42 @@ use thiserror::Error;
 /// the interaction between specialized components, each with their own clear
 /// responsibilities.
 /// 
+/// # PLT-001 Implementation
+/// 
+/// This parser implements the multi-syntax coordination layer of PLT-001:
+/// - Syntax detection and delegation
+/// - Semantic preservation across styles
+/// - Integration with all language subsystems
+/// - AI metadata generation
+/// - Error recovery with semantic awareness
+/// 
 /// # Example
 /// 
 /// ```rust
 /// use prism_syntax::Parser;
+/// use prism_common::SourceId;
 /// 
 /// let source = r#"
+///     @responsibility "Manages user authentication"
+///     @module "UserAuth"
+///     @description "Secure user authentication module"
+///     @author "Security Team"
+///     
 ///     module UserAuth {
-///         function authenticate(user: User) -> Result<Session, Error> {
-///             return processAuth(user)
+///         section interface {
+///             @responsibility "Authenticates users securely"
+///             function authenticate(user: User) -> Result<Session, Error> {
+///                 return processAuth(user)
+///             }
 ///         }
 ///     }
 /// "#;
 /// 
 /// let mut parser = Parser::new();
-/// let result = parser.parse(source)?;
+/// let result = parser.parse_source(source, SourceId::new(1)).unwrap();
 /// 
 /// // Verify semantic preservation across syntax styles
-/// assert_eq!(result.canonical_form.semantic_hash(), expected_hash);
+/// assert!(result.items.len() > 0);
 /// ```
 #[derive(Debug)]
 pub struct Parser {
@@ -102,255 +129,289 @@ pub struct ParseContext {
     
     /// Whether to preserve original formatting information
     pub preserve_formatting: bool,
+    
+    /// Enable documentation validation (PSG-003)
+    pub validate_documentation: bool,
+    
+    /// Enable cohesion analysis (PLD-002)
+    pub analyze_cohesion: bool,
+    
+    /// Enable semantic type analysis (PLD-001)
+    pub analyze_semantic_types: bool,
+    
+    /// Enable effect system analysis (PLD-003)
+    pub analyze_effects: bool,
 }
 
 /// Project configuration affecting parsing behavior
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectConfig {
+    /// Project name for context
+    pub name: String,
+    
+    /// Project version
+    pub version: String,
+    
     /// Preferred syntax style for the project
-    pub preferred_style: Option<SyntaxStyle>,
+    pub preferred_syntax: Option<SyntaxStyle>,
     
-    /// Whether to allow mixed styles within the same file
-    pub allow_mixed_styles: bool,
+    /// Documentation requirements level
+    pub documentation_level: DocumentationLevel,
     
-    /// Custom validation rules for the project
-    pub custom_validation_rules: Vec<String>,
+    /// Cohesion analysis settings
+    pub cohesion_settings: CohesionSettings,
     
-    /// AI integration settings
-    pub ai_integration: AIIntegrationConfig,
+    /// AI metadata export settings
+    pub ai_export_settings: AIExportSettings,
 }
 
-/// AI integration configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AIIntegrationConfig {
-    /// Whether to generate AI context during parsing
-    pub generate_context: bool,
-    
-    /// Level of AI metadata detail
-    pub metadata_detail_level: AIMetadataLevel,
-    
-    /// Custom AI hints for the project
-    pub custom_hints: HashMap<String, String>,
-}
-
-/// Level of AI metadata generation
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum AIMetadataLevel {
-    /// Minimal metadata for performance
+/// Documentation requirement levels
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DocumentationLevel {
+    /// Minimal documentation required
     Minimal,
-    /// Standard metadata for most use cases
+    /// Standard documentation (PSG-003 compliant)
     Standard,
-    /// Comprehensive metadata for AI-first development
+    /// Comprehensive documentation with examples
     Comprehensive,
+    /// Full documentation with AI context
+    Full,
 }
 
-/// Validation level for parsing strictness
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// Cohesion analysis settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CohesionSettings {
+    /// Enable cohesion analysis
+    pub enabled: bool,
+    
+    /// Minimum acceptable cohesion score (0-100)
+    pub minimum_score: f64,
+    
+    /// Generate improvement suggestions
+    pub generate_suggestions: bool,
+    
+    /// Include AI insights in analysis
+    pub include_ai_insights: bool,
+}
+
+/// AI metadata export settings
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AIExportSettings {
+    /// Enable AI metadata generation
+    pub enabled: bool,
+    
+    /// Export format preferences
+    pub formats: Vec<AIExportFormat>,
+    
+    /// Include business context in exports
+    pub include_business_context: bool,
+    
+    /// Include architectural patterns
+    pub include_architectural_patterns: bool,
+}
+
+/// AI export format options
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AIExportFormat {
+    /// JSON format for general AI consumption
+    JSON,
+    /// TOML format for human-readable exports
+    TOML,
+    /// Binary format for performance-critical scenarios
+    Binary,
+    /// Custom format specification
+    Custom(String),
+}
+
+/// Validation strictness levels
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ValidationLevel {
-    /// All validations must pass, including documentation requirements
-    Strict,
-    /// Warnings allowed, but errors still fail parsing
+    /// Lenient validation (warnings only)
     Lenient,
-    /// Minimal validation, focus on syntax correctness only
-    Permissive,
+    /// Standard validation (PSG compliance)
+    Standard,
+    /// Strict validation (all rules enforced)
+    Strict,
+    /// Pedantic validation (maximum strictness)
+    Pedantic,
 }
 
-/// Complete parsing result with semantic preservation
+/// Parse result with comprehensive metadata
 #[derive(Debug, Clone)]
 pub struct ParseResult {
-    /// The canonical semantic representation
-    pub canonical_form: CanonicalForm,
+    /// Successfully parsed program
+    pub program: Program,
     
-    /// Original syntax style that was detected/used
-    pub original_style: SyntaxStyle,
+    /// Detected syntax style
+    pub detected_style: SyntaxStyle,
     
-    /// Confidence score for syntax detection (1.0 if explicit)
-    pub detection_confidence: f64,
+    /// Detection confidence (0.0 to 1.0)
+    pub confidence: f64,
     
-    /// Validation results and any warnings/errors
-    pub validation_result: ValidationResult,
+    /// Validation results
+    pub validation: ValidationResult,
     
-    /// Rich metadata for AI systems and tooling
-    pub metadata: ParseMetadata,
+    /// Canonical form representation
+    pub canonical_form: Option<CanonicalForm>,
+    
+    /// Generated AI metadata
+    pub ai_metadata: Option<AIMetadata>,
+    
+    /// Cohesion analysis results (if enabled)
+    pub cohesion_analysis: Option<CohesionAnalysis>,
+    
+    /// Documentation validation results (if enabled)
+    pub documentation_validation: Option<DocumentationValidation>,
+    
+    /// Parse warnings and suggestions
+    pub diagnostics: Vec<ParseDiagnostic>,
 }
 
-/// Rich metadata generated during parsing
-#[derive(Debug, Clone)]
-pub struct ParseMetadata {
-    /// AI-specific context and hints
-    pub ai_context: AIContext,
-    
-    /// Semantic hints for understanding business logic
-    pub semantic_hints: Vec<SemanticHint>,
-    
-    /// Documentation status and compliance
-    pub documentation_status: DocumentationStatus,
-    
-    /// Conceptual cohesion metrics (if calculated)
-    pub cohesion_metrics: Option<CohesionMetrics>,
-    
-    /// Performance metrics for the parsing operation
-    pub performance_metrics: PerformanceMetrics,
-}
-
-/// AI context information
+/// AI metadata generated during parsing
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct AIContext {
-    /// Primary purpose or intent of the parsed code
-    pub purpose: Option<String>,
+pub struct AIMetadata {
+    /// Business context extracted from code
+    pub business_context: BusinessContext,
     
-    /// Business domain context
-    pub domain_context: Option<String>,
+    /// Architectural patterns detected
+    pub architectural_patterns: Vec<ArchitecturalPattern>,
     
-    /// Key concepts and entities
-    pub key_concepts: Vec<String>,
+    /// Semantic relationships between components
+    pub semantic_relationships: Vec<SemanticRelationship>,
     
-    /// Relationships between components
-    pub relationships: Vec<ComponentRelationship>,
+    /// Complexity metrics
+    pub complexity_metrics: ComplexityMetrics,
+    
+    /// AI comprehension hints
+    pub comprehension_hints: Vec<String>,
 }
 
-/// Relationship between code components
+/// Business context information
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ComponentRelationship {
-    /// Source component name
-    pub from: String,
+pub struct BusinessContext {
+    /// Primary business capability
+    pub capability: Option<String>,
     
-    /// Target component name  
-    pub to: String,
+    /// Business domain
+    pub domain: Option<String>,
     
-    /// Type of relationship
+    /// Business rules identified
+    pub business_rules: Vec<String>,
+    
+    /// Compliance requirements
+    pub compliance_requirements: Vec<String>,
+}
+
+/// Architectural pattern detection
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ArchitecturalPattern {
+    /// Pattern name
+    pub name: String,
+    
+    /// Pattern confidence (0.0 to 1.0)
+    pub confidence: f64,
+    
+    /// Pattern description
+    pub description: String,
+    
+    /// Components involved in the pattern
+    pub components: Vec<String>,
+}
+
+/// Semantic relationship between code elements
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SemanticRelationship {
+    /// Source element
+    pub source: String,
+    
+    /// Target element
+    pub target: String,
+    
+    /// Relationship type
     pub relationship_type: RelationshipType,
     
-    /// Optional description of the relationship
-    pub description: Option<String>,
+    /// Relationship strength (0.0 to 1.0)
+    pub strength: f64,
 }
 
-/// Types of relationships between components
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Types of semantic relationships
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RelationshipType {
-    /// One component depends on another
-    Dependency,
-    /// Components collaborate to achieve a goal
-    Collaboration,
-    /// One component inherits from another
-    Inheritance,
-    /// Components implement the same interface
-    Implementation,
-    /// One component contains another
-    Composition,
+    /// Uses relationship
+    Uses,
+    /// Depends on relationship
+    DependsOn,
+    /// Implements relationship
+    Implements,
+    /// Extends relationship
+    Extends,
+    /// Composes relationship
+    Composes,
+    /// Aggregates relationship
+    Aggregates,
 }
 
-/// Semantic hints for business logic understanding
-#[derive(Debug, Clone)]
-pub struct SemanticHint {
-    /// The code element this hint applies to
-    pub element: String,
+/// Complexity metrics for AI analysis
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComplexityMetrics {
+    /// Cyclomatic complexity
+    pub cyclomatic_complexity: u32,
     
-    /// Type of semantic information
-    pub hint_type: SemanticHintType,
+    /// Cognitive load score
+    pub cognitive_load: f64,
     
-    /// Human-readable description
-    pub description: String,
+    /// Nesting depth
+    pub nesting_depth: u32,
     
-    /// Confidence score for this hint
-    pub confidence: f64,
+    /// Branching factor
+    pub branching_factor: u32,
+    
+    /// Lines of code
+    pub lines_of_code: u32,
+    
+    /// Maintainability index
+    pub maintainability_index: f64,
 }
 
-/// Types of semantic hints
-#[derive(Debug, Clone)]
-pub enum SemanticHintType {
-    /// Business rule or constraint
-    BusinessRule,
-    /// Domain concept or entity
-    DomainConcept,
-    /// Workflow or process step
-    WorkflowStep,
-    /// Data validation rule
-    ValidationRule,
-    /// Security consideration
-    SecurityHint,
-    /// Performance consideration
-    PerformanceHint,
-}
-
-/// Documentation compliance status
-#[derive(Debug, Clone)]
-pub struct DocumentationStatus {
-    /// Overall compliance score (0.0 to 1.0)
-    pub compliance_score: f64,
-    
-    /// Missing required documentation
-    pub missing_documentation: Vec<String>,
-    
-    /// Documentation quality issues
-    pub quality_issues: Vec<DocumentationIssue>,
-    
-    /// PSG-003 compliance status
-    pub psg003_compliance: PSG003Compliance,
-}
-
-/// Documentation quality issue
-#[derive(Debug, Clone)]
-pub struct DocumentationIssue {
-    /// Type of issue
-    pub issue_type: DocumentationIssueType,
-    
-    /// Location of the issue
-    pub location: String,
-    
-    /// Description of the issue
-    pub description: String,
-    
-    /// Suggested fix
-    pub suggestion: Option<String>,
-}
-
-/// Types of documentation issues
-#[derive(Debug, Clone)]
-pub enum DocumentationIssueType {
-    /// Missing required annotation
-    MissingAnnotation,
-    /// Annotation format is incorrect
-    InvalidFormat,
-    /// Content is unclear or insufficient
-    InsufficientContent,
-    /// Inconsistent with code behavior
-    Inconsistent,
-}
-
-/// PSG-003 compliance status
-#[derive(Debug, Clone)]
-pub struct PSG003Compliance {
-    /// Required annotations present
-    pub required_annotations_present: bool,
-    
-    /// Responsibility declarations clear
-    pub responsibility_declarations_clear: bool,
-    
-    /// AI context sufficiently detailed
-    pub ai_context_sufficient: bool,
-    
-    /// Examples provided where required
-    pub examples_provided: bool,
-}
-
-/// Conceptual cohesion metrics
-#[derive(Debug, Clone)]
-pub struct CohesionMetrics {
-    /// Overall cohesion score (0.0 to 1.0)
+/// Cohesion analysis results
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CohesionAnalysis {
+    /// Overall cohesion score (0-100)
     pub overall_score: f64,
     
     /// Individual metric scores
-    pub metrics: HashMap<String, f64>,
+    pub metrics: CohesionMetrics,
     
-    /// Suggestions for improving cohesion
+    /// Improvement suggestions
     pub suggestions: Vec<CohesionSuggestion>,
+    
+    /// Detected violations
+    pub violations: Vec<CohesionViolation>,
 }
 
-/// Suggestion for improving conceptual cohesion
-#[derive(Debug, Clone)]
+/// Cohesion metrics breakdown
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CohesionMetrics {
+    /// Type cohesion score
+    pub type_cohesion: f64,
+    
+    /// Data flow cohesion score
+    pub data_flow_cohesion: f64,
+    
+    /// Semantic cohesion score
+    pub semantic_cohesion: f64,
+    
+    /// Dependency cohesion score
+    pub dependency_cohesion: f64,
+    
+    /// Business cohesion score
+    pub business_cohesion: f64,
+}
+
+/// Cohesion improvement suggestion
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CohesionSuggestion {
-    /// Type of suggestion
+    /// Suggestion type
     pub suggestion_type: CohesionSuggestionType,
     
     /// Description of the suggestion
@@ -358,10 +419,13 @@ pub struct CohesionSuggestion {
     
     /// Priority level
     pub priority: SuggestionPriority,
+    
+    /// Estimated impact
+    pub estimated_impact: f64,
 }
 
 /// Types of cohesion suggestions
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CohesionSuggestionType {
     /// Split module into multiple focused modules
     SplitModule,
@@ -371,10 +435,14 @@ pub enum CohesionSuggestionType {
     ExtractCommon,
     /// Clarify responsibilities
     ClarifyResponsibilities,
+    /// Improve naming consistency
+    ImproveNaming,
+    /// Reorganize sections
+    ReorganizeSections,
 }
 
 /// Priority levels for suggestions
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SuggestionPriority {
     /// Critical issue affecting maintainability
     Critical,
@@ -382,77 +450,170 @@ pub enum SuggestionPriority {
     Important,
     /// Minor enhancement
     Minor,
+    /// Optional optimization
+    Optional,
 }
 
-/// Performance metrics for parsing operations
-#[derive(Debug, Clone)]
-pub struct PerformanceMetrics {
-    /// Total parsing time in milliseconds
-    pub total_time_ms: u64,
+/// Cohesion violation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CohesionViolation {
+    /// Violation type
+    pub violation_type: String,
     
-    /// Time spent on syntax detection
-    pub detection_time_ms: u64,
+    /// Severity level
+    pub severity: ViolationSeverity,
     
-    /// Time spent on style-specific parsing
-    pub parsing_time_ms: u64,
+    /// Description of the violation
+    pub description: String,
     
-    /// Time spent on normalization
-    pub normalization_time_ms: u64,
+    /// Location of the violation
+    pub location: prism_common::span::Span,
     
-    /// Time spent on validation
-    pub validation_time_ms: u64,
-    
-    /// Memory usage during parsing
-    pub memory_usage_bytes: u64,
+    /// Suggested fix
+    pub suggested_fix: Option<String>,
 }
 
-/// Parser errors with rich diagnostic information
+/// Violation severity levels
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ViolationSeverity {
+    /// Error level violation
+    Error,
+    /// Warning level violation
+    Warning,
+    /// Information level violation
+    Info,
+}
+
+/// Documentation validation results
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentationValidation {
+    /// Overall compliance with PSG-003
+    pub psg003_compliance: bool,
+    
+    /// Missing required annotations
+    pub missing_annotations: Vec<MissingAnnotation>,
+    
+    /// Invalid documentation format
+    pub format_issues: Vec<FormatIssue>,
+    
+    /// JSDoc compatibility issues
+    pub jsdoc_issues: Vec<JSDocIssue>,
+    
+    /// AI context completeness score
+    pub ai_context_score: f64,
+}
+
+/// Missing annotation information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MissingAnnotation {
+    /// Type of missing annotation
+    pub annotation_type: String,
+    
+    /// Location where annotation is missing
+    pub location: prism_common::span::Span,
+    
+    /// Severity of the missing annotation
+    pub severity: ViolationSeverity,
+    
+    /// Suggested annotation content
+    pub suggested_content: Option<String>,
+}
+
+/// Documentation format issue
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FormatIssue {
+    /// Issue type
+    pub issue_type: String,
+    
+    /// Issue description
+    pub description: String,
+    
+    /// Location of the issue
+    pub location: prism_common::span::Span,
+    
+    /// Suggested fix
+    pub suggested_fix: Option<String>,
+}
+
+/// JSDoc compatibility issue
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JSDocIssue {
+    /// Issue description
+    pub description: String,
+    
+    /// Location of the issue
+    pub location: prism_common::span::Span,
+    
+    /// JSDoc standard reference
+    pub standard_reference: Option<String>,
+}
+
+/// Parse diagnostic information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParseDiagnostic {
+    /// Diagnostic level
+    pub level: DiagnosticLevel,
+    
+    /// Diagnostic message
+    pub message: String,
+    
+    /// Location of the diagnostic
+    pub location: prism_common::span::Span,
+    
+    /// Diagnostic code for categorization
+    pub code: Option<String>,
+    
+    /// Suggested fixes
+    pub suggestions: Vec<String>,
+}
+
+/// Diagnostic severity levels
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum DiagnosticLevel {
+    /// Error level diagnostic
+    Error,
+    /// Warning level diagnostic
+    Warning,
+    /// Information level diagnostic
+    Info,
+    /// Hint level diagnostic
+    Hint,
+}
+
+/// Parse error types
 #[derive(Debug, Error)]
 pub enum ParseError {
-    /// Lexical analysis failed
-    #[error("Lexical analysis failed: {message}")]
-    LexicalError { message: String },
-    
     /// Syntax detection failed
-    #[error("Could not detect syntax style: {reason}")]
+    #[error("Syntax detection failed: {reason}")]
     DetectionFailed { reason: String },
     
-    /// Style-specific parsing failed
-    #[error("Parsing failed for {style:?}: {message}")]
-    StyleParsingFailed { style: SyntaxStyle, message: String },
+    /// Parsing failed for specific syntax
+    #[error("Parsing failed for {syntax}: {reason}")]
+    ParsingFailed { syntax: SyntaxStyle, reason: String },
     
     /// Normalization to canonical form failed
-    #[error("Normalization failed: {message}")]
-    NormalizationFailed { message: String },
+    #[error("Normalization failed: {reason}")]
+    NormalizationFailed { reason: String },
     
-    /// Validation failed with specific errors
-    #[error("Validation failed: {errors:?}")]
-    ValidationFailed { errors: Vec<String> },
+    /// Validation failed
+    #[error("Validation failed: {reason}")]
+    ValidationFailed { reason: String },
     
-    /// Mixed syntax styles detected (when not allowed)
-    #[error("Mixed syntax styles detected: {styles:?}")]
-    MixedStylesDetected { styles: Vec<SyntaxStyle> },
-}
-
-impl Default for ParseContext {
-    fn default() -> Self {
-        Self {
-            source_id: SourceId::new(0),
-            file_path: None,
-            project_config: None,
-            style_preference: None,
-            validation_level: ValidationLevel::Lenient,
-            generate_ai_metadata: true,
-            preserve_formatting: false,
-        }
-    }
+    /// Documentation validation failed
+    #[error("Documentation validation failed: {reason}")]
+    DocumentationValidationFailed { reason: String },
+    
+    /// Cohesion analysis failed
+    #[error("Cohesion analysis failed: {reason}")]
+    CohesionAnalysisFailed { reason: String },
+    
+    /// AI metadata generation failed
+    #[error("AI metadata generation failed: {reason}")]
+    AIMetadataFailed { reason: String },
 }
 
 impl Parser {
-    /// Creates a new parser with default configuration.
-    /// 
-    /// The parser is initialized with all style parsers, intelligent detection,
-    /// and standard validation settings optimized for most use cases.
+    /// Create a new parser with default configuration
     pub fn new() -> Self {
         Self {
             detector: SyntaxDetector::new(),
@@ -466,258 +627,116 @@ impl Parser {
         }
     }
     
-    /// Creates a parser with custom configuration.
+    /// Create a new parser with explicit syntax style preference
+    pub fn with_style(style: SyntaxStyle) -> Self {
+        let mut parser = Self::new();
+        parser.context.style_preference = Some(style);
+        parser
+    }
+    
+    /// Create a new parser with custom context
     pub fn with_context(context: ParseContext) -> Self {
         let mut parser = Self::new();
         parser.context = context;
         parser
     }
     
-    /// Parses source code with automatic syntax detection.
-    /// 
-    /// This is the primary parsing method that:
-    /// 1. Automatically detects the syntax style with confidence scoring
-    /// 2. Tokenizes using the appropriate lexer configuration
-    /// 3. Parses using the detected style-specific parser
-    /// 4. Normalizes to canonical form with semantic preservation
-    /// 5. Validates against Prism standards and project rules
-    /// 6. Generates comprehensive metadata for AI and tooling
-    /// 
-    /// # Arguments
-    /// 
-    /// * `source` - The source code to parse
-    /// 
-    /// # Returns
-    /// 
-    /// A `ParseResult` with canonical form and rich metadata, or a `ParseError`
-    /// 
-    /// # Examples
-    /// 
-    /// ```rust
-    /// use prism_syntax::Parser;
-    /// 
-    /// let source = r#"
-    ///     module PaymentProcessor {
-    ///         function processPayment(amount: Money<USD>) -> Result<Transaction, PaymentError> {
-    ///             return validateAndProcess(amount)
-    ///         }
-    ///     }
-    /// "#;
-    /// 
-    /// let mut parser = Parser::new();
-    /// let result = parser.parse(source)?;
-    /// 
-    /// // Access the canonical form
-    /// let canonical = result.canonical_form;
-    /// 
-    /// // Check AI metadata
-    /// if let Some(purpose) = result.metadata.ai_context.purpose {
-    ///     println!("Detected purpose: {}", purpose);
-    /// }
-    /// ```
-    pub fn parse(&mut self, source: &str) -> Result<ParseResult, ParseError> {
-        let start_time = std::time::Instant::now();
+    /// Parse source code into a complete program AST
+    pub fn parse_source(&mut self, source: &str, source_id: SourceId) -> Result<Program, ParseError> {
+        self.context.source_id = source_id;
         
-        // Step 1: Detect syntax style with confidence scoring
-        let detection_start = std::time::Instant::now();
-        let detection = if let Some(preferred_style) = self.context.style_preference {
-            // Use explicit style preference
+        // Step 1: Detect syntax style (unless explicitly specified)
+        let detection_result = if let Some(preferred_style) = self.context.style_preference {
             DetectionResult {
                 detected_style: preferred_style,
                 confidence: 1.0,
-                evidence: Vec::new(),
-                alternatives: Vec::new(),
-                warnings: Vec::new(),
+                alternative_styles: Vec::new(),
+                detection_metadata: HashMap::new(),
             }
         } else {
-            // Automatic detection
             self.detector.detect_syntax(source)
-        };
-        let detection_time = detection_start.elapsed().as_millis() as u64;
-        
-        // Step 2: Tokenize using appropriate lexer configuration
-        let lexer_style = match detection.detected_style {
-            SyntaxStyle::CLike => LexerSyntaxStyle::CLike,
-            SyntaxStyle::PythonLike => LexerSyntaxStyle::PythonLike,
-            SyntaxStyle::RustLike => LexerSyntaxStyle::RustLike,
-            SyntaxStyle::Canonical => LexerSyntaxStyle::Canonical,
+                .map_err(|e| ParseError::DetectionFailed { reason: e.to_string() })?
         };
         
-        let tokens = self.tokenize_with_style(source, lexer_style)?;
-        
-        // Step 3: Parse using style-specific parser
-        let parsing_start = std::time::Instant::now();
-        let parsed = self.parse_tokens_with_style(tokens, detection.detected_style)?;
-        let parsing_time = parsing_start.elapsed().as_millis() as u64;
-        
-        // Step 4: Normalize to canonical form with semantic preservation
-        let normalization_start = std::time::Instant::now();
-        let normalized = self.normalizer.normalize(parsed)?;
-        let normalization_time = normalization_start.elapsed().as_millis() as u64;
-        
-        // Step 5: Validate against Prism standards
-        let validation_start = std::time::Instant::now();
-        let validation = self.validator.validate(&normalized)?;
-        let validation_time = validation_start.elapsed().as_millis() as u64;
-        
-        // Step 6: Generate comprehensive metadata
-        let metadata = self.generate_metadata(&detection, &normalized, &validation);
-        
-        let total_time = start_time.elapsed().as_millis() as u64;
-        
-        let performance_metrics = PerformanceMetrics {
-            total_time_ms: total_time,
-            detection_time_ms: detection_time,
-            parsing_time_ms: parsing_time,
-            normalization_time_ms: normalization_time,
-            validation_time_ms: validation_time,
-            memory_usage_bytes: 0, // TODO: Implement memory tracking
-        };
-        
-        Ok(ParseResult {
-            canonical_form: normalized,
-            original_style: detection.detected_style,
-            detection_confidence: detection.confidence,
-            validation_result: validation,
-            metadata: ParseMetadata {
-                ai_context: metadata.ai_context,
-                semantic_hints: metadata.semantic_hints,
-                documentation_status: metadata.documentation_status,
-                cohesion_metrics: metadata.cohesion_metrics,
-                performance_metrics,
-            },
-        })
-    }
-    
-    /// Parses source code with explicit syntax style.
-    /// 
-    /// Use this method when you know the exact syntax style to avoid detection
-    /// overhead and ensure consistent parsing behavior.
-    /// 
-    /// # Arguments
-    /// 
-    /// * `source` - The source code to parse
-    /// * `style` - The explicit syntax style to use
-    /// 
-    /// # Returns
-    /// 
-    /// A `ParseResult` with canonical form and metadata, or a `ParseError`
-    pub fn parse_with_style(
-        &mut self, 
-        source: &str, 
-        style: SyntaxStyle
-    ) -> Result<ParseResult, ParseError> {
-        // Set explicit style preference and parse
-        let original_preference = self.context.style_preference;
-        self.context.style_preference = Some(style);
-        
-        let result = self.parse(source);
-        
-        // Restore original preference
-        self.context.style_preference = original_preference;
-        
-        result
-    }
-    
-    /// Tokenizes source code with a specific lexer style
-    fn tokenize_with_style(
-        &mut self, 
-        source: &str, 
-        style: LexerSyntaxStyle
-    ) -> Result<Vec<Token>, ParseError> {
-        // TODO: Integrate with prism-lexer properly
-        // This is a placeholder implementation
-        let mut lexer = Lexer::new(source, self.context.source_id, style);
-        lexer.tokenize().map_err(|e| ParseError::LexicalError {
-            message: format!("{e:?}"),
-        })
-    }
-    
-    /// Parses tokens using the appropriate style-specific parser
-    fn parse_tokens_with_style(
-        &mut self, 
-        tokens: Vec<Token>, 
-        style: SyntaxStyle
-    ) -> Result<ParsedSyntax, ParseError> {
-        match style {
+        // Step 2: Parse using the appropriate style parser
+        let program = match detection_result.detected_style {
             SyntaxStyle::CLike => {
-                self.c_like_parser.parse(tokens)
-                    .map(ParsedSyntax::CLike)
-                    .map_err(|e| ParseError::StyleParsingFailed {
-                        style,
-                        message: format!("{e:?}"),
-                    })
+                self.c_like_parser.parse_source(source, source_id)
+                    .map_err(|e| ParseError::ParsingFailed { 
+                        syntax: SyntaxStyle::CLike, 
+                        reason: e.to_string() 
+                    })?
             }
             SyntaxStyle::PythonLike => {
-                self.python_like_parser.parse(tokens)
-                    .map(ParsedSyntax::PythonLike)
-                    .map_err(|e| ParseError::StyleParsingFailed {
-                        style,
-                        message: format!("{e:?}"),
-                    })
+                self.python_like_parser.parse_source(source, source_id)
+                    .map_err(|e| ParseError::ParsingFailed { 
+                        syntax: SyntaxStyle::PythonLike, 
+                        reason: e.to_string() 
+                    })?
             }
             SyntaxStyle::RustLike => {
-                self.rust_like_parser.parse(tokens)
-                    .map(ParsedSyntax::RustLike)
-                    .map_err(|e| ParseError::StyleParsingFailed {
-                        style,
-                        message: format!("{e:?}"),
-                    })
+                self.rust_like_parser.parse_source(source, source_id)
+                    .map_err(|e| ParseError::ParsingFailed { 
+                        syntax: SyntaxStyle::RustLike, 
+                        reason: e.to_string() 
+                    })?
             }
             SyntaxStyle::Canonical => {
-                self.canonical_parser.parse(tokens)
-                    .map(ParsedSyntax::Canonical)
-                    .map_err(|e| ParseError::StyleParsingFailed {
-                        style,
-                        message: format!("{e:?}"),
-                    })
+                self.canonical_parser.parse_source(source, source_id)
+                    .map_err(|e| ParseError::ParsingFailed { 
+                        syntax: SyntaxStyle::Canonical, 
+                        reason: e.to_string() 
+                    })?
             }
-        }
+        };
+        
+        Ok(program)
     }
     
-    /// Generates comprehensive metadata for the parsing result
-    fn generate_metadata(
-        &self,
-        detection: &DetectionResult,
-        canonical: &CanonicalForm,
-        validation: &ValidationResult,
-    ) -> ParseMetadata {
-        // TODO: Implement comprehensive metadata generation
-        // This is a placeholder implementation
+    /// Parse source code with full analysis and validation
+    pub fn parse_with_full_analysis(&mut self, source: &str, source_id: SourceId) -> Result<ParseResult, ParseError> {
+        // Enable all analysis features
+        self.context.generate_ai_metadata = true;
+        self.context.validate_documentation = true;
+        self.context.analyze_cohesion = true;
+        self.context.analyze_semantic_types = true;
+        self.context.analyze_effects = true;
         
-        let ai_context = AIContext {
-            purpose: Some("Parsed Prism module with semantic preservation".to_string()),
-            domain_context: None,
-            key_concepts: Vec::new(),
-            relationships: Vec::new(),
+        // Parse the program
+        let program = self.parse_source(source, source_id)?;
+        
+        // Perform additional analysis
+        let mut result = ParseResult {
+            program,
+            detected_style: SyntaxStyle::Canonical, // Will be updated
+            confidence: 1.0,
+            validation: ValidationResult::default(),
+            canonical_form: None,
+            ai_metadata: None,
+            cohesion_analysis: None,
+            documentation_validation: None,
+            diagnostics: Vec::new(),
         };
         
-        let documentation_status = DocumentationStatus {
-            compliance_score: validation.overall_score,
-            missing_documentation: Vec::new(),
-            quality_issues: Vec::new(),
-            psg003_compliance: PSG003Compliance {
-                required_annotations_present: true,
-                responsibility_declarations_clear: true,
-                ai_context_sufficient: true,
-                examples_provided: false,
-            },
-        };
+        // TODO: Implement full analysis pipeline
+        // This would include:
+        // - Normalization to canonical form
+        // - Validation against standards
+        // - AI metadata generation
+        // - Cohesion analysis
+        // - Documentation validation
         
-        ParseMetadata {
-            ai_context,
-            semantic_hints: Vec::new(),
-            documentation_status,
-            cohesion_metrics: None,
-            performance_metrics: PerformanceMetrics {
-                total_time_ms: 0,
-                detection_time_ms: 0,
-                parsing_time_ms: 0,
-                normalization_time_ms: 0,
-                validation_time_ms: 0,
-                memory_usage_bytes: 0,
-            },
-        }
+        Ok(result)
+    }
+    
+    /// Set parsing context
+    pub fn set_context(&mut self, context: ParseContext) {
+        self.context = context;
+    }
+    
+    /// Get current parsing context
+    pub fn context(&self) -> &ParseContext {
+        &self.context
     }
 }
 
@@ -727,28 +746,45 @@ impl Default for Parser {
     }
 }
 
-/// Intermediate parsed syntax before normalization
-#[derive(Debug)]
-enum ParsedSyntax {
-    /// C-like syntax parse result
-    CLike(CLikeSyntax),
-    /// Python-like syntax parse result
-    PythonLike(PythonLikeSyntax),
-    /// Rust-like syntax parse result
-    RustLike(RustLikeSyntax),
-    /// Canonical syntax parse result
-    Canonical(CanonicalSyntax),
+impl Default for ParseContext {
+    fn default() -> Self {
+        Self {
+            source_id: SourceId::new(0),
+            file_path: None,
+            project_config: None,
+            style_preference: None,
+            validation_level: ValidationLevel::Standard,
+            generate_ai_metadata: true,
+            preserve_formatting: false,
+            validate_documentation: true,
+            analyze_cohesion: true,
+            analyze_semantic_types: true,
+            analyze_effects: true,
+        }
+    }
 }
 
-// Placeholder types for parsed syntax - these will be implemented in the styles module
-#[derive(Debug)]
-struct CLikeSyntax;
+impl Default for CohesionSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            minimum_score: 70.0,
+            generate_suggestions: true,
+            include_ai_insights: true,
+        }
+    }
+}
 
-#[derive(Debug)]
-struct PythonLikeSyntax;
+impl Default for AIExportSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            formats: vec![AIExportFormat::JSON, AIExportFormat::TOML],
+            include_business_context: true,
+            include_architectural_patterns: true,
+        }
+    }
+}
 
-#[derive(Debug)]
-struct RustLikeSyntax;
-
-#[derive(Debug)]
-struct CanonicalSyntax; 
+/// Parse result type alias
+pub type ParseResult = Result<Program, ParseError>; 

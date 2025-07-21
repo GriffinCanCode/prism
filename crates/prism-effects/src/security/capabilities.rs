@@ -53,7 +53,7 @@ impl CapabilityManager {
 
     /// Get capability count
     pub fn get_capability_count(&self) -> usize {
-        self.capability_sets.values().map(|set| set.capabilities.len()).sum()
+        self.capability_sets.values().map(|set| set.len()).sum()
     }
 
     /// Get active context count

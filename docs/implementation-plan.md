@@ -50,13 +50,13 @@ The development of Prism will proceed in four distinct phases over 12 months.
     * Create a VSCode extension that integrates the language server.
     * Begin development of the **Conceptual Cohesion Metrics** to provide smart refactoring suggestions.
 
-### **Phase 3: Advanced Compilation & AI Integration (Months 7-9)**
+### **Phase 3: Advanced Compilation & Metadata Export (Months 7-9)**
 
-* **Focus**: Implement high-performance backends and the deep AI integration layer.
+* **Focus**: Implement high-performance backends and comprehensive metadata export system.
 * **Tasks**:
     * Develop the **LLVM backend** for compiling to native code, embedding extensive metadata into the LLVM IR for debugging and analysis.
     * Finalize the **WASM backend**, making it the primary target for portable code.
-    * Build the **AI Integration Layer**, which can analyze Prism code, build a semantic representation, and provide feedback on complexity, potential issues, and clarity.
+    * Build the **Metadata Export Layer**, which can analyze Prism code, build a semantic representation, and export structured data for external AI tools to provide feedback on complexity, potential issues, and clarity.
 
 ### **Phase 4: Runtime, Standard Library & Ecosystem (Months 10-12)**
 
@@ -70,4 +70,4 @@ The development of Prism will proceed in four distinct phases over 12 months.
 
 * **Build System**: **Nix and Bazel** will be used to ensure perfectly reproducible and hermetic builds. A `flake.nix` file will define all development environment dependencies.
 * **CI/CD Pipeline**: A GitHub Actions workflow will be established to automatically build and test every commit. This pipeline will include a dedicated `ai-clarity-check` job that runs the compiler's analysis tools to prevent unclear code from being merged.
-* **Development Environment**: A **VSCode extension** will provide the primary developer interface, offering AI-powered completions and seamless integration with the language server. 
+* **Development Environment**: A **VSCode extension** will provide the primary developer interface, offering rich metadata-driven completions and seamless integration with the language server. 

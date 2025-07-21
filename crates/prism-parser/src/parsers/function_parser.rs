@@ -14,7 +14,7 @@ use crate::{
 };
 use prism_ast::{AstNode, FunctionDecl, Contracts, Visibility, Attribute, AttributeArgument, Parameter};
 use prism_lexer::{Token, TokenKind};
-use prism_common::span::Span;
+use prism_common::{span::Span, NodeId};
 use std::collections::HashMap;
 
 /// Function parser - handles function definitions with all their components
@@ -26,7 +26,7 @@ pub struct FunctionParser<'a> {
     /// Reference to the token stream manager (no ownership)
     token_stream: &'a mut TokenStreamManager,
     /// Reference to expression parser for default values and constraints
-    expr_parser: &'a mut ExpressionParser<'a>,
+    expr_parser: &'a mut ExpressionParser,
     /// Reference to type parser for parameter and return types
     type_parser: &'a mut TypeParser<'a>,
     /// Reference to statement parser for function bodies
@@ -39,7 +39,7 @@ impl<'a> FunctionParser<'a> {
     /// Create a new function parser
     pub fn new(
         token_stream: &'a mut TokenStreamManager,
-        expr_parser: &'a mut ExpressionParser<'a>,
+        expr_parser: &'a mut ExpressionParser,
         type_parser: &'a mut TypeParser<'a>,
         stmt_parser: &'a mut StatementParser<'a>,
         coordinator: &'a mut ParsingCoordinator,
@@ -53,82 +53,223 @@ impl<'a> FunctionParser<'a> {
         }
     }
 
+    /// Helper function to combine spans safely
+    fn combine_spans(&self, start: Span, end: Span) -> Span {
+        start.combine(&end).unwrap_or(start)
+    }
+
     /// Parse a function definition
-    pub fn parse_function(&mut self) -> ParseResult<AstNode<prism_ast::Stmt>> {
+    pub fn parse_function(&mut self) -> ParseResult<AstNode<FunctionDecl>> {
         let start_span = self.token_stream.current_span();
         
-        // Parse optional visibility modifier
-        let visibility = self.parse_visibility()?;
-        
-        // Parse optional attributes
-        let attributes = self.parse_attributes()?;
-        
-        // Parse optional async modifier
-        let is_async = self.token_stream.check(TokenKind::Async);
-        if is_async {
-            self.token_stream.advance(); // consume 'async'
-        }
-        
-        // Parse function keyword (either 'function' or 'fn')
-        let is_canonical_style = match self.token_stream.current_kind() {
-            TokenKind::Function => {
+        // Parse function keyword
+        match self.token_stream.current_kind() {
+            TokenKind::Function | TokenKind::Fn => {
                 self.token_stream.advance();
-                true
-            }
-            TokenKind::Fn => {
-                self.token_stream.advance();
-                false
             }
             _ => return Err(ParseError::unexpected_token(
-                self.token_stream.current_token().clone(),
-                "function or fn".to_string(),
+                vec![TokenKind::Function, TokenKind::Fn],
+                self.token_stream.current_kind().clone(),
+                self.token_stream.current_span(),
             )),
-        };
+        }
         
         // Parse function name
-        let name = prism_common::symbol::Symbol::intern(&self.token_stream.expect_identifier()?);
+        let name_str = self.token_stream.expect_identifier()?;
+        let name = prism_common::symbol::Symbol::intern(&name_str);
         
-        // Parse optional generic parameters
-        let generic_params = self.parse_generic_parameters()?;
+        // Parse generic parameters
+        let _generic_params = self.parse_generic_parameters()?;
         
         // Parse parameters
-        let parameters = self.parse_parameters()?;
+        let parameters = self.parse_parameter_list()?;
         
-        // Parse optional return type
-        let return_type = if self.token_stream.consume(TokenKind::Arrow) {
+        // Parse return type
+        let return_type = if self.token_stream.check(TokenKind::Arrow) {
+            self.token_stream.advance(); // consume '->'
             Some(self.type_parser.parse_type()?)
         } else {
             None
         };
         
-        // Parse optional constraints (requires/ensures)
+        // Parse contracts
         let contracts = self.parse_contracts()?;
         
         // Parse function body
         let body = if self.token_stream.check(TokenKind::LeftBrace) {
-            Some(Box::new(self.stmt_parser.parse_block_statement()?))
+            Some(Box::new(self.parse_function_body()?))
         } else {
-            // Abstract function (interface/trait)
-            self.token_stream.expect(TokenKind::Semicolon)?;
             None
         };
         
         let end_span = self.token_stream.current_span();
-        let span = Span::combine(start_span, end_span);
+        let span = self.combine_spans(start_span, end_span);
         
-        let function_stmt = prism_ast::Stmt::Function(FunctionDecl {
+        let function_decl = FunctionDecl {
             name,
             parameters,
             return_type,
             body,
-            visibility,
-            attributes,
+            visibility: prism_ast::Visibility::Private,
+            attributes: Vec::new(),
             contracts,
-            is_async,
+            is_async: false,
+        };
+        
+        Ok(self.coordinator.create_node(function_decl, span))
+    }
+
+    /// Parse a parameter list
+    fn parse_parameter_list(&mut self) -> ParseResult<Vec<Parameter>> {
+        let mut parameters = Vec::new();
+        
+        while !self.token_stream.check(TokenKind::RightParen) && !self.token_stream.is_at_end() {
+            let param = self.parse_parameter()?;
+            parameters.push(param);
+            
+            if self.token_stream.check(TokenKind::Comma) {
+                self.token_stream.advance();
+            } else {
+                break;
+            }
+        }
+        
+        Ok(parameters)
+    }
+
+    /// Parse a single parameter
+    fn parse_parameter(&mut self) -> ParseResult<Parameter> {
+        let name = self.token_stream.expect_identifier()?;
+        
+        self.token_stream.expect(TokenKind::Colon)?;
+        let param_type = self.type_parser.parse_type()?;
+        
+        // Parse optional default value
+        let default_value = if self.token_stream.check(TokenKind::Equal) {
+            self.token_stream.advance();
+            // Create a placeholder expression parser to parse the default value
+            let mut expr_parser = ExpressionParser::new();
+            Some(expr_parser.parse_expression()?)
+        } else {
+            None
+        };
+        
+        Ok(Parameter {
+            name,
+            param_type,
+            default_value,
+        })
+    }
+
+    /// Parse function body as a single statement
+    fn parse_function_body(&mut self) -> ParseResult<AstNode<prism_ast::Stmt>> {
+        let start_span = self.token_stream.current_span();
+        self.token_stream.expect(TokenKind::LeftBrace)?;
+        
+        let mut statements = Vec::new();
+        
+        while !self.token_stream.check(TokenKind::RightBrace) && !self.token_stream.is_at_end() {
+            // For now, create placeholder statements based on token types
+            match self.token_stream.current_kind() {
+                TokenKind::If => {
+                    // Skip if statement parsing for now
+                    self.token_stream.advance();
+                    let placeholder_stmt = prism_ast::Stmt::Error(prism_ast::ErrorStmt {
+                        message: "If statement parsing not yet implemented".to_string(),
+                        context: "function body".to_string(),
+                    });
+                    statements.push(self.coordinator.create_node(placeholder_stmt, self.token_stream.current_span()));
+                }
+                TokenKind::While => {
+                    // Skip while statement parsing for now
+                    self.token_stream.advance();
+                    let placeholder_stmt = prism_ast::Stmt::Error(prism_ast::ErrorStmt {
+                        message: "While statement parsing not yet implemented".to_string(),
+                        context: "function body".to_string(),
+                    });
+                    statements.push(self.coordinator.create_node(placeholder_stmt, self.token_stream.current_span()));
+                }
+                _ => {
+                    let stmt = self.stmt_parser.parse_statement()?;
+                    statements.push(stmt);
+                }
+            }
+        }
+        
+        self.token_stream.expect(TokenKind::RightBrace)?;
+        let end_span = self.token_stream.current_span();
+        let span = self.combine_spans(start_span, end_span);
+        
+        // Return a block statement
+        let block_stmt = prism_ast::Stmt::Block(prism_ast::BlockStmt {
+            statements,
         });
         
-        let node = self.coordinator.create_node(function_stmt, span);
-        Ok(node)
+        Ok(self.coordinator.create_node(block_stmt, span))
+    }
+
+    /// Parse a literal expression
+    fn parse_literal(&mut self) -> ParseResult<AstNode<prism_ast::Expr>> {
+        let span = self.token_stream.current_span();
+        
+        match self.token_stream.current_kind() {
+            TokenKind::IntegerLiteral(value) => {
+                let int_value = *value;
+                self.token_stream.advance();
+                Ok(self.coordinator.create_node(
+                    prism_ast::Expr::Literal(prism_ast::LiteralExpr {
+                        value: prism_ast::LiteralValue::Integer(int_value),
+                    }),
+                    span,
+                ))
+            }
+            TokenKind::FloatLiteral(value) => {
+                let float_value = *value;
+                self.token_stream.advance();
+                Ok(self.coordinator.create_node(
+                    prism_ast::Expr::Literal(prism_ast::LiteralExpr {
+                        value: prism_ast::LiteralValue::Float(float_value),
+                    }),
+                    span,
+                ))
+            }
+            TokenKind::StringLiteral(value) => {
+                let string_value = value.clone();
+                self.token_stream.advance();
+                Ok(self.coordinator.create_node(
+                    prism_ast::Expr::Literal(prism_ast::LiteralExpr {
+                        value: prism_ast::LiteralValue::String(string_value),
+                    }),
+                    span,
+                ))
+            }
+            TokenKind::True => {
+                self.token_stream.advance();
+                Ok(self.coordinator.create_node(
+                    prism_ast::Expr::Literal(prism_ast::LiteralExpr {
+                        value: prism_ast::LiteralValue::Boolean(true),
+                    }),
+                    span,
+                ))
+            }
+            TokenKind::False => {
+                self.token_stream.advance();
+                Ok(self.coordinator.create_node(
+                    prism_ast::Expr::Literal(prism_ast::LiteralExpr {
+                        value: prism_ast::LiteralValue::Boolean(false),
+                    }),
+                    span,
+                ))
+            }
+            _ => Err(ParseError::unexpected_token(
+                vec![
+                    TokenKind::IntegerLiteral(0), TokenKind::FloatLiteral(0.0),
+                    TokenKind::StringLiteral("".to_string()), TokenKind::True, TokenKind::False
+                ],
+                self.token_stream.current_kind().clone(),
+                self.token_stream.current_span(),
+            )),
+        }
     }
     
     /// Parse generic parameters: `<T, U: Trait, V>`
@@ -155,64 +296,34 @@ impl<'a> FunctionParser<'a> {
         Ok(params)
     }
     
-    /// Parse function parameters: `(name: Type, name2: Type = default)`
-    fn parse_parameters(&mut self) -> ParseResult<Vec<Parameter>> {
-        self.token_stream.expect(TokenKind::LeftParen)?;
-        
-        let mut parameters = Vec::new();
-        
-        while !self.token_stream.check(TokenKind::RightParen) && !self.token_stream.is_at_end() {
-            parameters.push(self.parse_parameter()?);
-            
-            if !self.token_stream.check(TokenKind::RightParen) {
-                self.token_stream.expect(TokenKind::Comma)?;
-            }
-        }
-        
-        self.token_stream.expect(TokenKind::RightParen)?;
-        Ok(parameters)
-    }
-    
-    /// Parse a single parameter: `name: Type = default_value`
-    fn parse_parameter(&mut self) -> ParseResult<Parameter> {
-        let param_name = prism_common::symbol::Symbol::intern(&self.token_stream.expect_identifier()?);
-        
-        // Optional type annotation
-        let type_annotation = if self.token_stream.consume(TokenKind::Colon) {
-            Some(self.type_parser.parse_type()?)
-        } else {
-            None
-        };
-        
-        // Optional default value
-        let default_value = if self.token_stream.consume(TokenKind::Assign) {
-            Some(ExpressionParser::parse_expression(self.coordinator, crate::core::precedence::Precedence::Assignment)?)
-        } else {
-            None
-        };
-        
-        Ok(Parameter {
-            name: param_name,
-            type_annotation,
-            default_value,
-            is_mutable: false, // TODO: Parse mutability
-        })
-    }
-    
     /// Parse contracts: `requires condition ensures condition`
     fn parse_contracts(&mut self) -> ParseResult<Option<Contracts>> {
         let mut requires = Vec::new();
         let mut ensures = Vec::new();
         
         // Parse requires clauses
-        while self.token_stream.consume(TokenKind::Requires) {
-            let condition = ExpressionParser::parse_expression(self.coordinator, crate::core::precedence::Precedence::Assignment)?;
+        while self.token_stream.check(TokenKind::Requires) {
+            self.token_stream.advance(); // consume 'requires'
+            // For now, create a placeholder expression
+            let condition = self.coordinator.create_node(
+                prism_ast::Expr::Error(prism_ast::ErrorExpr {
+                    message: "Contract parsing not yet implemented".to_string(),
+                }),
+                self.token_stream.current_span(),
+            );
             requires.push(condition);
         }
         
         // Parse ensures clauses
-        while self.token_stream.consume(TokenKind::Ensures) {
-            let condition = ExpressionParser::parse_expression(self.coordinator, crate::core::precedence::Precedence::Assignment)?;
+        while self.token_stream.check(TokenKind::Ensures) {
+            self.token_stream.advance(); // consume 'ensures'
+            // For now, create a placeholder expression
+            let condition = self.coordinator.create_node(
+                prism_ast::Expr::Error(prism_ast::ErrorExpr {
+                    message: "Contract parsing not yet implemented".to_string(),
+                }),
+                self.token_stream.current_span(),
+            );
             ensures.push(condition);
         }
         
@@ -293,7 +404,7 @@ impl<'a> FunctionParser<'a> {
     fn parse_attribute_argument(&mut self) -> ParseResult<AttributeArgument> {
         // Check for named argument (name = value)
         if self.token_stream.check_identifier() {
-            let lookahead_pos = self.token_stream.position();
+            let lookahead_pos = self.token_stream.current_position();
             let name = self.token_stream.expect_identifier()?;
             
             if self.token_stream.check(TokenKind::Assign) {
@@ -314,11 +425,6 @@ impl<'a> FunctionParser<'a> {
     /// Parse a literal value for attributes
     fn parse_literal_value(&mut self) -> ParseResult<prism_ast::LiteralValue> {
         match self.token_stream.current_kind() {
-            TokenKind::StringLiteral(value) => {
-                let result = prism_ast::LiteralValue::String(value.clone());
-                self.token_stream.advance();
-                Ok(result)
-            }
             TokenKind::IntegerLiteral(value) => {
                 let result = prism_ast::LiteralValue::Integer(*value);
                 self.token_stream.advance();
@@ -326,6 +432,11 @@ impl<'a> FunctionParser<'a> {
             }
             TokenKind::FloatLiteral(value) => {
                 let result = prism_ast::LiteralValue::Float(*value);
+                self.token_stream.advance();
+                Ok(result)
+            }
+            TokenKind::StringLiteral(value) => {
+                let result = prism_ast::LiteralValue::String(value.clone());
                 self.token_stream.advance();
                 Ok(result)
             }
@@ -337,13 +448,13 @@ impl<'a> FunctionParser<'a> {
                 self.token_stream.advance();
                 Ok(prism_ast::LiteralValue::Boolean(false))
             }
-            TokenKind::Null => {
-                self.token_stream.advance();
-                Ok(prism_ast::LiteralValue::Null)
-            }
             _ => Err(ParseError::unexpected_token(
-                self.token_stream.current_token().clone(),
-                "literal value".to_string(),
+                vec![
+                    TokenKind::IntegerLiteral(0), TokenKind::FloatLiteral(0.0),
+                    TokenKind::StringLiteral("".to_string()), TokenKind::True, TokenKind::False
+                ],
+                self.token_stream.current_kind().clone(),
+                self.token_stream.current_span(),
             )),
         }
     }

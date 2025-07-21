@@ -103,7 +103,7 @@ pub enum NetworkEffect {
 }
 
 /// System effect subcategories
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub enum SystemEffect {
     /// Access environment variables
     Environment(EnvironmentVariable),
@@ -219,11 +219,11 @@ pub enum IOResourceType {
 }
 
 /// Cryptographic algorithm specification
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct CryptoAlgorithm {
     pub algorithm: String,
     pub key_size: Option<u32>,
-    pub parameters: HashMap<String, String>,
+    pub parameters: Vec<(String, String)>, // Changed from HashMap to Vec of tuples for Hash
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -310,11 +310,11 @@ pub enum EnvironmentAccess {
 }
 
 /// Process command specification
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct ProcessCommand {
     pub command: String,
     pub arguments: Vec<String>,
-    pub environment: HashMap<String, String>,
+    pub environment: Vec<(String, String)>, // Changed from HashMap to Vec of tuples for Hash
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
@@ -978,7 +978,7 @@ pub fn initialize_default_effect_categories() -> HashMap<String, EffectCategory>
         EffectCategory::Cryptography(CryptographyEffect::KeyGeneration(CryptoAlgorithm {
             algorithm: "AES".to_string(),
             key_size: Some(256),
-            parameters: HashMap::new(),
+            parameters: Vec::new(),
         })),
     );
 

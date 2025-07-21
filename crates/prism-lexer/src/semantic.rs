@@ -40,8 +40,8 @@ pub struct SemanticPattern {
     pub description: String,
     /// Confidence score (0.0 to 1.0)
     pub confidence: f64,
-    /// AI hints related to this pattern
-    pub ai_hints: Vec<String>,
+    /// Hints to help AI systems understand this pattern
+    pub ai_comprehension_hints: Vec<String>,
 }
 
 /// Types of semantic patterns
@@ -123,11 +123,11 @@ impl SemanticAnalyzer {
                 context.add_concept("Conceptual Cohesion");
                 context.add_concept("Smart Modules");
                 context.add_concept("Business Capabilities");
-                context.add_ai_hint("Modules should represent single business capabilities");
-                context.add_ai_hint("Each module should have high conceptual cohesion");
+                context.add_ai_comprehension_hint("Modules should represent single business capabilities");
+                context.add_ai_comprehension_hint("Each module should have high conceptual cohesion");
                 
                 if let Some(module_name) = &self.current_module {
-                    context.add_ai_hint(format!("Module '{}' groups related functionality", module_name));
+                    context.add_ai_comprehension_hint(format!("Module '{}' groups related functionality", module_name));
                 }
                 
                 Some(context)
@@ -137,8 +137,8 @@ impl SemanticAnalyzer {
                 context.domain = Some("Module Organization".to_string());
                 context.add_concept("Smart Modules");
                 context.add_concept("Separation of Concerns");
-                context.add_ai_hint("Sections group related types, functions, or configurations");
-                context.add_ai_hint("Common sections: types, interface, operations, config");
+                context.add_ai_comprehension_hint("Sections group related types, functions, or configurations");
+                context.add_ai_comprehension_hint("Common sections: types, interface, operations, config");
                 Some(context)
             }
             TokenKind::Function | TokenKind::Fn => {
@@ -147,16 +147,16 @@ impl SemanticAnalyzer {
                 context.add_concept("Single Responsibility");
                 context.add_concept("Semantic Types");
                 context.add_concept("Effect System");
-                context.add_ai_hint("Functions should have single responsibility");
-                context.add_ai_hint("All public functions require documentation");
+                context.add_ai_comprehension_hint("Functions should have single responsibility");
+                context.add_ai_comprehension_hint("All public functions require documentation");
                 
                 if let Some(function_name) = &self.current_function {
-                    context.add_ai_hint(format!("Function '{}' should have clear purpose", function_name));
+                    context.add_ai_comprehension_hint(format!("Function '{}' should have clear purpose", function_name));
                     
                     // Analyze function name for semantic hints
                     if let Some(hints) = self.analyze_function_name(function_name) {
                         for hint in hints {
-                            context.add_ai_hint(hint);
+                            context.add_ai_comprehension_hint(hint);
                         }
                     }
                 }
@@ -169,9 +169,9 @@ impl SemanticAnalyzer {
                 context.add_concept("Semantic Types");
                 context.add_concept("Business Rules");
                 context.add_concept("Domain Modeling");
-                context.add_ai_hint("Types should express business meaning");
-                context.add_ai_hint("Include validation constraints where applicable");
-                context.add_ai_hint("Types should be self-documenting");
+                context.add_ai_comprehension_hint("Types should express business meaning");
+                context.add_ai_comprehension_hint("Include validation constraints where applicable");
+                context.add_ai_comprehension_hint("Types should be self-documenting");
                 Some(context)
             }
             TokenKind::Capability => {
@@ -182,7 +182,7 @@ impl SemanticAnalyzer {
                 context.add_concept("Resource Access");
                 context.add_security_implication("Capabilities control access to resources");
                 context.add_security_implication("Should follow principle of least privilege");
-                context.add_ai_hint("Capabilities define what operations are allowed");
+                context.add_ai_comprehension_hint("Capabilities define what operations are allowed");
                 Some(context)
             }
             TokenKind::Effects => {
@@ -193,7 +193,7 @@ impl SemanticAnalyzer {
                 context.add_concept("Resource Tracking");
                 context.add_security_implication("Effects must be explicitly declared");
                 context.add_security_implication("Enables static analysis of resource usage");
-                context.add_ai_hint("Effects track what resources functions access");
+                context.add_ai_comprehension_hint("Effects track what resources functions access");
                 Some(context)
             }
             TokenKind::Public | TokenKind::Pub => {
@@ -202,8 +202,8 @@ impl SemanticAnalyzer {
                 context.add_concept("API Design");
                 context.add_concept("Encapsulation");
                 context.add_security_implication("Public items form the external API");
-                context.add_ai_hint("Public items should be well-documented");
-                context.add_ai_hint("Consider if this needs to be public");
+                context.add_ai_comprehension_hint("Public items should be well-documented");
+                context.add_ai_comprehension_hint("Consider if this needs to be public");
                 Some(context)
             }
             TokenKind::Private => {
@@ -211,8 +211,8 @@ impl SemanticAnalyzer {
                 context.domain = Some("Visibility".to_string());
                 context.add_concept("Encapsulation");
                 context.add_concept("Information Hiding");
-                context.add_ai_hint("Private items are implementation details");
-                context.add_ai_hint("Helps maintain clean API boundaries");
+                context.add_ai_comprehension_hint("Private items are implementation details");
+                context.add_ai_comprehension_hint("Helps maintain clean API boundaries");
                 Some(context)
             }
             TokenKind::Identifier(name) => {
@@ -282,117 +282,117 @@ impl SemanticAnalyzer {
                 context.domain = Some("Range Constraints".to_string());
                 context.add_concept("Semantic Types");
                 context.add_concept("Value Bounds");
-                context.add_ai_hint("Range constraints ensure values fall within acceptable bounds");
-                context.add_ai_hint("Critical for domain validation and business rules");
+                context.add_ai_comprehension_hint("Range constraints ensure values fall within acceptable bounds");
+                context.add_ai_comprehension_hint("Critical for domain validation and business rules");
             }
             "min_length" | "max_length" => {
                 context.domain = Some("Length Constraints".to_string());
                 context.add_concept("Semantic Types");
                 context.add_concept("String Validation");
-                context.add_ai_hint("Length constraints ensure strings meet size requirements");
-                context.add_ai_hint("Important for data validation and security");
+                context.add_ai_comprehension_hint("Length constraints ensure strings meet size requirements");
+                context.add_ai_comprehension_hint("Important for data validation and security");
             }
             "pattern" => {
                 context.domain = Some("Pattern Constraints".to_string());
                 context.add_concept("Semantic Types");
                 context.add_concept("Regular Expressions");
-                context.add_ai_hint("Pattern constraints use regex for format validation");
-                context.add_ai_hint("Essential for email, phone, and ID validation");
+                context.add_ai_comprehension_hint("Pattern constraints use regex for format validation");
+                context.add_ai_comprehension_hint("Essential for email, phone, and ID validation");
             }
             "format" => {
                 context.domain = Some("Format Constraints".to_string());
                 context.add_concept("Semantic Types");
                 context.add_concept("Data Formatting");
-                context.add_ai_hint("Format constraints specify data structure requirements");
-                context.add_ai_hint("Used for dates, currencies, and structured identifiers");
+                context.add_ai_comprehension_hint("Format constraints specify data structure requirements");
+                context.add_ai_comprehension_hint("Used for dates, currencies, and structured identifiers");
             }
             "precision" => {
                 context.domain = Some("Numeric Precision".to_string());
                 context.add_concept("Semantic Types");
                 context.add_concept("Financial Types");
-                context.add_ai_hint("Precision specifies decimal places for monetary values");
-                context.add_ai_hint("Critical for financial calculations and compliance");
+                context.add_ai_comprehension_hint("Precision specifies decimal places for monetary values");
+                context.add_ai_comprehension_hint("Critical for financial calculations and compliance");
             }
             "currency" => {
                 context.domain = Some("Currency Specification".to_string());
                 context.add_concept("Semantic Types");
                 context.add_concept("Financial Types");
-                context.add_ai_hint("Currency constraint ensures monetary type safety");
-                context.add_ai_hint("Prevents mixing different currency types");
+                context.add_ai_comprehension_hint("Currency constraint ensures monetary type safety");
+                context.add_ai_comprehension_hint("Prevents mixing different currency types");
             }
             "non_negative" => {
                 context.domain = Some("Sign Constraints".to_string());
                 context.add_concept("Semantic Types");
                 context.add_concept("Business Rules");
-                context.add_ai_hint("Non-negative constraint prevents negative values");
-                context.add_ai_hint("Common for quantities, ages, and amounts");
+                context.add_ai_comprehension_hint("Non-negative constraint prevents negative values");
+                context.add_ai_comprehension_hint("Common for quantities, ages, and amounts");
             }
             "immutable" => {
                 context.domain = Some("Mutability Constraints".to_string());
                 context.add_concept("Semantic Types");
                 context.add_concept("Data Integrity");
-                context.add_ai_hint("Immutable constraint prevents value changes");
-                context.add_ai_hint("Important for IDs and audit data");
+                context.add_ai_comprehension_hint("Immutable constraint prevents value changes");
+                context.add_ai_comprehension_hint("Important for IDs and audit data");
             }
             "validated" => {
                 context.domain = Some("Validation Status".to_string());
                 context.add_concept("Semantic Types");
                 context.add_concept("Data Quality");
-                context.add_ai_hint("Validated constraint ensures data has been verified");
-                context.add_ai_hint("Critical for user input and external data");
+                context.add_ai_comprehension_hint("Validated constraint ensures data has been verified");
+                context.add_ai_comprehension_hint("Critical for user input and external data");
             }
             "business_rule" => {
                 context.domain = Some("Business Logic".to_string());
                 context.add_concept("Semantic Types");
                 context.add_concept("Domain Rules");
-                context.add_ai_hint("Business rules encode domain-specific constraints");
-                context.add_ai_hint("Essential for modeling complex business requirements");
+                context.add_ai_comprehension_hint("Business rules encode domain-specific constraints");
+                context.add_ai_comprehension_hint("Essential for modeling complex business requirements");
             }
             "security_classification" => {
                 context.domain = Some("Security".to_string());
                 context.add_concept("Semantic Types");
                 context.add_concept("Data Classification");
                 context.add_security_implication("Security classification controls data access");
-                context.add_ai_hint("Determines handling requirements for sensitive data");
+                context.add_ai_comprehension_hint("Determines handling requirements for sensitive data");
             }
             "compliance" => {
                 context.domain = Some("Regulatory Compliance".to_string());
                 context.add_concept("Semantic Types");
                 context.add_concept("Legal Requirements");
                 context.add_security_implication("Compliance requirements must be met");
-                context.add_ai_hint("Ensures adherence to regulatory standards");
+                context.add_ai_comprehension_hint("Ensures adherence to regulatory standards");
             }
             "ai_context" => {
                 context.domain = Some("AI Integration".to_string());
                 context.add_concept("Semantic Types");
                 context.add_concept("Machine Comprehension");
-                context.add_ai_hint("AI context provides machine-readable explanations");
-                context.add_ai_hint("Enables better AI understanding of code intent");
+                context.add_ai_comprehension_hint("AI context provides machine-readable explanations");
+                context.add_ai_comprehension_hint("Enables better AI understanding of code intent");
             }
             _ => {
                 // Existing naming convention analysis
                 if self.is_snake_case(name) {
-                    context.add_ai_hint("Uses snake_case naming convention".to_string());
+                    context.add_ai_comprehension_hint("Uses snake_case naming convention".to_string());
                 } else if self.is_camel_case(name) {
-                    context.add_ai_hint("Uses camelCase naming convention".to_string());
+                    context.add_ai_comprehension_hint("Uses camelCase naming convention".to_string());
                 } else if self.is_pascal_case(name) {
-                    context.add_ai_hint("Uses PascalCase naming convention".to_string());
+                    context.add_ai_comprehension_hint("Uses PascalCase naming convention".to_string());
                 }
                 
                 // Check for descriptive naming
                 if name.len() < 3 {
-                    context.add_ai_hint("Very short identifier - consider more descriptive name".to_string());
+                    context.add_ai_comprehension_hint("Very short identifier - consider more descriptive name".to_string());
                 } else if name.len() > 30 {
-                    context.add_ai_hint("Very long identifier - consider if it can be shortened".to_string());
+                    context.add_ai_comprehension_hint("Very long identifier - consider if it can be shortened".to_string());
                 }
                 
                 // Check for common abbreviations
                 if name.contains("mgr") {
-                    context.add_ai_hint("'mgr' abbreviation - consider 'manager' for clarity".to_string());
+                    context.add_ai_comprehension_hint("'mgr' abbreviation - consider 'manager' for clarity".to_string());
                 } else if name.contains("cfg") {
-                    context.add_ai_hint("'cfg' abbreviation - consider 'config' for clarity".to_string());
+                    context.add_ai_comprehension_hint("'cfg' abbreviation - consider 'config' for clarity".to_string());
                 } else if name.contains("svc") {
-                    context.add_ai_hint("'svc' abbreviation - consider 'service' for clarity".to_string());
+                    context.add_ai_comprehension_hint("'svc' abbreviation - consider 'service' for clarity".to_string());
                 }
                 
                 return Some(context);
@@ -441,7 +441,7 @@ impl SemanticAnalyzer {
                     pattern_type: PatternType::ModuleOrganization,
                     description: "Module definition detected".to_string(),
                     confidence: 0.9,
-                    ai_hints: vec![
+                    ai_comprehension_hints: vec![
                         "Modules should represent single business capabilities".to_string(),
                         "Consider organizing related functionality together".to_string(),
                     ],
@@ -455,7 +455,7 @@ impl SemanticAnalyzer {
                         pattern_type: PatternType::FunctionNaming,
                         description: format!("Function '{}' defined", function_name),
                         confidence,
-                        ai_hints: vec![
+                        ai_comprehension_hints: vec![
                             "Function names should be descriptive".to_string(),
                             "Consider if this function has single responsibility".to_string(),
                         ],
@@ -467,7 +467,7 @@ impl SemanticAnalyzer {
                     pattern_type: PatternType::TypeDefinition,
                     description: "Type definition detected".to_string(),
                     confidence: 0.9,
-                    ai_hints: vec![
+                    ai_comprehension_hints: vec![
                         "Types should express business domain concepts".to_string(),
                         "Consider adding validation constraints".to_string(),
                     ],
@@ -478,7 +478,7 @@ impl SemanticAnalyzer {
                     pattern_type: PatternType::TypeDefinition,
                     description: "Semantic type constraints detected".to_string(),
                     confidence: 0.95,
-                    ai_hints: vec![
+                    ai_comprehension_hints: vec![
                         "Semantic constraints enhance type safety".to_string(),
                         "Constraints should reflect business rules".to_string(),
                         "Consider adding AI context for better comprehension".to_string(),
@@ -490,7 +490,7 @@ impl SemanticAnalyzer {
                     pattern_type: PatternType::BusinessLogic,
                     description: "Formal verification constraint detected".to_string(),
                     confidence: 0.9,
-                    ai_hints: vec![
+                    ai_comprehension_hints: vec![
                         "Formal constraints enable compile-time verification".to_string(),
                         "Preconditions and postconditions improve reliability".to_string(),
                         "Invariants ensure data consistency".to_string(),
@@ -502,7 +502,7 @@ impl SemanticAnalyzer {
                     pattern_type: PatternType::EffectDeclaration,
                     description: "Effect system usage detected".to_string(),
                     confidence: 0.9,
-                    ai_hints: vec![
+                    ai_comprehension_hints: vec![
                         "Effects track computational side effects".to_string(),
                         "Explicit effect tracking improves safety".to_string(),
                         "Consider capability-based security".to_string(),
@@ -514,13 +514,59 @@ impl SemanticAnalyzer {
                     pattern_type: PatternType::CapabilityUsage,
                     description: "Capability-based security detected".to_string(),
                     confidence: 0.9,
-                    ai_hints: vec![
+                    ai_comprehension_hints: vec![
                         "Capabilities provide fine-grained access control".to_string(),
                         "Follow principle of least privilege".to_string(),
                         "Document capability requirements clearly".to_string(),
                     ],
                 });
             }
+            
+            // Enhanced literal patterns
+            TokenKind::RegexLiteral(pattern) => {
+                self.patterns.push(SemanticPattern {
+                    pattern_type: PatternType::TypeDefinition,
+                    description: format!("Regular expression pattern '{}' detected", pattern),
+                    confidence: 0.85,
+                    ai_comprehension_hints: vec![
+                        "Regex patterns should be well-documented".to_string(),
+                        "Consider validation for complex patterns".to_string(),
+                        "Test regex patterns with edge cases".to_string(),
+                        "Consider performance implications for complex patterns".to_string(),
+                    ],
+                });
+            }
+            
+            TokenKind::MoneyLiteral(amount) => {
+                self.patterns.push(SemanticPattern {
+                    pattern_type: PatternType::TypeDefinition,
+                    description: format!("Money literal '{}' detected", amount),
+                    confidence: 0.9,
+                    ai_comprehension_hints: vec![
+                        "Money literals should specify currency explicitly".to_string(),
+                        "Use precise decimal arithmetic for financial calculations".to_string(),
+                        "Consider compliance requirements (PCI, financial regulations)".to_string(),
+                        "Add validation for reasonable monetary ranges".to_string(),
+                        "Consider currency conversion and exchange rates".to_string(),
+                    ],
+                });
+            }
+            
+            TokenKind::DurationLiteral(duration) => {
+                self.patterns.push(SemanticPattern {
+                    pattern_type: PatternType::TypeDefinition,
+                    description: format!("Duration literal '{}' detected", duration),
+                    confidence: 0.85,
+                    ai_comprehension_hints: vec![
+                        "Duration literals improve code readability".to_string(),
+                        "Consider timeout and performance implications".to_string(),
+                        "Validate duration ranges for business logic".to_string(),
+                        "Consider timezone implications for longer durations".to_string(),
+                        "Document expected duration ranges".to_string(),
+                    ],
+                });
+            }
+            
             TokenKind::Identifier(name) => {
                 // Detect semantic type patterns based on identifier names
                 if name.ends_with("Id") || name.ends_with("ID") {
@@ -528,7 +574,7 @@ impl SemanticAnalyzer {
                         pattern_type: PatternType::TypeDefinition,
                         description: format!("Identifier type '{}' detected", name),
                         confidence: 0.8,
-                        ai_hints: vec![
+                        ai_comprehension_hints: vec![
                             "ID types should have format constraints".to_string(),
                             "Consider immutability for identifiers".to_string(),
                             "Add validation patterns for ID formats".to_string(),
@@ -539,7 +585,7 @@ impl SemanticAnalyzer {
                         pattern_type: PatternType::TypeDefinition,
                         description: format!("Financial type '{}' detected", name),
                         confidence: 0.85,
-                        ai_hints: vec![
+                        ai_comprehension_hints: vec![
                             "Financial types should specify currency".to_string(),
                             "Use precise decimal arithmetic".to_string(),
                             "Consider non-negative constraints".to_string(),
@@ -551,7 +597,7 @@ impl SemanticAnalyzer {
                         pattern_type: PatternType::TypeDefinition,
                         description: format!("Email type '{}' detected", name),
                         confidence: 0.9,
-                        ai_hints: vec![
+                        ai_comprehension_hints: vec![
                             "Email types should have pattern validation".to_string(),
                             "Consider normalization to lowercase".to_string(),
                             "Add length constraints for email addresses".to_string(),
@@ -562,7 +608,7 @@ impl SemanticAnalyzer {
                         pattern_type: PatternType::TypeDefinition,
                         description: format!("Phone number type '{}' detected", name),
                         confidence: 0.85,
-                        ai_hints: vec![
+                        ai_comprehension_hints: vec![
                             "Phone types should use E.164 format".to_string(),
                             "Add region validation constraints".to_string(),
                             "Consider international format support".to_string(),
@@ -573,11 +619,35 @@ impl SemanticAnalyzer {
                         pattern_type: PatternType::TypeDefinition,
                         description: format!("Password type '{}' detected", name),
                         confidence: 0.9,
-                        ai_hints: vec![
+                        ai_comprehension_hints: vec![
                             "Password types should be hashed, not plain text".to_string(),
                             "Mark as sensitive to prevent logging".to_string(),
                             "Add memory protection constraints".to_string(),
                             "Consider security classification".to_string(),
+                        ],
+                    });
+                } else if name.to_lowercase().contains("timeout") || name.to_lowercase().contains("duration") || name.to_lowercase().contains("delay") {
+                    self.patterns.push(SemanticPattern {
+                        pattern_type: PatternType::TypeDefinition,
+                        description: format!("Time-related type '{}' detected", name),
+                        confidence: 0.8,
+                        ai_comprehension_hints: vec![
+                            "Time types should use duration literals for clarity".to_string(),
+                            "Consider reasonable timeout ranges".to_string(),
+                            "Document time unit expectations".to_string(),
+                            "Consider timezone implications".to_string(),
+                        ],
+                    });
+                } else if name.to_lowercase().contains("pattern") || name.to_lowercase().contains("regex") || name.to_lowercase().contains("regexp") {
+                    self.patterns.push(SemanticPattern {
+                        pattern_type: PatternType::TypeDefinition,
+                        description: format!("Pattern type '{}' detected", name),
+                        confidence: 0.85,
+                        ai_comprehension_hints: vec![
+                            "Pattern types should use regex literals".to_string(),
+                            "Document pattern expectations clearly".to_string(),
+                            "Test patterns with edge cases".to_string(),
+                            "Consider pattern complexity and performance".to_string(),
                         ],
                     });
                 }

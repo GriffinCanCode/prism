@@ -14,15 +14,17 @@ rust-version.workspace = true
 [dependencies]
 prism-common.workspace = true
 prism-ast.workspace = true
+prism-constraints.workspace = true
 petgraph.workspace = true
 rustc-hash.workspace = true
 indexmap.workspace = true
 thiserror.workspace = true
-serde = { workspace = true, features = ["derive"], optional = true }
+serde = { workspace = true, features = ["derive"] }
+chrono = { workspace = true, features = ["serde"] }
 
 [features]
-default = []
-serde = ["dep:serde", "prism-common/serde", "prism-ast/serde"]
+default = ["serde"]
+serde = ["prism-common/serde", "prism-ast/serde"]
 
 [dev-dependencies]
 insta.workspace = true 

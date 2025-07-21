@@ -416,36 +416,32 @@ impl TokenSemanticAnalyzer {
         index
     }
 
-    /// Process identifier usage
-    fn process_identifier(&mut self, name: &str, token: &Token) {
+    /// Process an identifier token
+    fn process_identifier(&mut self, name: &str, _token: &Token) {
+        let follows_conventions = self.follows_naming_conventions(name);
+        let semantic_role = self.infer_semantic_role(name);
+        
         let usage = self.identifier_usage.entry(name.to_string()).or_insert_with(|| {
             IdentifierUsage {
                 usage_count: 0,
                 contexts: Vec::new(),
-                follows_conventions: self.follows_naming_conventions(name),
+                follows_conventions,
                 suggestions: Vec::new(),
-                semantic_role: self.infer_semantic_role(name),
+                semantic_role,
             }
         });
         
         usage.usage_count += 1;
         
-        // Add context information
-        let context = if let Some(module) = &self.current_context.current_module {
-            format!("module:{}", module)
-        } else if let Some(function) = &self.current_context.current_function {
-            format!("function:{}", function)
-        } else {
-            "global".to_string()
-        };
-        
-        if !usage.contexts.contains(&context) {
-            usage.contexts.push(context);
+        // Add context based on current analysis state
+        if let Some(module) = &self.current_context.current_module {
+            usage.contexts.push(format!("Module: {}", module));
         }
-        
-        // Generate suggestions if needed
-        if !usage.follows_conventions {
-            usage.suggestions.push("Consider following naming conventions".to_string());
+        if let Some(function) = &self.current_context.current_function {
+            usage.contexts.push(format!("Function: {}", function));
+        }
+        if let Some(type_name) = &self.current_context.current_type {
+            usage.contexts.push(format!("Type: {}", type_name));
         }
     }
 

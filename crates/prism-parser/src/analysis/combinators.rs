@@ -7,8 +7,9 @@ use crate::{
     core::error::{ParseError, ParseErrorKind, ParseResult},
     parser::Parser,
 };
-use prism_ast::{AstNode, Annotation, Parameter, TypeConstraint, Attribute};
+use prism_ast::{AstNode, Attribute, TypeConstraint, Parameter};
 use prism_lexer::{Token, TokenKind};
+use prism_common::span::Span;
 use std::collections::HashMap;
 
 /// A combinator result that can be chained
@@ -387,7 +388,19 @@ impl Parser {
             let mut delimited = Delimited::new(
                 TokenKind::LeftParen,
                 TokenKind::RightParen,
-                |parser| parser.parse_expression(),
+                |parser| {
+                    // Parse attribute arguments as literals
+                    if parser.check(TokenKind::StringLiteral("".to_string())) {
+                        let value = parser.consume_string("Expected string value")?;
+                        Ok(prism_ast::AttributeArgument::Literal(prism_ast::LiteralValue::String(value)))
+                    } else if let Ok(num) = parser.consume_number("Expected number") {
+                        Ok(prism_ast::AttributeArgument::Literal(prism_ast::LiteralValue::Float(num)))
+                    } else {
+                        let ident = parser.consume_identifier("Expected identifier")?;
+                        // For now, treat identifiers as string literals
+                        Ok(prism_ast::AttributeArgument::Literal(prism_ast::LiteralValue::String(ident)))
+                    }
+                },
             );
             delimited.parse(self)?
         } else {
@@ -449,7 +462,7 @@ impl Parser {
         let mut delimited = Delimited::new(
             TokenKind::LeftParen,
             TokenKind::RightParen,
-            |parser| parser.parse_expression(),
+            |parser| parser.parse_expression_public(),
         );
         
         delimited.parse(self)
@@ -487,78 +500,32 @@ impl Parser {
         Ok(statements)
     }
     
-    // Helper methods
-    
-    fn consume_identifier(&mut self, message: &str) -> CombinatorResult<String> {
-        if let TokenKind::Identifier(name) = &self.peek().kind {
-            self.advance();
-            Ok(name.to_string())
-        } else {
-            self.error(
-                vec![TokenKind::Identifier(prism_common::symbol::Symbol::intern(""))],
-                self.peek().kind.clone(),
-                self.current_span(),
-            )
-        }
-    }
-
-    /// Parse a string literal
-    fn parse_string_literal(&mut self) -> ParseResult<String> {
-        if let TokenKind::StringLiteral(value) = &self.peek().kind {
-            let value = value.clone();
-            self.advance();
-            Ok(value)
-        } else {
-            self.error(
-                vec![TokenKind::StringLiteral("".to_string())],
-                self.peek().kind.clone(),
-                self.current_span(),
-            )
-        }
-    }
-
-    /// Parse a literal value
-    fn parse_literal_value(&mut self) -> ParseResult<f64> {
-        match &self.peek().kind {
-            TokenKind::IntegerLiteral(value) => {
-                let value = *value as f64;
-                self.advance();
-                Ok(value)
+    /// Parse a block of statements
+    fn parse_block(&mut self) -> CombinatorResult<Vec<AstNode<prism_ast::Stmt>>> {
+        let mut statements = Vec::new();
+        
+        while !self.is_at_end() && !self.check_block_end() {
+            match self.parse_statement() {
+                Ok(stmt) => statements.push(stmt),
+                Err(e) => return Err(e),
             }
-            TokenKind::FloatLiteral(value) => {
-                let value = *value;
-                self.advance();
-                Ok(value)
-            }
-            _ => self.error(
-                vec![TokenKind::IntegerLiteral(0), TokenKind::FloatLiteral(0.0)],
-                self.peek().kind.clone(),
-                self.current_span(),
-            ),
         }
-    }
-    
-    fn check_list_end(&self) -> bool {
-        matches!(
-            self.peek().kind,
-            TokenKind::RightParen
-                | TokenKind::RightBracket
-                | TokenKind::RightBrace
-                | TokenKind::Greater
-                | TokenKind::Eof
-        )
-    }
-    
-    fn check_block_end(&self) -> bool {
-        matches!(
-            self.peek().kind,
-            TokenKind::RightBrace | TokenKind::Eof
-        )
+        
+        Ok(statements)
     }
 
     /// Create an error result
     fn error<T>(&self, expected: Vec<TokenKind>, found: TokenKind, span: Span) -> ParseResult<T> {
         Err(ParseError::unexpected_token(expected, found, span))
+    }
+
+    /// Convert combinator result to parse result
+    fn to_parse_result<T>(&self, result: CombinatorResult<T>) -> ParseResult<T> {
+        result.map_err(|e| ParseError::invalid_syntax(
+            "combinator".to_string(),
+            e.to_string(),
+            self.current_span(),
+        ))
     }
 }
 

@@ -21,9 +21,14 @@ indexmap.workspace = true
 thiserror.workspace = true
 serde = { workspace = true, features = ["derive"], optional = true }
 
+[target.'cfg(target_os = "linux")'.dependencies]
+procfs = { version = "0.16", optional = true }
+
 [features]
-default = []
+default = ["monitoring"]
 serde = ["dep:serde", "prism-common/serde", "prism-ast/serde", "prism-semantic/serde"]
+monitoring = []
+linux-monitoring = ["dep:procfs"]
 
 [dev-dependencies]
 insta.workspace = true 

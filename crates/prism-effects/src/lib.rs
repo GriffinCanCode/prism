@@ -29,7 +29,7 @@ pub mod capability;
 pub mod security_trust;
 
 // Re-exports for public API
-pub use effects::{Effect, EffectDefinition, EffectCategory, EffectRegistry};
+pub use effects::{Effect, EffectDefinition, EffectCategory, EffectRegistry, EffectSystem, EffectError};
 pub use execution::{EffectHandler, EffectResult, ExecutionSystem, ExecutionPlan};
 pub use security::{SecuritySystem, Capability, SecurityLevel, InformationFlowControl};
 pub use validation::{EffectValidator, ValidationContext, ValidationViolation};
@@ -199,11 +199,9 @@ mod tests {
             "test_context".to_string(),
             security::SecurityLevel::new("Public".to_string(), 0, vec![], vec![]),
             security::trust::TrustContext {
-                level: security::trust::TrustLevel {
-                    level: 1,
-                    categories: vec!["basic".to_string()],
-                },
-                metadata: HashMap::new(),
+                level: security::trust::TrustLevel::Basic,
+                categories: vec!["basic".to_string()],
+                metadata: std::collections::HashMap::new(),
             },
         );
         

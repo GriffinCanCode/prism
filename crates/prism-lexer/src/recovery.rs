@@ -97,6 +97,14 @@ pub enum ErrorPattern {
     MissingDelimiter(char),
     /// Unmatched delimiter
     UnmatchedDelimiter(char),
+    /// Invalid regex literal
+    InvalidRegex,
+    /// Invalid money literal
+    InvalidMoney,
+    /// Invalid duration literal
+    InvalidDuration,
+    /// Indentation error
+    IndentationError,
     /// Any error (catch-all)
     Any,
 }
@@ -452,7 +460,7 @@ mod tests {
         let result = recovery.recover_from_error(
             ErrorPattern::InvalidCharacter('$'),
             SourceId::new(1),
-            Position::new(1, 1),
+            Position::new(1, 1, 0),
             SyntaxStyle::Canonical,
         );
         
@@ -468,7 +476,7 @@ mod tests {
         let result = recovery.recover_from_error(
             ErrorPattern::UnterminatedString,
             SourceId::new(1),
-            Position::new(1, 1),
+            Position::new(1, 1, 0),
             SyntaxStyle::Canonical,
         );
         
@@ -482,7 +490,7 @@ mod tests {
     #[test]
     fn test_diagnostics() {
         let mut diag = LexerDiagnostics::new();
-        let span = Span::new(SourceId::new(1), Position::new(1, 1), Position::new(1, 2));
+        let span = Span::new(Position::new(1, 1, 0), Position::new(1, 2, 1), SourceId::new(1));
         
         diag.invalid_character('$', span);
         assert!(diag.has_errors());
@@ -507,7 +515,7 @@ mod tests {
         let result1 = recovery.recover_from_error(
             ErrorPattern::InvalidCharacter('x'),
             SourceId::new(1),
-            Position::new(1, 1),
+            Position::new(1, 1, 0),
             SyntaxStyle::Canonical,
         );
         assert!(result1.is_some());
@@ -516,7 +524,7 @@ mod tests {
         let result2 = recovery.recover_from_error(
             ErrorPattern::InvalidCharacter('y'),
             SourceId::new(1),
-            Position::new(1, 2),
+            Position::new(1, 2, 1),
             SyntaxStyle::Canonical,
         );
         assert!(result2.is_some());
@@ -525,7 +533,7 @@ mod tests {
         let result3 = recovery.recover_from_error(
             ErrorPattern::InvalidCharacter('z'),
             SourceId::new(1),
-            Position::new(1, 3),
+            Position::new(1, 3, 2),
             SyntaxStyle::Canonical,
         );
         assert!(result3.is_none());

@@ -18,11 +18,11 @@ tokio.workspace = true
 async-trait.workspace = true
 thiserror.workspace = true
 serde = { workspace = true, features = ["derive"], optional = true }
-serde_json = { workspace = true, optional = true }
+serde_json.workspace = true
 
 [features]
-default = []
-serde = ["dep:serde", "dep:serde_json", "prism-common/serde"]
+default = ["serde"]
+serde = ["dep:serde"]
 
 [dev-dependencies]
 insta.workspace = true 

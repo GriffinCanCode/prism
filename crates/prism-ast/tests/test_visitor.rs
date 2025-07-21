@@ -1,8 +1,14 @@
-//! Comprehensive tests for the visitor module
+//! Tests for the visitor pattern implementation
 
-use prism_common::span::Position;
-use prism_ast::{visitor::*, expr::*, stmt, types::*, pattern::*, node::*};
-use prism_common::{span::Span, symbol::Symbol, NodeId, SourceId};
+use prism_ast::{
+    visitor::*,
+    node::*,
+    expr::{*, Parameter as ExprParameter, MatchArm as ExprMatchArm},
+    stmt::{Stmt, *, Parameter as StmtParameter},
+    pattern::*,
+    types::*,
+};
+use prism_common::{span::Span, span::Position, symbol::Symbol, NodeId, SourceId};
 
 // Test visitor that counts nodes
 struct NodeCounter {
@@ -579,7 +585,7 @@ fn test_node_counter_function_declaration() {
     let source_id = SourceId::new(1);
     let span = Span::new(Position::new(1, 1, 0), Position::new(1, 11, 10), source_id);
     
-    let param = stmt::Parameter {
+            let param = StmtParameter {
         name: Symbol::intern("x"),
         type_annotation: Some(AstNode::new(
             Type::Primitive(PrimitiveType::Integer(IntegerType::Signed(32))),
@@ -693,7 +699,7 @@ fn test_node_counter_match_expression() {
                 NodeId::new(1),
             )),
             arms: vec![
-                expr::MatchArm {
+                ExprMatchArm {
                     pattern: AstNode::new(
                         Pattern::Literal(LiteralValue::Integer(1)),
                         span,
@@ -714,7 +720,7 @@ fn test_node_counter_match_expression() {
                         NodeId::new(4),
                     ),
                 },
-                expr::MatchArm {
+                ExprMatchArm {
                     pattern: AstNode::new(
                         Pattern::Wildcard,
                         span,
@@ -956,7 +962,7 @@ fn test_visitor_with_nested_structures() {
     // Create a complex nested structure
     let complex_expr = AstNode::new(
         Expr::Lambda(LambdaExpr {
-            parameters: vec![stmt::Parameter {
+            parameters: vec![ExprParameter {
                 name: Symbol::intern("x"),
                 type_annotation: Some(AstNode::new(
                     Type::Primitive(PrimitiveType::Integer(IntegerType::Signed(32))),

@@ -23,9 +23,8 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
-use crate::security_trust::{SecurityOperation, SecurityLabel, TrustLevel};
-use prism_ast::{AstNode, Type, SecurityClassification};
-use std::collections::{HashMap, HashSet};
+use crate::security_trust::{SecurityOperation, TrustLevel};
+use std::collections::HashMap;
 use thiserror::Error;
 
 /// Capability: AI Safety & Analysis  
@@ -58,7 +57,7 @@ impl AISafetyAnalysisSystem {
 
     /// Perform comprehensive AI analysis of code or effects
     pub fn analyze_for_ai(
-        &self,
+        &mut self,
         target: &AIAnalysisTarget,
         analysis_type: AIAnalysisType,
         safety_level: AISafetyLevel,
@@ -199,7 +198,7 @@ impl AIAnalysisEngine {
                 "Detects potential security vulnerabilities in code".to_string(),
                 Box::new(|target| {
                     match target {
-                        AIAnalysisTarget::Code(code) => {
+                        AIAnalysisTarget::Code(_code) => {
                             // Analyze code for security issues
                             Ok(AIPatternResult {
                                 findings: vec!["No obvious security vulnerabilities detected".to_string()],
@@ -214,7 +213,7 @@ impl AIAnalysisEngine {
             AIAnalysisPattern::new(
                 "CapabilityUsageAnalysis".to_string(),
                 "Analyzes capability usage patterns for security compliance".to_string(),
-                Box::new(|target| {
+                Box::new(|_target| {
                     // Analyze capability usage
                     Ok(AIPatternResult {
                         findings: vec!["Capability usage follows principle of least privilege".to_string()],
@@ -230,7 +229,7 @@ impl AIAnalysisEngine {
             AIAnalysisPattern::new(
                 "PerformanceBottleneckDetection".to_string(),
                 "Identifies potential performance bottlenecks".to_string(),
-                Box::new(|target| {
+                Box::new(|_target| {
                     Ok(AIPatternResult {
                         findings: vec!["No obvious performance bottlenecks detected".to_string()],
                         confidence: 0.7,
@@ -245,7 +244,7 @@ impl AIAnalysisEngine {
             AIAnalysisPattern::new(
                 "BusinessLogicValidation".to_string(),
                 "Validates business logic consistency and completeness".to_string(),
-                Box::new(|target| {
+                Box::new(|_target| {
                     Ok(AIPatternResult {
                         findings: vec!["Business logic appears consistent".to_string()],
                         confidence: 0.8,
@@ -335,7 +334,7 @@ impl AIAnalysisPattern {
     }
 
     /// Check if this pattern applies to the target
-    pub fn applies_to(&self, target: &AIAnalysisTarget) -> bool {
+    pub fn applies_to(&self, _target: &AIAnalysisTarget) -> bool {
         // For now, all patterns apply to all targets
         // In practice, this would be more sophisticated
         true
@@ -638,9 +637,13 @@ impl Default for AISafetyConfig {
 /// AI safety levels
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AISafetyLevel {
+    /// Permissive safety level - minimal restrictions
     Permissive,
+    /// Standard safety level - balanced restrictions
     Standard,
+    /// Strict safety level - enhanced restrictions
     Strict,
+    /// Maximum safety level - highest restrictions
     Maximum,
 }
 
@@ -668,14 +671,17 @@ impl InjectionPattern {
 /// Severity levels for injection attempts
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum InjectionSeverity {
+    /// Low severity injection attempt
     Low,
+    /// Medium severity injection attempt
     Medium,
+    /// High severity injection attempt
     High,
+    /// Critical severity injection attempt
     Critical,
 }
 
 /// Content filter for AI outputs
-#[derive(Debug)]
 pub struct ContentFilter {
     /// Filter name
     pub name: String,
@@ -685,6 +691,17 @@ pub struct ContentFilter {
     pub safety_level: AISafetyLevel,
     /// Filter function
     pub filter_fn: Box<dyn Fn(AIAnalysisResult) -> Result<AIAnalysisResult, AIError> + Send + Sync>,
+}
+
+impl std::fmt::Debug for ContentFilter {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ContentFilter")
+            .field("name", &self.name)
+            .field("description", &self.description)
+            .field("safety_level", &self.safety_level)
+            .field("filter_fn", &"<function>")
+            .finish()
+    }
 }
 
 impl Clone for ContentFilter {
@@ -706,7 +723,6 @@ impl ContentFilter {
 }
 
 /// AI safety policy
-#[derive(Debug)]
 pub struct AISafetyPolicy {
     /// Policy name
     pub name: String,
@@ -718,6 +734,18 @@ pub struct AISafetyPolicy {
     pub allows_fn: Box<dyn Fn(&AIAnalysisTarget, &AIAnalysisType) -> bool + Send + Sync>,
     /// Function to check if operation is allowed
     pub operation_allows_fn: Box<dyn Fn(&AIOperation) -> bool + Send + Sync>,
+}
+
+impl std::fmt::Debug for AISafetyPolicy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AISafetyPolicy")
+            .field("name", &self.name)
+            .field("description", &self.description)
+            .field("policy_type", &self.policy_type)
+            .field("allows_fn", &"<function>")
+            .field("operation_allows_fn", &"<function>")
+            .finish()
+    }
 }
 
 impl Clone for AISafetyPolicy {
@@ -747,9 +775,13 @@ impl AISafetyPolicy {
 /// Types of safety policies
 #[derive(Debug, Clone)]
 pub enum SafetyPolicyType {
+    /// Policies for code analysis safety
     CodeAnalysis,
+    /// Policies for prompt safety validation
     PromptSafety,
+    /// Policies for output filtering
     OutputFiltering,
+    /// Policies for operation restrictions
     OperationRestriction,
 }
 
@@ -899,7 +931,6 @@ impl AIDevelopmentAssistant {
 }
 
 /// Development pattern for enhancing analysis
-#[derive(Debug)]
 pub struct DevelopmentPattern {
     /// Pattern name
     pub name: String,
@@ -909,6 +940,17 @@ pub struct DevelopmentPattern {
     pub applies_fn: Box<dyn Fn(&AIAnalysisResult) -> bool + Send + Sync>,
     /// Function to enhance analysis
     pub enhance_fn: Box<dyn Fn(AIAnalysisResult) -> Result<AIAnalysisResult, AIError> + Send + Sync>,
+}
+
+impl std::fmt::Debug for DevelopmentPattern {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DevelopmentPattern")
+            .field("name", &self.name)
+            .field("description", &self.description)
+            .field("applies_fn", &"<function>")
+            .field("enhance_fn", &"<function>")
+            .finish()
+    }
 }
 
 impl Clone for DevelopmentPattern {
@@ -935,7 +977,6 @@ impl DevelopmentPattern {
 }
 
 /// Quality metric for code analysis
-#[derive(Debug)]
 pub struct QualityMetric {
     /// Metric name
     pub name: String,
@@ -943,6 +984,16 @@ pub struct QualityMetric {
     pub description: String,
     /// Function to calculate metric value
     pub calculate_fn: Box<dyn Fn(&AIAnalysisResult) -> f64 + Send + Sync>,
+}
+
+impl std::fmt::Debug for QualityMetric {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("QualityMetric")
+            .field("name", &self.name)
+            .field("description", &self.description)
+            .field("calculate_fn", &"<function>")
+            .finish()
+    }
 }
 
 impl Clone for QualityMetric {
@@ -956,7 +1007,6 @@ impl Clone for QualityMetric {
 }
 
 /// Best practice recommendation
-#[derive(Debug, Clone)]
 pub struct BestPractice {
     /// Best practice name
     pub name: String,
@@ -966,6 +1016,28 @@ pub struct BestPractice {
     pub recommendation: String,
     /// Function to check if best practice applies
     pub applies_fn: Box<dyn Fn(&AIAnalysisResult) -> bool + Send + Sync>,
+}
+
+impl std::fmt::Debug for BestPractice {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BestPractice")
+            .field("name", &self.name)
+            .field("description", &self.description)
+            .field("recommendation", &self.recommendation)
+            .field("applies_fn", &"<function>")
+            .finish()
+    }
+}
+
+impl Clone for BestPractice {
+    fn clone(&self) -> Self {
+        Self {
+            name: self.name.clone(),
+            description: self.description.clone(),
+            recommendation: self.recommendation.clone(),
+            applies_fn: Box::new(|_| true), // Simplified for cloning
+        }
+    }
 }
 
 impl BestPractice {
@@ -1059,7 +1131,7 @@ impl AIIntegrationManager {
             IntegrationPolicy {
                 name: "AICompatibility".to_string(),
                 description: "Ensures AI compatibility in analysis results".to_string(),
-                enforce_fn: Box::new(|analysis| {
+                enforce_fn: Box::new(|_analysis| {
                     // Ensure analysis has AI-friendly format
                     Ok(())
                 }),
@@ -1069,7 +1141,6 @@ impl AIIntegrationManager {
 }
 
 /// Integration pattern for AI systems
-#[derive(Debug)]
 pub struct IntegrationPattern {
     /// Pattern name
     pub name: String,
@@ -1079,6 +1150,17 @@ pub struct IntegrationPattern {
     pub applies_fn: Box<dyn Fn(&ComprehensiveAIAnalysis) -> bool + Send + Sync>,
     /// Function to apply pattern
     pub apply_fn: Box<dyn Fn(ComprehensiveAIAnalysis) -> Result<ComprehensiveAIAnalysis, AIError> + Send + Sync>,
+}
+
+impl std::fmt::Debug for IntegrationPattern {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IntegrationPattern")
+            .field("name", &self.name)
+            .field("description", &self.description)
+            .field("applies_fn", &"<function>")
+            .field("apply_fn", &"<function>")
+            .finish()
+    }
 }
 
 impl Clone for IntegrationPattern {
@@ -1105,7 +1187,6 @@ impl IntegrationPattern {
 }
 
 /// Integration policy
-#[derive(Debug)]
 pub struct IntegrationPolicy {
     /// Policy name
     pub name: String,
@@ -1113,6 +1194,16 @@ pub struct IntegrationPolicy {
     pub description: String,
     /// Policy enforcement function
     pub enforce_fn: Box<dyn Fn(&ComprehensiveAIAnalysis) -> Result<(), AIError> + Send + Sync>,
+}
+
+impl std::fmt::Debug for IntegrationPolicy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IntegrationPolicy")
+            .field("name", &self.name)
+            .field("description", &self.description)
+            .field("enforce_fn", &"<function>")
+            .finish()
+    }
 }
 
 impl Clone for IntegrationPolicy {
@@ -1189,10 +1280,15 @@ pub enum AIAnalysisTarget {
 /// Types of AI analysis
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum AIAnalysisType {
+    /// Security-focused analysis
     Security,
+    /// Performance-focused analysis
     Performance,
+    /// Business logic analysis
     BusinessLogic,
+    /// Code quality analysis
     CodeQuality,
+    /// AI compatibility analysis
     AICompatibility,
 }
 
@@ -1214,8 +1310,11 @@ pub struct AIOperation {
 /// AI risk levels
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AIRiskLevel {
+    /// Low risk level
     Low,
+    /// Medium risk level
     Medium,
+    /// High risk level
     High,
 }
 
@@ -1289,23 +1388,40 @@ pub struct SecureAIContext {
 pub enum AIError {
     /// Unsupported analysis type
     #[error("Unsupported analysis type: {analysis_type}")]
-    UnsupportedAnalysisType { analysis_type: String },
+    UnsupportedAnalysisType { 
+        /// The unsupported analysis type
+        analysis_type: String 
+    },
 
     /// Safety policy violation
     #[error("AI safety policy '{policy}' violated: {reason}")]
-    SafetyPolicyViolation { policy: String, reason: String },
+    SafetyPolicyViolation { 
+        /// The violated policy name
+        policy: String, 
+        /// Reason for violation
+        reason: String 
+    },
 
     /// Prompt injection detected
     #[error("Prompt injection detected by pattern '{pattern}'")]
-    PromptInjectionDetected { pattern: String },
+    PromptInjectionDetected { 
+        /// The detection pattern that triggered
+        pattern: String 
+    },
 
     /// Analysis failed
     #[error("AI analysis failed: {reason}")]
-    AnalysisFailed { reason: String },
+    AnalysisFailed { 
+        /// Reason for analysis failure
+        reason: String 
+    },
 
     /// Content filtering failed
     #[error("Content filtering failed: {reason}")]
-    ContentFilteringFailed { reason: String },
+    ContentFilteringFailed { 
+        /// Reason for filtering failure
+        reason: String 
+    },
 }
 
 #[cfg(test)]

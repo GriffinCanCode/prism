@@ -3,7 +3,7 @@
 //! This module implements confidence calculation for syntax detection results,
 //! maintaining conceptual cohesion around "confidence assessment and style scoring".
 
-use super::{SyntaxEvidence, SyntaxStyle};
+use super::{detector::SyntaxEvidence, SyntaxStyle};
 use std::collections::HashMap;
 
 /// Confidence scorer for syntax detection

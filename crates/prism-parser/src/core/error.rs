@@ -68,6 +68,8 @@ impl ParseError {
             ParseErrorKind::SemanticError { .. } => true,
             ParseErrorKind::RecoveryError { .. } => false,
             ParseErrorKind::InternalError { .. } => false,
+            ParseErrorKind::InvalidDelimiter { .. } => true,
+            ParseErrorKind::UnsupportedSyntaxStyle { .. } => false,
         }
     }
 }
@@ -127,6 +129,16 @@ pub enum ParseErrorKind {
     InternalError {
         /// Error details
         details: String,
+    },
+    /// Invalid delimiter
+    InvalidDelimiter {
+        /// The invalid delimiter found
+        found: TokenKind,
+    },
+    /// Unsupported syntax style
+    UnsupportedSyntaxStyle {
+        /// The unsupported syntax style
+        style: prism_syntax::detection::SyntaxStyle,
     },
 }
 
@@ -314,6 +326,38 @@ impl ParseError {
             ParseErrorKind::SemanticError { constraint, details },
             span,
             message,
+        )
+    }
+
+    /// Create an "expected token" error (convenience for single token)
+    pub fn expected_token(expected: TokenKind, span: Span) -> Self {
+        Self::unexpected_token(vec![expected], TokenKind::Eof, span)
+    }
+
+    /// Create an "expected literal" error
+    pub fn expected_literal(span: Span) -> Self {
+        Self::invalid_syntax(
+            "literal".to_string(),
+            "Expected a literal value (number, string, boolean, or null)".to_string(),
+            span,
+        )
+    }
+
+    /// Create an "expected identifier" error
+    pub fn expected_identifier(span: Span) -> Self {
+        Self::invalid_syntax(
+            "identifier".to_string(),
+            "Expected an identifier".to_string(),
+            span,
+        )
+    }
+
+    /// Create an "expected object key" error
+    pub fn expected_object_key(span: Span) -> Self {
+        Self::invalid_syntax(
+            "object_key".to_string(),
+            "Expected an object key (identifier, string, or computed expression)".to_string(),
+            span,
         )
     }
 } 

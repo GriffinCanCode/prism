@@ -1,0 +1,115 @@
+version: '3.8'
+
+services:
+  # Prism Compiler Service
+  prism-compiler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prism-compiler
+    image: prism-lang/compiler:latest
+    volumes:
+      - ./examples:/workspace/examples:ro
+      - prism-output:/workspace/output
+    working_dir: /workspace
+    command: ["compile", "--help"]
+
+  # Prism Development Environment
+  prism-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prism-dev
+    image: prism-lang/dev:latest
+    volumes:
+      - .:/workspace:cached
+      - prism-cache:/home/prism/.prism/cache
+      - prism-config:/home/prism/.prism/config
+    ports:
+      - "9257:9257"  # Language Server Protocol
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    environment:
+      - PRISM_LOG_LEVEL=debug
+      - PRISM_CACHE_DIR=/home/prism/.prism/cache
+
+  # Prism Language Server
+  prism-lsp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prism-lsp
+    image: prism-lang/lsp:latest
+    ports:
+      - "9257:9257"
+    volumes:
+      - prism-lsp-workspace:/workspace
+    environment:
+      - PRISM_LSP_HOST=0.0.0.0
+      - PRISM_LSP_PORT=9257
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9257/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Prism CI/CD Service
+  prism-ci:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prism-ci
+    image: prism-lang/ci:latest
+    volumes:
+      - .:/ci:ro
+      - prism-ci-cache:/home/prism/.prism/cache
+    environment:
+      - CI=true
+      - PRISM_PARALLEL_JOBS=4
+    command: ["test", "--all"]
+
+  # Documentation Server
+  prism-docs:
+    image: nginx:alpine
+    ports:
+      - "8080:80"
+    volumes:
+      - ./docs:/usr/share/nginx/html/docs:ro
+      - ./design-docs:/usr/share/nginx/html/design-docs:ro
+      - ./README.md:/usr/share/nginx/html/index.md:ro
+    depends_on:
+      - prism-compiler
+
+  # Example: Web-based Prism Playground (Future)
+  prism-playground:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prism-dev
+    image: prism-lang/playground:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./examples:/workspace/examples:ro
+    environment:
+      - NODE_ENV=production
+      - PRISM_PLAYGROUND_MODE=web
+    # This would run a web-based code editor with Prism compilation
+    command: ["prism", "serve", "--web", "--port", "3000"]
+
+volumes:
+  prism-output:
+    driver: local
+  prism-cache:
+    driver: local
+  prism-config:
+    driver: local
+  prism-lsp-workspace:
+    driver: local
+  prism-ci-cache:
+    driver: local
+
+networks:
+  default:
+    name: prism-network 

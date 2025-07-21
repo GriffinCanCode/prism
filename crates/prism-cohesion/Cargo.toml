@@ -1,0 +1,60 @@
+[package]
+name = "prism-cohesion"
+version = "0.1.0"
+edition = "2021"
+description = "Conceptual cohesion analysis and metrics for Prism language (PLD-002)"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/prism-lang/prism"
+keywords = ["cohesion", "analysis", "metrics", "compiler", "prism"]
+categories = ["development-tools", "compilers"]
+
+[dependencies]
+# Core Prism dependencies
+prism-common = { path = "../prism-common" }
+prism-ast = { path = "../prism-ast" }
+
+# Graph analysis for dependency tracking
+petgraph = "0.6"
+
+# Fast hashing for large codebases
+rustc-hash = "1.1"
+
+# Serialization and data handling
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "1.0"
+
+# String similarity algorithms
+strsim = "0.11"
+
+# Statistical analysis
+statrs = "0.16"
+
+# Optional features
+tracing = { version = "0.1", optional = true }
+
+[dev-dependencies]
+tokio-test = "0.4"
+pretty_assertions = "1.4"
+criterion = "0.5"
+
+[features]
+default = ["analysis", "metrics", "ai-insights"]
+analysis = []
+metrics = []
+ai-insights = []
+tracing = ["dep:tracing"]
+
+[[example]]
+name = "analyze_cohesion"
+required-features = ["analysis"]
+
+[[example]]
+name = "cohesion_metrics"
+required-features = ["metrics"]
+
+[[bench]]
+name = "cohesion_benchmarks"
+harness = false 

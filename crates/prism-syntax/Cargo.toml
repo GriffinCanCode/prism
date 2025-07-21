@@ -15,6 +15,7 @@ rust-version.workspace = true
 # Core Prism dependencies
 prism-common = { workspace = true }
 prism-lexer = { workspace = true }
+prism-ast = { workspace = true }
 
 # Parsing and text processing
 nom = { workspace = true }

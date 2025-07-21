@@ -1,7 +1,7 @@
 //! Comprehensive tests for the lib module (main AST functionality)
 
 use prism_common::span::Position;
-use prism_ast::*;
+use prism_ast::{*, stmt::Parameter};
 use prism_common::{span::Span, symbol::Symbol, NodeId, SourceId};
 use std::collections::HashMap;
 

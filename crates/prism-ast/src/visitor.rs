@@ -168,6 +168,14 @@ impl AstVisitor for DefaultVisitor {
             // Base cases
             Expr::Literal(_) | Expr::Variable(_) => {},
             Expr::Error(_) => {},
+            // Python-specific expressions - placeholders for now
+            Expr::FormattedString(_) => {},
+            Expr::ListComprehension(_) => {},
+            Expr::SetComprehension(_) => {},
+            Expr::DictComprehension(_) => {},
+            Expr::GeneratorExpression(_) => {},
+            Expr::NamedExpression(_) => {},
+            Expr::StarredExpression(_) => {},
         }
     }
 

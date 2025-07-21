@@ -7,7 +7,8 @@ pub mod registry;
 pub mod plan;
 
 use crate::effects::Effect;
-use crate::security::{SecureExecutionContext, Capability};
+use crate::security::SecureExecutionContext;
+use crate::capability::Capability;
 use prism_common::span::Span;
 use std::collections::HashMap;
 use thiserror::Error;

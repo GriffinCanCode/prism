@@ -84,39 +84,8 @@ impl HandlerRegistry {
 
     /// Register all builtin handlers
     fn register_builtin_handlers(&mut self) {
-        let builtin = BuiltinHandlers::new();
-        
-        // Register file system handler
-        if let Err(e) = self.register_handler(
-            "IO.FileSystem".to_string(),
-            Arc::new(builtin.filesystem_handler),
-        ) {
-            eprintln!("Failed to register filesystem handler: {:?}", e);
-        }
-
-        // Register network handler
-        if let Err(e) = self.register_handler(
-            "IO.Network".to_string(),
-            Arc::new(builtin.network_handler),
-        ) {
-            eprintln!("Failed to register network handler: {:?}", e);
-        }
-
-        // Register database handler
-        if let Err(e) = self.register_handler(
-            "Database".to_string(),
-            Arc::new(builtin.database_handler),
-        ) {
-            eprintln!("Failed to register database handler: {:?}", e);
-        }
-
-        // Register cryptography handler
-        if let Err(e) = self.register_handler(
-            "Cryptography".to_string(),
-            Arc::new(builtin.crypto_handler),
-        ) {
-            eprintln!("Failed to register crypto handler: {:?}", e);
-        }
+        // TODO: Implement builtin handlers
+        // For now, this is a placeholder
     }
 
     /// Validate that capabilities are properly formed

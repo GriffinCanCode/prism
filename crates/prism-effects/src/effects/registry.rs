@@ -3,7 +3,7 @@
 //! Registry and hierarchical organization of effects
 
 use super::definition::{Effect, EffectDefinition, EffectCategory};
-use crate::effects::EffectError;
+use crate::EffectSystemError;
 use std::collections::{HashMap, HashSet};
 
 /// Registry of all known effects in the system
@@ -26,11 +26,11 @@ impl EffectRegistry {
     }
 
     /// Register a new effect definition
-    pub fn register(&mut self, effect: EffectDefinition) -> Result<(), EffectError> {
+    pub fn register(&mut self, effect: EffectDefinition) -> Result<(), EffectSystemError> {
         if self.effects.contains_key(&effect.name) {
-            return Err(EffectError::RegistrationFailed(
-                format!("Effect '{}' is already registered", effect.name)
-            ));
+            return Err(EffectSystemError::EffectAlreadyRegistered {
+                name: effect.name.clone()
+            });
         }
         
         self.hierarchy.add_effect(&effect);

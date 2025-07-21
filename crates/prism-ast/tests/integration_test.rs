@@ -1,10 +1,10 @@
 //! Integration tests for the prism-ast crate
-//! 
-use prism_common::span::Position;
 //! These tests verify that all AST components work together correctly,
 //! testing real-world scenarios and complex interactions between modules.
 
-use prism_ast::*;
+use prism_common::span::Position;
+
+use prism_ast::{*, stmt::{Parameter, MatchArm}};
 use prism_common::{span::Span, symbol::Symbol, NodeId, SourceId};
 use std::collections::HashMap;
 
@@ -1220,4 +1220,73 @@ fn test_comprehensive_ast_construction() {
     assert_eq!(effect_type.capability_requirements.len(), 1);
     
     println!("Comprehensive AST construction test passed!");
+}
+
+#[test]
+fn test_semantic_type_summary() {
+    let source_id = SourceId::new(1);
+    let span = Span::new(Position::new(1, 1, 0), Position::new(1, 101, 100), source_id);
+    
+    // Create a program with various types
+    let items = vec![
+        AstNode::new(
+            Item::Type(TypeDecl {
+                name: Symbol::intern("Email"),
+                type_parameters: vec![],
+                kind: TypeKind::Semantic(SemanticType {
+                    base_type: Box::new(AstNode::new(
+                        Type::Primitive(PrimitiveType::String),
+                        span,
+                        NodeId::new(1),
+                    )),
+                    constraints: vec![],
+                    metadata: SemanticTypeMetadata::default(),
+                }),
+                visibility: Visibility::Public,
+            }),
+            span,
+            NodeId::new(2),
+        ),
+        AstNode::new(
+            Item::Function(FunctionDecl {
+                name: Symbol::intern("test_func"),
+                parameters: vec![],
+                return_type: Some(AstNode::new(
+                    Type::Primitive(PrimitiveType::String),
+                    span,
+                    NodeId::new(3),
+                )),
+                body: None,
+                visibility: Visibility::Public,
+                attributes: vec![],
+                contracts: None,
+                is_async: false,
+            }),
+            span,
+            NodeId::new(4),
+        ),
+        AstNode::new(
+            Item::Type(TypeDecl {
+                name: Symbol::intern("RegularType"),
+                type_parameters: vec![],
+                kind: TypeKind::Struct(StructType {
+                    fields: vec![],
+                }),
+                visibility: Visibility::Public,
+            }),
+            span,
+            NodeId::new(5),
+        ),
+    ];
+    
+    let program = Program::new(items, source_id);
+    
+    // Test semantic type summary
+    let summary = program.semantic_type_summary();
+    
+    // Should have semantic types and typed functions
+    assert_eq!(summary.get("semantic_types"), Some(&1));
+    assert_eq!(summary.get("typed_functions"), Some(&1));
+    
+    println!("Semantic type summary test passed!");
 } 

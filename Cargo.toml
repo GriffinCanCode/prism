@@ -12,6 +12,7 @@ members = [
     "crates/prism-compiler",
     "crates/prism-codegen",
     "crates/prism-syntax",
+    "crates/prism-constraints",
     # "crates/prism-ai",       # Temporarily disabled due to candle dependency issues
     # "crates/prism-cli",      # Temporarily disabled due to AI dependency issues
 ]
@@ -19,13 +20,15 @@ members = [
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-authors = ["Prism Language Team"]
+authors = ["Griffin <griffin@griffin-code.com>"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/GriffinCanCode/prism"
 homepage = "https://prism-lang.org"
-description = "The Prism programming language"
+description = "The Prism programming language - AI-first with semantic types and capability-based security"
 keywords = ["compiler", "language", "ai", "semantic-types", "capabilities"]
-categories = ["compilers", "development-tools"]
+categories = ["development-tools::build-utils", "compilers"]
+readme = "README.md"
+documentation = "https://docs.rs/prism"
 rust-version = "1.75"
 
 [workspace.dependencies]
@@ -47,6 +50,7 @@ nom = "7.1"
 logos = "0.14"
 petgraph = "0.6"
 rustc-hash = "1.1"
+regex = "1.10"
 
 # Code generation
 # inkwell = { version = "0.4", features = ["llvm17-0"] }  # Temporarily disabled due to LLVM dependency issues
@@ -75,6 +79,7 @@ once_cell = "1.19"
 indexmap = "2.1"
 smallvec = { version = "1.11", features = ["serde"] }
 bitvec = "1.0"
+chrono = { version = "0.4", features = ["serde"] }
 
 # Internal workspace dependencies
 prism-common = { path = "crates/prism-common" }
@@ -85,6 +90,7 @@ prism-semantic = { path = "crates/prism-semantic" }
 prism-effects = { path = "crates/prism-effects" }
 prism-codegen = { path = "crates/prism-codegen" }
 prism-syntax = { path = "crates/prism-syntax" }
+prism-constraints = { path = "crates/prism-constraints" }
 prism-ai = { path = "crates/prism-ai" }
 prism-runtime = { path = "crates/prism-runtime" }
 prism-pir = { path = "crates/prism-pir" }

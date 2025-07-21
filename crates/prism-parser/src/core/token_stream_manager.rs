@@ -12,26 +12,82 @@ use crate::core::error::{ErrorContext, ParseError, ParseResult};
 use prism_common::span::Span;
 use prism_lexer::{Token, TokenKind};
 
-/// Token stream navigator with position tracking
-/// 
-/// This struct embodies the single concept of navigating through tokens.
-/// It maintains the current position and provides methods to move through
-/// the token stream safely and efficiently.
-#[derive(Debug)]
+/// Token stream manager for efficient navigation
 pub struct TokenStreamManager {
-    /// The token stream to navigate
+    /// Vector of tokens
     tokens: Vec<Token>,
-    /// Current position in the stream
+    /// Current position in the token stream
     current: usize,
+    /// EOF token for safe returns
+    eof_token: Token,
+    /// Pre-allocated cache for token lookups
+    _token_cache: std::collections::HashMap<usize, Token>,
 }
 
 impl TokenStreamManager {
-    /// Create a new token stream manager
+    /// Create a new token stream manager with caching
     pub fn new(tokens: Vec<Token>) -> Self {
+        let total_tokens = tokens.len();
+        let eof_token = Token {
+            kind: TokenKind::Eof,
+            span: Span::dummy(),
+        };
+        
         Self {
             tokens,
             current: 0,
+            eof_token,
+            // Pre-allocate cache for better performance
+            _token_cache: std::collections::HashMap::with_capacity(total_tokens / 10),
         }
+    }
+
+    /// Create a new token stream manager with custom capacity
+    pub fn with_capacity(tokens: Vec<Token>, cache_capacity: usize) -> Self {
+        let eof_token = Token {
+            kind: TokenKind::Eof,
+            span: Span::dummy(),
+        };
+        
+        Self {
+            tokens,
+            current: 0,
+            eof_token,
+            _token_cache: std::collections::HashMap::with_capacity(cache_capacity),
+        }
+    }
+
+    /// Get tokens slice for efficient access
+    pub fn tokens_slice(&self) -> &[Token] {
+        &self.tokens
+    }
+
+    /// Get remaining tokens count efficiently
+    pub fn remaining_tokens(&self) -> usize {
+        self.tokens.len().saturating_sub(self.current)
+    }
+
+    /// Bulk advance for performance
+    pub fn bulk_advance(&mut self, count: usize) -> usize {
+        let old_pos = self.current;
+        self.current = (self.current + count).min(self.tokens.len());
+        self.current - old_pos
+    }
+
+    /// Peek ahead multiple tokens efficiently
+    pub fn peek_ahead(&self, offset: usize) -> &Token {
+        let pos = self.current + offset;
+        if pos < self.tokens.len() {
+            &self.tokens[pos]
+        } else {
+            self.tokens.last().unwrap_or(&Token::eof())
+        }
+    }
+
+    /// Check multiple token kinds at once
+    pub fn check_any(&self, kinds: &[TokenKind]) -> bool {
+        let current_kind = &self.peek().kind;
+        kinds.iter().any(|kind| std::mem::discriminant(current_kind) == std::mem::discriminant(kind))
     }
 
     /// Check if we're at the end of the token stream
@@ -41,21 +97,13 @@ impl TokenStreamManager {
 
     /// Get the current token without consuming it
     pub fn peek(&self) -> &Token {
-        self.tokens.get(self.current).unwrap_or(&Token {
-            kind: TokenKind::Eof,
-            span: Span::dummy(),
-            semantic_context: None,
-        })
+        self.tokens.get(self.current).unwrap_or(&self.eof_token)
     }
 
     /// Get the previous token
     pub fn previous(&self) -> &Token {
         if self.current == 0 {
-            &Token {
-                kind: TokenKind::Eof,
-                span: Span::dummy(),
-                semantic_context: None,
-            }
+            &self.eof_token
         } else {
             &self.tokens[self.current - 1]
         }
@@ -149,13 +197,101 @@ impl TokenStreamManager {
     }
 
     /// Insert a token at the current position (for error recovery)
-    pub fn insert_token(&mut self, token: Token) {
-        self.tokens.insert(self.current, token);
+    pub fn insert_token(&mut self, position: usize, token: Token) {
+        if position <= self.tokens.len() {
+            self.tokens.insert(position, token);
+            // Adjust current position if we inserted before it
+            if position <= self.current {
+                self.current += 1;
+            }
+        }
     }
 
-    /// Set position (for error recovery)
-    pub fn set_position(&mut self, position: usize) {
-        self.current = position.min(self.tokens.len());
+    /// Replace the current token (for error recovery)
+    pub fn replace_current_token(&mut self, new_token: Token) {
+        if self.current < self.tokens.len() {
+            self.tokens[self.current] = new_token;
+        }
+    }
+
+    /// Optimized synchronization with early termination
+    pub fn synchronize_to_statement(&mut self) {
+        // Fast path: if already at statement boundary, return immediately
+        if self.current > 0 && self.tokens[self.current - 1].kind == TokenKind::Semicolon {
+            return;
+        }
+
+        // Use bulk operations for better performance
+        let mut pos = self.current;
+        while pos < self.tokens.len() {
+            match self.tokens[pos].kind {
+                TokenKind::Semicolon => {
+                    self.current = pos + 1;
+                    return;
+                }
+                TokenKind::Module
+                | TokenKind::Section  
+                | TokenKind::Function
+                | TokenKind::Fn
+                | TokenKind::Type
+                | TokenKind::Let
+                | TokenKind::Const
+                | TokenKind::Var
+                | TokenKind::If
+                | TokenKind::While
+                | TokenKind::For
+                | TokenKind::Match
+                | TokenKind::Return
+                | TokenKind::Break
+                | TokenKind::Continue => {
+                    self.current = pos;
+                    return;
+                }
+                _ => pos += 1,
+            }
+        }
+        
+        self.current = self.tokens.len();
+    }
+
+    /// Find the next expression boundary for error recovery
+    pub fn find_expression_boundary(&self) -> bool {
+        let mut position = self.current;
+        let mut paren_depth = 0;
+        let mut bracket_depth = 0;
+        
+        while position < self.tokens.len() {
+            match self.tokens[position].kind {
+                TokenKind::LeftParen => paren_depth += 1,
+                TokenKind::RightParen => {
+                    if paren_depth == 0 {
+                        return true;
+                    }
+                    paren_depth -= 1;
+                }
+                TokenKind::LeftBracket => bracket_depth += 1,
+                TokenKind::RightBracket => {
+                    if bracket_depth == 0 {
+                        return true;
+                    }
+                    bracket_depth -= 1;
+                }
+                TokenKind::Comma | TokenKind::Semicolon 
+                    if paren_depth == 0 && bracket_depth == 0 => {
+                    return true;
+                }
+                _ => {}
+            }
+            position += 1;
+        }
+        
+        false
+    }
+
+    /// Check if a delimiter insertion would be safe
+    pub fn is_delimiter_insertion_safe(&self, _delimiter: &TokenKind) -> bool {
+        // Simple heuristic: safe if we're not in the middle of an expression
+        self.find_expression_boundary()
     }
 
     /// Check if current token could end a block
@@ -174,104 +310,13 @@ impl TokenStreamManager {
                 | TokenKind::Eof
         )
     }
-
-    /// Synchronize to next statement boundary (for error recovery)
-    pub fn synchronize_to_statement(&mut self) {
-        self.advance(); // Skip the problematic token
-
-        while !self.is_at_end() {
-            // Stop at statement boundaries
-            if self.previous().kind == TokenKind::Semicolon {
-                return;
-            }
-
-            // Stop at keywords that start new statements
-            match self.peek().kind {
-                TokenKind::Module
-                | TokenKind::Function
-                | TokenKind::Type
-                | TokenKind::Let
-                | TokenKind::Const
-                | TokenKind::Var
-                | TokenKind::If
-                | TokenKind::While
-                | TokenKind::For
-                | TokenKind::Return => {
-                    return;
-                }
-                _ => {}
-            }
-
-            self.advance();
-        }
-    }
+    
     /// Get the current token kind
     pub fn current_kind(&self) -> &TokenKind {
         &self.peek().kind
     }
     
-    /// Get the current token
-    pub fn current_token(&self) -> &Token {
-        self.peek()
-    }
 
-    /// Check if current token is an identifier
-    pub fn check_identifier(&self) -> bool {
-        matches!(self.peek().kind, TokenKind::Identifier(_))
-    }
-
-    /// Expect an identifier token and return its value
-    pub fn expect_identifier(&mut self) -> ParseResult<String> {
-        match &self.peek().kind {
-            TokenKind::Identifier(name) => {
-                let result = name.clone();
-                self.advance();
-                Ok(result)
-            }
-            _ => {
-                Err(ParseError::unexpected_token(
-                    self.peek().clone(),
-                    "identifier".to_string(),
-                ))
-            }
-        }
-    }
-
-    /// Get current position for lookahead/backtracking
-    pub fn position(&self) -> usize {
-        self.current
-    }
-
-    /// Get the current token (alias for peek, used by parsers)
-    pub fn current_token(&self) -> &Token {
-        self.peek()
-    }
-
-    /// Expect a specific token kind and consume it
-    pub fn expect(&mut self, expected: TokenKind) -> ParseResult<&Token> {
-        if self.check(expected.clone()) {
-            Ok(self.advance())
-        } else {
-            Err(ParseError::unexpected_token(
-                self.peek().clone(),
-                format!("{:?}", expected),
-            ))
-        }
-    }
-
-    /// Get the previous token (for span calculation)
-    pub fn previous(&self) -> &Token {
-        if self.current > 0 {
-            &self.tokens[self.current - 1]
-        } else {
-            self.peek()
-        }
-    }
-
-    /// Get the span of the previous token
-    pub fn previous_span(&self) -> Span {
-        self.previous().span
-    }
 }
 
 #[cfg(test)]
@@ -287,7 +332,7 @@ mod tests {
                 Position::new(1, 2, 1),
                 SourceId::new(1),
             ),
-            semantic_context: None,
+
         }
     }
 

@@ -4,7 +4,7 @@
 //! based on structural patterns and conventions, maintaining conceptual cohesion
 //! around "heuristic rule application and evidence generation".
 
-use super::{SyntaxEvidence, SyntaxStyle, EvidenceType};
+use super::{detector::{SyntaxEvidence, EvidenceType}, SyntaxStyle};
 use std::collections::HashMap;
 
 /// Heuristic engine for rule-based syntax analysis

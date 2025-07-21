@@ -36,6 +36,12 @@ pub mod context;
 pub mod parallel;
 pub mod cache;
 
+// PLT-004: Symbol Table & Scope Resolution system
+pub mod symbol_table;
+pub mod scope;
+pub mod resolution;
+pub mod symbol_integration;
+
 pub mod language_server;
 pub mod ai_export;
 pub mod error;
@@ -48,6 +54,12 @@ pub use query::{QueryEngine, CompilerQuery, QueryId, CacheKey};
 pub use semantic::{SemanticDatabase, AIMetadata, SemanticInfo};
 pub use parallel::{ParallelScheduler, ParallelTask, TaskId, TaskPriority};
 pub use cache::{CompilationCache, CacheConfig, CacheStats};
+
+// PLT-004: Symbol Table & Scope Resolution exports
+pub use symbol_table::{SymbolTable, SymbolData, SymbolKind, SymbolVisibility, SymbolTableConfig};
+pub use scope::{ScopeTree, ScopeId, ScopeData, ScopeKind, ScopeTreeConfig};
+pub use resolution::{SymbolResolver, ResolvedSymbol, ResolutionContext, ResolutionKind, ResolverConfig};
+pub use symbol_integration::{SymbolSystem, SymbolSystemBuilder, SymbolSystemConfig, SymbolSystemSnapshot};
 pub use prism_codegen::{MultiTargetCodeGen, CodeArtifact, CodeGenConfig};
 pub use language_server::{PrismLanguageServer, LanguageServer, LSPRequest, LSPResponse};
 pub use ai_export::{DefaultAIExporter, AIContextExporter, AIContext, ExportConfig};

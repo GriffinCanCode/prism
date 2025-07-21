@@ -1,0 +1,417 @@
+/* Default CSS for Prism Documentation HTML Output */
+
+/* Reset and base styles */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    line-height: 1.6;
+    color: #333;
+    background-color: #fff;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+/* Typography */
+h1, h2, h3, h4, h5, h6 {
+    margin-bottom: 1rem;
+    font-weight: 600;
+    line-height: 1.25;
+}
+
+h1 {
+    font-size: 2.5rem;
+    color: #2c3e50;
+    border-bottom: 3px solid #3498db;
+    padding-bottom: 0.5rem;
+    margin-bottom: 2rem;
+}
+
+h2 {
+    font-size: 2rem;
+    color: #34495e;
+    margin-top: 2rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 2px solid #ecf0f1;
+    padding-bottom: 0.25rem;
+}
+
+h3 {
+    font-size: 1.5rem;
+    color: #2c3e50;
+    margin-top: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+h4 {
+    font-size: 1.25rem;
+    color: #34495e;
+    margin-bottom: 0.75rem;
+}
+
+p {
+    margin-bottom: 1rem;
+}
+
+/* Links */
+a {
+    color: #3498db;
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+/* Module info section */
+.module-info {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 2rem;
+    border-radius: 8px;
+    margin-bottom: 2rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.module-info .description {
+    font-size: 1.2rem;
+    margin-bottom: 1.5rem;
+    opacity: 0.95;
+}
+
+.module-info .responsibility {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 1rem;
+    border-radius: 6px;
+    margin-bottom: 1rem;
+}
+
+.module-info .responsibility h3 {
+    color: white;
+    margin-bottom: 0.5rem;
+    font-size: 1.1rem;
+}
+
+.module-info .metadata {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    font-size: 0.9rem;
+    opacity: 0.9;
+}
+
+.module-info .metadata div {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+}
+
+/* Table of Contents */
+.table-of-contents {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.table-of-contents h2 {
+    color: #495057;
+    font-size: 1.3rem;
+    margin-top: 0;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.table-of-contents ul {
+    list-style: none;
+}
+
+.table-of-contents li {
+    margin-bottom: 0.5rem;
+}
+
+.table-of-contents a {
+    color: #495057;
+    font-weight: 500;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    display: inline-block;
+    transition: background-color 0.2s;
+}
+
+.table-of-contents a:hover {
+    background-color: #e9ecef;
+    text-decoration: none;
+}
+
+/* Element sections */
+.element-section {
+    margin-bottom: 3rem;
+}
+
+.element-section h2 {
+    color: #2c3e50;
+    background: #ecf0f1;
+    padding: 1rem 1.5rem;
+    border-radius: 6px 6px 0 0;
+    margin-bottom: 0;
+    border-left: 4px solid #3498db;
+}
+
+/* Individual elements */
+.element {
+    background: #fff;
+    border: 1px solid #e1e8ed;
+    border-radius: 0 0 6px 6px;
+    padding: 2rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.element:not(:last-child) {
+    border-radius: 0;
+    border-bottom: none;
+}
+
+.element:last-child {
+    border-radius: 0 0 6px 6px;
+}
+
+.element-name {
+    color: #2c3e50;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 1.4rem;
+    background: #f8f9fa;
+    padding: 0.75rem 1rem;
+    border-radius: 4px;
+    border-left: 4px solid #e74c3c;
+    margin-bottom: 1rem;
+}
+
+.element-description {
+    color: #555;
+    font-size: 1.1rem;
+    margin-bottom: 1.5rem;
+    line-height: 1.7;
+}
+
+/* Annotations */
+.annotations {
+    margin-bottom: 1.5rem;
+}
+
+.annotation {
+    background: #f1f3f4;
+    border-left: 4px solid #9b59b6;
+    padding: 0.75rem 1rem;
+    margin-bottom: 0.5rem;
+    border-radius: 0 4px 4px 0;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.9rem;
+}
+
+.annotation strong {
+    color: #8e44ad;
+}
+
+/* Specific annotation types */
+.annotation-responsibility {
+    border-left-color: #e74c3c;
+}
+
+.annotation-responsibility strong {
+    color: #c0392b;
+}
+
+.annotation-param {
+    border-left-color: #3498db;
+}
+
+.annotation-param strong {
+    color: #2980b9;
+}
+
+.annotation-returns {
+    border-left-color: #27ae60;
+}
+
+.annotation-returns strong {
+    color: #229954;
+}
+
+.annotation-throws {
+    border-left-color: #f39c12;
+}
+
+.annotation-throws strong {
+    color: #e67e22;
+}
+
+.annotation-effects {
+    border-left-color: #9b59b6;
+}
+
+.annotation-effects strong {
+    color: #8e44ad;
+}
+
+.annotation-example {
+    border-left-color: #1abc9c;
+}
+
+.annotation-example strong {
+    color: #16a085;
+}
+
+/* Examples */
+.examples {
+    margin-top: 1.5rem;
+}
+
+.examples h4 {
+    color: #2c3e50;
+    margin-bottom: 1rem;
+    font-size: 1.1rem;
+}
+
+.examples pre {
+    background: #2c3e50;
+    color: #ecf0f1;
+    padding: 1rem;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin-bottom: 1rem;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.9rem;
+    line-height: 1.4;
+}
+
+.examples code {
+    background: transparent;
+    color: inherit;
+    padding: 0;
+    border-radius: 0;
+}
+
+/* Code in text */
+code {
+    background: #f8f9fa;
+    color: #e74c3c;
+    padding: 0.2rem 0.4rem;
+    border-radius: 3px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.85em;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .container {
+        padding: 1rem;
+    }
+    
+    h1 {
+        font-size: 2rem;
+    }
+    
+    h2 {
+        font-size: 1.5rem;
+    }
+    
+    .module-info {
+        padding: 1.5rem;
+    }
+    
+    .module-info .metadata {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    
+    .element {
+        padding: 1.5rem;
+    }
+    
+    .element-name {
+        font-size: 1.2rem;
+    }
+}
+
+/* Print styles */
+@media print {
+    body {
+        font-size: 12pt;
+        line-height: 1.4;
+    }
+    
+    .container {
+        max-width: none;
+        padding: 0;
+    }
+    
+    .module-info {
+        background: #f8f9fa !important;
+        color: #333 !important;
+        border: 1px solid #dee2e6;
+    }
+    
+    .element {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+    
+    .examples pre {
+        background: #f8f9fa !important;
+        color: #333 !important;
+        border: 1px solid #dee2e6;
+    }
+    
+    a {
+        color: #333;
+        text-decoration: none;
+    }
+    
+    .table-of-contents {
+        display: none;
+    }
+}
+
+/* Accessibility improvements */
+@media (prefers-reduced-motion: reduce) {
+    * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* Focus styles for keyboard navigation */
+a:focus,
+button:focus {
+    outline: 2px solid #3498db;
+    outline-offset: 2px;
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+    body {
+        background: white;
+        color: black;
+    }
+    
+    .module-info {
+        background: #000 !important;
+        color: white !important;
+    }
+    
+    .element {
+        border-color: #000;
+    }
+} 

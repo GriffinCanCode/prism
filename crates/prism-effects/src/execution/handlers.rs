@@ -3,7 +3,8 @@
 //! This module provides composable effect handlers that interpret and manage
 //! effects in a secure, capability-controlled manner as specified in PLD-003.
 
-use crate::{Effect, Capability};
+use crate::effects::{Effect};
+use crate::capability::Capability;
 use prism_common::span::Span;
 use prism_ast::{AstNode, Expr, SecurityClassification};
 use std::collections::{HashMap, HashSet};
@@ -184,7 +185,7 @@ pub struct EffectExecutionMetadata {
 }
 
 /// Resource usage tracking
-#[derive(Debug, Default)]
+#[derive(Debug, Clone)]
 pub struct ResourceUsage {
     /// Memory allocated (bytes)
     pub memory_allocated: u64,
@@ -198,6 +199,231 @@ pub struct ResourceUsage {
     pub disk_read: u64,
     /// Disk bytes written
     pub disk_written: u64,
+    /// Timestamp when measurement was taken
+    pub timestamp: std::time::Instant,
+}
+
+impl ResourceUsage {
+    /// Create a new resource usage measurement
+    pub fn new() -> Self {
+        Self {
+            memory_allocated: 0,
+            network_sent: 0,
+            network_received: 0,
+            disk_read: 0,
+            disk_written: 0,
+            cpu_time: 0,
+            timestamp: std::time::Instant::now(),
+        }
+    }
+
+    /// Capture current resource usage from the system
+    pub fn capture_current() -> Result<Self, EffectHandlerError> {
+        #[cfg(feature = "monitoring")]
+        {
+            use crate::effects::monitoring::ResourceMonitor;
+            
+            let monitor = ResourceMonitor::new();
+            let snapshot = monitor.capture_current_usage()
+                .map_err(|e| EffectHandlerError::InternalError { 
+                    error: format!("Failed to capture resource usage: {:?}", e) 
+                })?;
+            
+            Ok(Self {
+                memory_allocated: snapshot.memory_allocated_bytes,
+                cpu_time: snapshot.cpu_time_micros,
+                network_sent: snapshot.network_sent_bytes,
+                network_received: snapshot.network_received_bytes,
+                disk_read: snapshot.disk_read_bytes,
+                disk_written: snapshot.disk_write_bytes,
+                timestamp: snapshot.timestamp,
+            })
+        }
+        
+        #[cfg(not(feature = "monitoring"))]
+        {
+            // Fallback to placeholder values when monitoring is disabled
+            Ok(Self::new())
+        }
+    }
+
+    /// Calculate resource consumption between two measurements
+    pub fn calculate_consumption(&self, start: &ResourceUsage) -> ResourceConsumption {
+        ResourceConsumption {
+            memory_delta: self.memory_allocated.saturating_sub(start.memory_allocated),
+            cpu_time_delta: self.cpu_time.saturating_sub(start.cpu_time),
+            network_sent_delta: self.network_sent.saturating_sub(start.network_sent),
+            network_received_delta: self.network_received.saturating_sub(start.network_received),
+            disk_read_delta: self.disk_read.saturating_sub(start.disk_read),
+            disk_written_delta: self.disk_written.saturating_sub(start.disk_written),
+            duration: self.timestamp.duration_since(start.timestamp),
+        }
+    }
+
+    /// Get total resource units for comparison
+    pub fn total_units(&self) -> u64 {
+        // Weight different resource types for comparison
+        self.cpu_time / 1000 +  // CPU time in milliseconds
+        self.memory_allocated / 1024 +  // Memory in KB
+        (self.disk_read + self.disk_written) / 1024 +  // Disk I/O in KB
+        (self.network_sent + self.network_received) / 1024  // Network I/O in KB
+    }
+
+    /// Check if resource usage exceeds thresholds
+    pub fn exceeds_thresholds(&self) -> Vec<ResourceThresholdViolation> {
+        let mut violations = Vec::new();
+
+        // Memory threshold: 1GB
+        if self.memory_allocated > 1024 * 1024 * 1024 {
+            violations.push(ResourceThresholdViolation {
+                resource_type: ResourceType::Memory,
+                threshold: 1024 * 1024 * 1024,
+                actual: self.memory_allocated,
+                severity: if self.memory_allocated > 4 * 1024 * 1024 * 1024 {
+                    ViolationSeverity::Critical
+                } else {
+                    ViolationSeverity::Warning
+                },
+            });
+        }
+
+        // CPU time threshold: 10 seconds
+        if self.cpu_time > 10_000_000 {
+            violations.push(ResourceThresholdViolation {
+                resource_type: ResourceType::CPU,
+                threshold: 10_000_000,
+                actual: self.cpu_time,
+                severity: if self.cpu_time > 60_000_000 {
+                    ViolationSeverity::Critical
+                } else {
+                    ViolationSeverity::Warning
+                },
+            });
+        }
+
+        // Network threshold: 100MB
+        let total_network = self.network_sent + self.network_received;
+        if total_network > 100 * 1024 * 1024 {
+            violations.push(ResourceThresholdViolation {
+                resource_type: ResourceType::Network,
+                threshold: 100 * 1024 * 1024,
+                actual: total_network,
+                severity: ViolationSeverity::Warning,
+            });
+        }
+
+        // Disk I/O threshold: 500MB
+        let total_disk = self.disk_read + self.disk_written;
+        if total_disk > 500 * 1024 * 1024 {
+            violations.push(ResourceThresholdViolation {
+                resource_type: ResourceType::Disk,
+                threshold: 500 * 1024 * 1024,
+                actual: total_disk,
+                severity: ViolationSeverity::Warning,
+            });
+        }
+
+        violations
+    }
+}
+
+impl Default for ResourceUsage {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Resource consumption between two measurements
+#[derive(Debug, Clone)]
+pub struct ResourceConsumption {
+    /// Memory allocated difference (bytes)
+    pub memory_delta: u64,
+    /// CPU time difference (microseconds)
+    pub cpu_time_delta: u64,
+    /// Network bytes sent difference
+    pub network_sent_delta: u64,
+    /// Network bytes received difference
+    pub network_received_delta: u64,
+    /// Disk bytes read difference
+    pub disk_read_delta: u64,
+    /// Disk bytes written difference
+    pub disk_written_delta: u64,
+    /// Time duration between measurements
+    pub duration: std::time::Duration,
+}
+
+impl ResourceConsumption {
+    /// Get resource consumption rate (per second)
+    pub fn get_rates(&self) -> ResourceRates {
+        let duration_secs = self.duration.as_secs_f64().max(0.001); // Avoid division by zero
+        
+        ResourceRates {
+            memory_rate: self.memory_delta as f64 / duration_secs,
+            cpu_rate: self.cpu_time_delta as f64 / duration_secs,
+            network_sent_rate: self.network_sent_delta as f64 / duration_secs,
+            network_received_rate: self.network_received_delta as f64 / duration_secs,
+            disk_read_rate: self.disk_read_delta as f64 / duration_secs,
+            disk_write_rate: self.disk_written_delta as f64 / duration_secs,
+        }
+    }
+
+    /// Calculate efficiency score based on resource usage
+    pub fn efficiency_score(&self) -> f64 {
+        // Simple efficiency calculation: lower resource usage = higher efficiency
+        let total_resources = self.memory_delta / 1024 + // KB
+                             self.cpu_time_delta / 1000 + // milliseconds
+                             (self.network_sent_delta + self.network_received_delta) / 1024 + // KB
+                             (self.disk_read_delta + self.disk_written_delta) / 1024; // KB
+        
+        // Normalize to 0-1 scale (higher is better)
+        1.0 / (1.0 + (total_resources as f64 / 1000.0))
+    }
+}
+
+/// Resource usage rates (per second)
+#[derive(Debug, Clone)]
+pub struct ResourceRates {
+    /// Memory allocation rate (bytes/sec)
+    pub memory_rate: f64,
+    /// CPU usage rate (microseconds/sec)
+    pub cpu_rate: f64,
+    /// Network send rate (bytes/sec)
+    pub network_sent_rate: f64,
+    /// Network receive rate (bytes/sec)
+    pub network_received_rate: f64,
+    /// Disk read rate (bytes/sec)
+    pub disk_read_rate: f64,
+    /// Disk write rate (bytes/sec)
+    pub disk_write_rate: f64,
+}
+
+/// Resource threshold violation
+#[derive(Debug, Clone)]
+pub struct ResourceThresholdViolation {
+    /// Type of resource that exceeded threshold
+    pub resource_type: ResourceType,
+    /// Threshold that was exceeded
+    pub threshold: u64,
+    /// Actual resource usage
+    pub actual: u64,
+    /// Severity of the violation
+    pub severity: ViolationSeverity,
+}
+
+/// Types of system resources
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResourceType {
+    Memory,
+    CPU,
+    Network,
+    Disk,
+}
+
+/// Severity levels for threshold violations
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ViolationSeverity {
+    Warning,
+    Critical,
 }
 
 /// Result of effect handling
@@ -753,7 +979,7 @@ mod tests {
         
         let capability = Capability::new(
             "FileSystem".to_string(),
-            crate::CapabilityConstraints::new(),
+            crate::capability::CapabilityConstraints::new(),
         );
         
         context.add_capability(capability);

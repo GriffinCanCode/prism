@@ -1,0 +1,17 @@
+# Scripts Directory
+
+This directory contains build and distribution scripts that are part of the Prism project.
+
+## ✅ What SHOULD be committed:
+- *.sh scripts (build-images.sh, publish-packages.sh, verify-installation.sh)
+- README.md documentation
+- This .gitkeep file
+
+## ❌ What should NOT be committed (gitignored):
+- generated/ subdirectory (created by scripts)
+- Any temporary files created during script execution
+- Distribution artifacts (*.tar.gz, *.deb, etc.)
+- Docker build cache
+
+The scripts themselves are valuable for users, contributors, and transparency.
+Generated artifacts are excluded via .gitignore. 

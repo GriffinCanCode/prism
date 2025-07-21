@@ -1,7 +1,13 @@
 //! Comprehensive tests for the statement module
 
 use prism_common::span::Position;
-use prism_ast::{stmt::*, expr::*, types::*, pattern::*, node::*};
+use prism_ast::{
+    stmt::{*, Parameter as StmtParameter, MatchArm as StmtMatchArm, CatchClause as StmtCatchClause},
+    expr::*,
+    types::*,
+    pattern::*,
+    node::*
+};
 use prism_common::{span::Span, symbol::Symbol, NodeId, SourceId};
 
 #[test]
@@ -65,12 +71,12 @@ fn test_function_declaration() {
     let source_id = SourceId::new(1);
     let span = Span::new(Position::new(1, 1, 0), Position::new(1, 11, 10), source_id);
     
-    let param = stmt::Parameter {
+    let param = StmtParameter {
         name: Symbol::intern("x"),
         type_annotation: Some(AstNode::new(
             Type::Primitive(PrimitiveType::Integer(IntegerType::Signed(32))),
             span,
-            NodeId::new(1),
+            NodeId::new(1)
         )),
         default_value: None,
         is_mutable: false,
@@ -583,7 +589,7 @@ fn test_match_statement() {
         NodeId::new(4),
     ));
     
-    let arm1 = stmt::MatchArm {
+    let arm1 = StmtMatchArm {
         pattern: pattern1,
         guard: None,
         body: body1,
@@ -609,7 +615,7 @@ fn test_match_statement() {
         NodeId::new(7),
     ));
     
-    let arm2 = stmt::MatchArm {
+    let arm2 = StmtMatchArm {
         pattern: pattern2,
         guard: None,
         body: body2,
@@ -684,7 +690,7 @@ fn test_match_arm_with_guard() {
         NodeId::new(6),
     ));
     
-    let arm = stmt::MatchArm {
+    let arm = StmtMatchArm {
         pattern,
         guard,
         body,
@@ -805,7 +811,7 @@ fn test_try_statement() {
         NodeId::new(3),
     ));
     
-    let catch_clause = stmt::CatchClause {
+    let catch_clause = StmtCatchClause {
         variable: Some(Symbol::intern("e")),
         error_type: None,
         body: Box::new(AstNode::new(
@@ -944,19 +950,19 @@ fn test_parameter_with_defaults() {
     let source_id = SourceId::new(1);
     let span = Span::new(Position::new(1, 1, 0), Position::new(1, 11, 10), source_id);
     
-    let param = stmt::Parameter {
+    let param = StmtParameter {
         name: Symbol::intern("count"),
         type_annotation: Some(AstNode::new(
             Type::Primitive(PrimitiveType::Integer(IntegerType::Unsigned(32))),
             span,
-            NodeId::new(1),
+            NodeId::new(1)
         )),
         default_value: Some(AstNode::new(
             Expr::Literal(LiteralExpr {
                 value: LiteralValue::Integer(10),
             }),
             span,
-            NodeId::new(2),
+            NodeId::new(2)
         )),
         is_mutable: false,
     };

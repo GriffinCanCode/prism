@@ -62,6 +62,20 @@ pub enum Expr {
     Throw(ThrowExpr),
     /// Error expression (for recovery)
     Error(ErrorExpr),
+    /// Formatted string (f-string) - Python specific
+    FormattedString(FormattedStringExpr),
+    /// List comprehension - Python specific
+    ListComprehension(ListComprehensionExpr),
+    /// Set comprehension - Python specific
+    SetComprehension(SetComprehensionExpr),
+    /// Dictionary comprehension - Python specific
+    DictComprehension(DictComprehensionExpr),
+    /// Generator expression - Python specific
+    GeneratorExpression(GeneratorExpressionExpr),
+    /// Named expression (walrus operator) - Python specific
+    NamedExpression(NamedExpressionExpr),
+    /// Starred expression (*args) - Python specific
+    StarredExpression(StarredExpressionExpr),
 }
 
 /// Literal expression
@@ -125,6 +139,8 @@ pub enum BinaryOperator {
     Divide,
     Modulo,
     Power,
+    FloorDivide,        // // (Python integer division)
+    MatrixMultiply,     // @ (Python matrix multiplication)
     
     // Comparison
     Equal,
@@ -151,6 +167,7 @@ pub enum BinaryOperator {
     SubtractAssign,
     MultiplyAssign,
     DivideAssign,
+    WalrusAssign,       // := (Python walrus operator)
     
     // Semantic operators (Prism-specific)
     SemanticEqual,      // ===
@@ -472,12 +489,132 @@ pub struct ThrowExpr {
     pub exception: Box<AstNode<Expr>>,
 }
 
-/// Error expression (for recovery)
+/// Error expression for recovery
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ErrorExpr {
     /// Error message
     pub message: String,
+}
+
+/// Formatted string expression (Python f-strings)
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct FormattedStringExpr {
+    /// String parts (literal text and expressions)
+    pub parts: Vec<FStringPart>,
+}
+
+/// F-string part
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum FStringPart {
+    /// Literal text
+    Literal(String),
+    /// Expression with optional formatting
+    Expression {
+        expression: AstNode<Expr>,
+        conversion: Option<FStringConversion>,
+        format_spec: Option<String>,
+        debug: bool, // = after expression for debug mode
+    },
+}
+
+/// F-string conversion types
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum FStringConversion {
+    Str,   // !s
+    Repr,  // !r
+    Ascii, // !a
+}
+
+/// List comprehension expression
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ListComprehensionExpr {
+    /// Element expression
+    pub element: Box<AstNode<Expr>>,
+    /// Comprehension generators
+    pub generators: Vec<ComprehensionGenerator>,
+}
+
+/// Set comprehension expression
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct SetComprehensionExpr {
+    /// Element expression
+    pub element: Box<AstNode<Expr>>,
+    /// Comprehension generators
+    pub generators: Vec<ComprehensionGenerator>,
+}
+
+/// Dictionary comprehension expression
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct DictComprehensionExpr {
+    /// Key expression
+    pub key: Box<AstNode<Expr>>,
+    /// Value expression
+    pub value: Box<AstNode<Expr>>,
+    /// Comprehension generators
+    pub generators: Vec<ComprehensionGenerator>,
+}
+
+/// Generator expression
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct GeneratorExpressionExpr {
+    /// Element expression
+    pub element: Box<AstNode<Expr>>,
+    /// Comprehension generators
+    pub generators: Vec<ComprehensionGenerator>,
+}
+
+/// Comprehension generator (for x in iterable if condition)
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ComprehensionGenerator {
+    /// Target variable
+    pub target: Symbol,
+    /// Iterable expression
+    pub iter: AstNode<Expr>,
+    /// Conditional filters
+    pub ifs: Vec<AstNode<Expr>>,
+    /// Whether this is an async generator
+    pub is_async: bool,
+}
+
+/// Named expression (walrus operator :=)
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct NamedExpressionExpr {
+    /// Target variable name
+    pub target: Symbol,
+    /// Value expression
+    pub value: Box<AstNode<Expr>>,
+}
+
+/// Starred expression (*args)
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct StarredExpressionExpr {
+    /// Expression being starred
+    pub value: Box<AstNode<Expr>>,
+    /// Context (load, store, or del)
+    pub context: ExpressionContext,
+}
+
+/// Expression context for starred expressions
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum ExpressionContext {
+    /// Load context (reading)
+    Load,
+    /// Store context (assignment)
+    Store,
+    /// Delete context (deletion)
+    Del,
 }
 
 // Implement AstNodeKind for all expression types
@@ -510,6 +647,13 @@ impl AstNodeKind for Expr {
             Self::Continue(_) => "Continue",
             Self::Throw(_) => "Throw",
             Self::Error(_) => "Error",
+            Self::FormattedString(_) => "FormattedString",
+            Self::ListComprehension(_) => "ListComprehension",
+            Self::SetComprehension(_) => "SetComprehension",
+            Self::DictComprehension(_) => "DictComprehension",
+            Self::GeneratorExpression(_) => "GeneratorExpression",
+            Self::NamedExpression(_) => "NamedExpression",
+            Self::StarredExpression(_) => "StarredExpression",
         }
     }
 
@@ -547,6 +691,13 @@ impl AstNodeKind for Expr {
             Self::Continue(_) => Some("Control Flow"),
             Self::Throw(_) => Some("Error Handling"),
             Self::Error(_) => Some("Error Handling"),
+            Self::FormattedString(_) => Some("Data"),
+            Self::ListComprehension(_) => Some("Data Structure"),
+            Self::SetComprehension(_) => Some("Data Structure"),
+            Self::DictComprehension(_) => Some("Data Structure"),
+            Self::GeneratorExpression(_) => Some("Generator"),
+            Self::NamedExpression(_) => Some("Data"),
+            Self::StarredExpression(_) => Some("Data"),
         }
     }
 
@@ -559,6 +710,7 @@ impl AstNodeKind for Expr {
             Self::Break(_) => true,
             Self::Continue(_) => true,
             Self::Throw(_) => true,
+            Self::NamedExpression(_) => true, // Walrus operator creates binding
             Self::Binary(BinaryExpr { operator, .. }) => matches!(
                 operator,
                 BinaryOperator::Assign
@@ -566,6 +718,7 @@ impl AstNodeKind for Expr {
                     | BinaryOperator::SubtractAssign
                     | BinaryOperator::MultiplyAssign
                     | BinaryOperator::DivideAssign
+                    | BinaryOperator::WalrusAssign // Python walrus operator
             ),
             Self::Error(_) => true,
             _ => false,
@@ -594,6 +747,12 @@ impl AstNodeKind for Expr {
             }
             Self::Match(_) => ComplexityClass::Linear,
             Self::While(_) | Self::For(_) => ComplexityClass::Unknown,
+            // Python-specific expressions
+            Self::FormattedString(_) => ComplexityClass::Linear, // f-strings can be complex
+            Self::ListComprehension(_) | Self::SetComprehension(_) | 
+            Self::DictComprehension(_) | Self::GeneratorExpression(_) => ComplexityClass::Linear, // Comprehensions are linear
+            Self::NamedExpression(_) => ComplexityClass::Constant, // Walrus operator is constant
+            Self::StarredExpression(_) => ComplexityClass::Constant, // Star unpacking is constant
             Self::Error(_) => ComplexityClass::Unknown,
             _ => ComplexityClass::Constant,
         }
@@ -632,6 +791,9 @@ impl fmt::Display for BinaryOperator {
             Self::ConceptualMatch => write!(f, "≈"),
             Self::Range => write!(f, ".."),
             Self::RangeInclusive => write!(f, "..="),
+            Self::FloorDivide => write!(f, "//"),
+            Self::MatrixMultiply => write!(f, "@"),
+            Self::WalrusAssign => write!(f, ":="),
         }
     }
 }

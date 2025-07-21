@@ -1,0 +1,29 @@
+[package]
+name = "prism-constraints"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Constraint validation and expression evaluation engine for the Prism programming language"
+keywords.workspace = true
+categories.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+prism-common.workspace = true
+prism-ast.workspace = true
+thiserror.workspace = true
+serde = { workspace = true, features = ["derive"] }
+regex.workspace = true
+chrono = { version = "0.4", features = ["serde"] }
+tracing = "0.1"
+
+[dev-dependencies]
+insta.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
+
+[features]
+default = []
+serde = [] 

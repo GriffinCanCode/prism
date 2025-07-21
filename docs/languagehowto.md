@@ -43,7 +43,7 @@
 ## 6. Advanced Language Features
 **Prism-Specific Features**
 - Smart Module system
-- AI integration layer
+- Metadata export layer
 - Conceptual cohesion metrics
 - Effect system and capabilities
 - Contract-based programming

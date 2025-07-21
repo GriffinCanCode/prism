@@ -9,7 +9,7 @@ Prism is an AI-first programming language designed with semantic types, capabili
 ## 🌟 Key Features
 
 - **Semantic Type System**: Types that express business meaning, not just memory layout
-- **AI-First Design**: Every language construct is designed for AI comprehension and assistance
+- **AI-First Design**: Every language construct generates structured, AI-legible metadata for external AI tools
 - **Capability-Based Security**: Zero-trust execution with fine-grained permission control
 - **Smart Module System**: Code organization that follows human mental models
 - **Effect System**: Precise tracking of computational effects and resource usage
@@ -30,7 +30,7 @@ prism/
 │   ├── prism-semantic/      # Type checking and semantic analysis
 │   ├── prism-effects/       # Effect system and capabilities
 │   ├── prism-codegen/       # Code generation backends
-│   ├── prism-ai/            # AI integration and context extraction
+│   ├── prism-ai/            # AI metadata export and context extraction
 │   ├── prism-cli/           # Command-line interface
 │   └── prism-runtime/       # Runtime support libraries
 └── design-docs/             # Language design specifications
@@ -42,17 +42,36 @@ prism/
 
 ## 🚀 Quick Start
 
-### Prerequisites
-
-- Rust 1.75.0 or later
-- Git
-
-### Installation
+### Option 1: Docker (Recommended for trying Prism)
 
 ```bash
-git clone https://github.com/prism-lang/prism.git
+# Pull and run the Prism compiler
+docker run --rm -v $(pwd):/workspace ghcr.io/griffincancode/prism/prism-compiler:latest --help
+
+# Start a development environment
+docker run --rm -it -v $(pwd):/workspace ghcr.io/griffincancode/prism/prism-dev:latest
+
+# Or use Docker Compose for full development setup
+git clone https://github.com/GriffinCanCode/prism.git
+cd prism
+docker-compose up prism-dev
+```
+
+### Option 2: Build from Source
+
+#### Prerequisites
+- Rust 1.75.0 or later
+- Git
+- Docker (optional, for containerized development)
+
+#### Installation
+```bash
+git clone https://github.com/GriffinCanCode/prism.git
 cd prism
 cargo build --release
+
+# Build Docker images (optional)
+./scripts/build-images.sh
 ```
 
 ### Example Prism Code
@@ -92,6 +111,61 @@ module UserManagement {
         }
     }
 }
+```
+
+## 🐳 Docker Usage
+
+Prism provides multiple Docker images for different use cases:
+
+### Available Images
+
+- **`ghcr.io/griffincancode/prism/prism-compiler`**: Optimized compiler for production builds
+- **`ghcr.io/griffincancode/prism/prism-dev`**: Full development environment with tools
+- **`ghcr.io/griffincancode/prism/prism-lsp`**: Language server for IDE integration
+- **`ghcr.io/griffincancode/prism/prism-ci`**: CI/CD optimized environment
+
+### Common Usage Patterns
+
+```bash
+# Compile a Prism project
+docker run --rm -v $(pwd):/workspace ghcr.io/griffincancode/prism/prism-compiler:latest compile src/
+
+# Interactive development
+docker run --rm -it -v $(pwd):/workspace ghcr.io/griffincancode/prism/prism-dev:latest
+
+# Language server for IDE
+docker run -d -p 9257:9257 ghcr.io/griffincancode/prism/prism-lsp:latest
+
+# CI/CD pipeline
+docker run --rm -v $(pwd):/ci ghcr.io/griffincancode/prism/prism-ci:latest test --all
+```
+
+### Development with Docker Compose
+
+```bash
+# Start full development environment
+docker-compose up prism-dev
+
+# Run specific services
+docker-compose up prism-lsp prism-docs
+
+# Clean rebuild
+docker-compose build --no-cache
+```
+
+### Build Scripts
+
+Prism includes helpful scripts for building and testing:
+
+```bash
+# Build all Docker images
+./scripts/build-images.sh
+
+# Verify your installation
+./scripts/verify-installation.sh
+
+# See all available scripts
+ls scripts/ && cat scripts/README.md
 ```
 
 ## 📖 Language Design Documents
@@ -161,14 +235,14 @@ Start simple and add complexity only when needed. The language scales from proto
 ### 5. Conceptual Cohesion
 Code organization follows human mental models rather than arbitrary technical boundaries.
 
-## 🤖 AI Integration
+## 🤖 AI Metadata Export
 
-Prism includes first-class AI integration features:
+Prism includes first-class AI metadata export features:
 
 - **Semantic Context Extraction**: AI systems can understand code intent through rich type metadata
 - **AI-Readable Documentation**: Built-in annotations provide context for AI code analysis
 - **Prompt Injection Prevention**: Secure handling of AI-generated code and prompts
-- **Local AI Model Support**: Integration with local language models for privacy-first development
+- **Structured Metadata Export**: Rich semantic information exported for external AI and development tools
 
 ## 🔒 Security Features
 

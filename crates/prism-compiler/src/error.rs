@@ -6,7 +6,6 @@
 use prism_common::{span::Span, NodeId};
 use std::path::PathBuf;
 use thiserror::Error;
-
 /// Result type for compiler operations
 pub type CompilerResult<T> = Result<T, CompilerError>;
 
@@ -89,6 +88,9 @@ pub enum CompilerError {
 
     #[error("Semantic type violation at {location}: {rule}")]
     SemanticTypeViolation { location: Span, rule: String },
+
+    #[error("Semantic analysis error: {message}")]
+    SemanticAnalysisError { message: String },
 
     #[error("Business rule violation at {location}: {rule} - {explanation}")]
     BusinessRuleViolation {

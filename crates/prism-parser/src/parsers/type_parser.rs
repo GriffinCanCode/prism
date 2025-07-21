@@ -12,9 +12,9 @@ use crate::{
     core::{error::{ParseError, ParseResult}, token_stream_manager::TokenStreamManager, parsing_coordinator::ParsingCoordinator},
     analysis::constraint_validation::{ConstraintValidator, ValidationConfig},
 };
-use prism_ast::{AstNode, Type, TypeKind};
+use prism_ast::{AstNode, Type, TypeKind, TypeConstraint, Attribute, AttributeArgument, SemanticConstraint, ErrorType};
 use prism_lexer::{Token, TokenKind};
-use prism_common::span::Span;
+use prism_common::{span::Span, NodeId};
 use std::collections::HashMap;
 
 /// Type parser - handles all type expressions and semantic constraints
@@ -54,7 +54,7 @@ impl<'a> TypeParser<'a> {
         let start_span = self.token_stream.current_span();
         
         // Parse base type
-        let mut base_type = self.parse_base_type()?;
+        let mut base_type = self.parse_primary_type()?;
         
         // Handle type modifiers and compound types
         loop {
@@ -118,349 +118,452 @@ impl<'a> TypeParser<'a> {
         Ok(base_type)
     }
 
-    /// Parse a base type (primitive, named, or compound)
-    fn parse_base_type(&mut self) -> ParseResult<NodeId> {
+    /// Parse a primary type
+    fn parse_primary_type(&mut self) -> ParseResult<AstNode<Type>> {
         let start_span = self.token_stream.current_span();
         
         match self.token_stream.current_kind() {
-            // Primitive types
-            TokenKind::Identifier(name) => {
-                let type_name = name.clone();
+            // Optional type (?)
+            TokenKind::Question => {
                 self.token_stream.advance();
+                let base_type = self.parse_primary_type()?;
+                let end_span = self.token_stream.current_span();
+                let span = start_span.combine(&end_span).unwrap_or(start_span);
                 
+                // For now, represent optional as a union with null
+                let null_type = AstNode::new(
+                    Type::Primitive(prism_ast::PrimitiveType::Unit),
+                    span,
+                    prism_common::NodeId::new(0),
+                );
+                
+                let union_type = prism_ast::UnionType {
+                    members: vec![base_type, null_type],
+                    discriminant: None,
+                    constraints: Vec::new(),
+                    common_operations: Vec::new(),
+                    metadata: prism_ast::UnionMetadata::default(),
+                };
+                
+                Ok(self.coordinator.create_node(
+                    Type::Union(Box::new(union_type)),
+                    span,
+                ))
+            }
+            
+            // Union type (|)
+            TokenKind::Pipe => {
+                self.token_stream.advance();
+                let mut types = Vec::new();
+                
+                // Parse first type
+                types.push(self.parse_primary_type()?);
+                
+                // Parse additional types
+                while self.token_stream.check(TokenKind::Pipe) {
+                    self.token_stream.advance();
+                    types.push(self.parse_primary_type()?);
+                }
+                
+                let end_span = self.token_stream.current_span();
+                let span = start_span.combine(&end_span).unwrap_or(start_span);
+                
+                let union_type = prism_ast::UnionType {
+                    members: types,
+                    discriminant: None,
+                    constraints: Vec::new(),
+                    common_operations: Vec::new(),
+                    metadata: prism_ast::UnionMetadata::default(),
+                };
+                
+                Ok(self.coordinator.create_node(
+                    Type::Union(Box::new(union_type)),
+                    span,
+                ))
+            }
+            
+            // Primitive types
+            TokenKind::Identifier(type_name) => {
                 match type_name.as_str() {
-                    // Numeric types
-                    "i8" | "i16" | "i32" | "i64" | "i128" |
-                    "u8" | "u16" | "u32" | "u64" | "u128" |
-                    "f32" | "f64" => {
+                    "bool" | "boolean" => {
+                        self.token_stream.advance();
                         let span = self.token_stream.previous_span();
-                        Ok(self.coordinator.create_type_node(
-                            TypeKind::Primitive(type_name),
+                        Ok(self.coordinator.create_node(
+                            Type::Primitive(prism_ast::PrimitiveType::Boolean),
                             span,
                         ))
                     }
-                    
-                    // String types
+                    "i32" | "int" => {
+                        self.token_stream.advance();
+                        let span = self.token_stream.previous_span();
+                        Ok(self.coordinator.create_node(
+                            Type::Primitive(prism_ast::PrimitiveType::Integer(prism_ast::IntegerType::Signed(32))),
+                            span,
+                        ))
+                    }
+                    "u64" | "uint" => {
+                        self.token_stream.advance();
+                        let span = self.token_stream.previous_span();
+                        Ok(self.coordinator.create_node(
+                            Type::Primitive(prism_ast::PrimitiveType::Integer(prism_ast::IntegerType::Unsigned(64))),
+                            span,
+                        ))
+                    }
+                    "f64" | "float" => {
+                        self.token_stream.advance();
+                        let span = self.token_stream.previous_span();
+                        Ok(self.coordinator.create_node(
+                            Type::Primitive(prism_ast::PrimitiveType::Float(prism_ast::FloatType::F64)),
+                            span,
+                        ))
+                    }
                     "string" | "str" => {
+                        self.token_stream.advance();
                         let span = self.token_stream.previous_span();
-                        Ok(self.coordinator.create_type_node(
-                            TypeKind::Primitive(type_name),
+                        Ok(self.coordinator.create_node(
+                            Type::Primitive(prism_ast::PrimitiveType::String),
                             span,
                         ))
                     }
-                    
-                    // Boolean type
-                    "bool" => {
+                    "char" => {
+                        self.token_stream.advance();
                         let span = self.token_stream.previous_span();
-                        Ok(self.coordinator.create_type_node(
-                            TypeKind::Primitive(type_name),
+                        Ok(self.coordinator.create_node(
+                            Type::Primitive(prism_ast::PrimitiveType::Char),
                             span,
                         ))
                     }
-                    
-                    // Unit type
-                    "void" | "unit" => {
+                    "()" | "unit" => {
+                        self.token_stream.advance();
                         let span = self.token_stream.previous_span();
-                        Ok(self.coordinator.create_type_node(
-                            TypeKind::Unit,
+                        Ok(self.coordinator.create_node(
+                            Type::Primitive(prism_ast::PrimitiveType::Unit),
                             span,
                         ))
                     }
-                    
-                    // Named type (user-defined)
                     _ => {
-                        // Check for generic parameters
-                        if self.token_stream.check(TokenKind::Less) {
-                            self.parse_generic_type(type_name, start_span)
-                        } else {
-                            let span = self.token_stream.previous_span();
-                            Ok(self.coordinator.create_type_node(
-                                TypeKind::Named(type_name),
-                                span,
-                            ))
-                        }
+                        // Named type
+                        let type_name_symbol = prism_common::symbol::Symbol::intern(type_name);
+                        self.token_stream.advance();
+                        let span = self.token_stream.previous_span();
+                        
+                        let named_type = prism_ast::NamedType {
+                            name: type_name_symbol,
+                            type_arguments: Vec::new(), // TODO: Parse type arguments
+                        };
+                        
+                        Ok(self.coordinator.create_node(
+                            Type::Named(named_type),
+                            span,
+                        ))
                     }
                 }
             }
             
-            // Tuple type: (Type, Type, ...)
-            TokenKind::LeftParen => {
-                self.parse_tuple_type(start_span)
-            }
-            
-            // Function type: (Type, Type) -> Type
-            TokenKind::Fn => {
-                self.parse_function_type(start_span)
-            }
-            
             _ => Err(ParseError::unexpected_token(
-                self.token_stream.current_token().clone(),
-                "type".to_string(),
+                vec![TokenKind::Identifier("type".to_string())],
+                self.token_stream.current_kind().clone(),
+                self.token_stream.current_span(),
             )),
         }
     }
 
-    /// Parse a generic type: Name<Type, Type, ...>
-    fn parse_generic_type(&mut self, base_name: String, start_span: Span) -> ParseResult<NodeId> {
-        self.token_stream.expect(TokenKind::Less)?;
+    /// Parse a generic type
+    fn parse_generic_type(&mut self) -> ParseResult<AstNode<Type>> {
+        let start_span = self.token_stream.current_span();
         
-        let mut type_args = Vec::new();
+        // Parse base type
+        let base_type = self.parse_primary_type()?;
         
-        while !self.token_stream.check(TokenKind::Greater) && !self.token_stream.is_at_end() {
-            type_args.push(self.parse_type()?);
+        // Parse generic parameters if present
+        if self.token_stream.check(TokenKind::Less) {
+            self.token_stream.advance(); // consume '<'
             
-            if !self.token_stream.check(TokenKind::Greater) {
-                self.token_stream.expect(TokenKind::Comma)?;
+            let mut type_arguments = Vec::new();
+            
+            // Parse first type argument
+            type_arguments.push(self.parse_type()?);
+            
+            // Parse additional type arguments
+            while self.token_stream.check(TokenKind::Comma) {
+                self.token_stream.advance(); // consume ','
+                type_arguments.push(self.parse_type()?);
             }
+            
+            self.token_stream.expect(TokenKind::Greater)?; // consume '>'
+            
+            let end_span = self.token_stream.current_span();
+            let span = start_span.combine(&end_span).unwrap_or(start_span);
+            
+            // Update the base type to include type arguments
+            if let Type::Named(mut named_type) = base_type.kind {
+                named_type.type_arguments = type_arguments;
+                Ok(self.coordinator.create_node(
+                    Type::Named(named_type),
+                    span,
+                ))
+            } else {
+                // For non-named types, create a generic type
+                let generic_type = prism_ast::GenericType {
+                    parameters: Vec::new(), // TODO: Parse type parameters properly
+                    base_type: Box::new(base_type),
+                };
+                
+                Ok(self.coordinator.create_node(
+                    Type::Generic(generic_type),
+                    span,
+                ))
+            }
+        } else {
+            Ok(base_type)
         }
-        
-        self.token_stream.expect(TokenKind::Greater)?;
-        
-        let end_span = self.token_stream.previous_span();
-        let span = Span::combine(start_span, end_span);
-        
-        Ok(self.coordinator.create_type_node(
-            TypeKind::Generic {
-                base: base_name,
-                args: type_args,
-            },
-            span,
-        ))
     }
 
-    /// Parse a tuple type: (Type, Type, ...)
-    fn parse_tuple_type(&mut self, start_span: Span) -> ParseResult<NodeId> {
-        self.token_stream.expect(TokenKind::LeftParen)?;
+    /// Parse a tuple type
+    fn parse_tuple_type(&mut self) -> ParseResult<AstNode<Type>> {
+        let start_span = self.token_stream.current_span();
+        
+        self.token_stream.expect(TokenKind::LeftParen)?; // consume '('
         
         let mut element_types = Vec::new();
         
-        while !self.token_stream.check(TokenKind::RightParen) && !self.token_stream.is_at_end() {
+        if !self.token_stream.check(TokenKind::RightParen) {
+            // Parse first element
             element_types.push(self.parse_type()?);
             
-            if !self.token_stream.check(TokenKind::RightParen) {
-                self.token_stream.expect(TokenKind::Comma)?;
+            // Parse additional elements
+            while self.token_stream.check(TokenKind::Comma) {
+                self.token_stream.advance(); // consume ','
+                if self.token_stream.check(TokenKind::RightParen) {
+                    break; // Trailing comma
+                }
+                element_types.push(self.parse_type()?);
             }
         }
         
-        self.token_stream.expect(TokenKind::RightParen)?;
+        self.token_stream.expect(TokenKind::RightParen)?; // consume ')'
         
-        let end_span = self.token_stream.previous_span();
-        let span = Span::combine(start_span, end_span);
+        let end_span = self.token_stream.current_span();
+        let span = start_span.combine(&end_span).unwrap_or(start_span);
         
-        Ok(self.coordinator.create_type_node(
-            TypeKind::Tuple(element_types),
+        let tuple_type = prism_ast::TupleType {
+            elements: element_types,
+        };
+        
+        Ok(self.coordinator.create_node(
+            Type::Tuple(tuple_type),
             span,
         ))
     }
 
-    /// Parse a function type: fn(Type, Type) -> Type
-    fn parse_function_type(&mut self, start_span: Span) -> ParseResult<NodeId> {
-        self.token_stream.expect(TokenKind::Fn)?;
+    /// Parse a function type
+    fn parse_function_type(&mut self) -> ParseResult<AstNode<Type>> {
+        let start_span = self.token_stream.current_span();
         
         // Parse parameter types
-        self.token_stream.expect(TokenKind::LeftParen)?;
-        let mut param_types = Vec::new();
+        let mut parameters = Vec::new();
         
-        while !self.token_stream.check(TokenKind::RightParen) && !self.token_stream.is_at_end() {
-            param_types.push(self.parse_type()?);
+        if self.token_stream.check(TokenKind::LeftParen) {
+            self.token_stream.advance(); // consume '('
             
             if !self.token_stream.check(TokenKind::RightParen) {
-                self.token_stream.expect(TokenKind::Comma)?;
+                // Parse first parameter
+                parameters.push(self.parse_type()?);
+                
+                // Parse additional parameters
+                while self.token_stream.check(TokenKind::Comma) {
+                    self.token_stream.advance(); // consume ','
+                    if self.token_stream.check(TokenKind::RightParen) {
+                        break; // Trailing comma
+                    }
+                    parameters.push(self.parse_type()?);
+                }
             }
+            
+            self.token_stream.expect(TokenKind::RightParen)?; // consume ')'
         }
         
-        self.token_stream.expect(TokenKind::RightParen)?;
+        // Parse arrow
+        self.token_stream.expect(TokenKind::Arrow)?; // consume '->'
         
         // Parse return type
-        self.token_stream.expect(TokenKind::Arrow)?;
-        let return_type = self.parse_type()?;
+        let return_type = Box::new(self.parse_type()?);
         
         let end_span = self.token_stream.current_span();
-        let span = Span::combine(start_span, end_span);
+        let span = start_span.combine(&end_span).unwrap_or(start_span);
         
-        Ok(self.coordinator.create_type_node(
-            TypeKind::Function {
-                params: param_types,
-                return_type: Box::new(return_type),
-            },
+        let function_type = prism_ast::FunctionType {
+            parameters,
+            return_type,
+            effects: Vec::new(), // TODO: Parse effects
+        };
+        
+        Ok(self.coordinator.create_node(
+            Type::Function(function_type),
             span,
         ))
     }
 
-    /// Parse a constrained type with semantic constraints
-    fn parse_constrained_type(&mut self, base_type: NodeId, start_span: Span) -> ParseResult<NodeId> {
-        self.token_stream.expect(TokenKind::Where)?;
+    /// Parse a semantic type with constraints
+    fn parse_semantic_type(&mut self) -> ParseResult<AstNode<Type>> {
+        let start_span = self.token_stream.current_span();
         
+        // Parse base type
+        let base_type = Box::new(self.parse_primary_type()?);
+        
+        // Parse constraints if present
         let mut constraints = Vec::new();
-        let mut business_rules = Vec::new();
         
-        // Parse constraint clauses
-        loop {
-            if let Some(constraint) = self.parse_semantic_constraint()? {
-                constraints.push(constraint);
-            }
+        if self.token_stream.check(TokenKind::Where) {
+            self.token_stream.advance(); // consume 'where'
             
-            if let Some(rule) = self.parse_business_rule()? {
-                business_rules.push(rule);
-            }
-            
-            if !self.token_stream.consume(TokenKind::Comma) {
-                break;
+            // Parse constraint list
+            loop {
+                if let Some(constraint) = self.parse_type_constraint()? {
+                    constraints.push(constraint);
+                }
+                
+                if self.token_stream.check(TokenKind::Comma) {
+                    self.token_stream.advance(); // consume ','
+                } else {
+                    break;
+                }
             }
         }
         
         let end_span = self.token_stream.current_span();
-        let span = Span::combine(start_span, end_span);
+        let span = start_span.combine(&end_span).unwrap_or(start_span);
         
-        Ok(self.coordinator.create_type_node(
-            TypeKind::Constrained {
+        if !constraints.is_empty() {
+            let semantic_type = prism_ast::SemanticType {
                 base_type,
                 constraints,
-                business_rules,
-            },
-            span,
-        ))
-    }
-
-    /// Parse a semantic constraint
-    fn parse_semantic_constraint(&mut self) -> ParseResult<Option<SemanticConstraint>> {
-        match self.token_stream.current_kind() {
-            TokenKind::Identifier(name) => {
-                let constraint_name = name.clone();
-                self.token_stream.advance();
-                
-                match constraint_name.as_str() {
-                    // Range constraints
-                    "min_value" => {
-                        self.token_stream.expect(TokenKind::Assign)?;
-                        let value = self.parse_constraint_value()?;
-                        Ok(Some(SemanticConstraint::MinValue(value)))
-                    }
-                    
-                    "max_value" => {
-                        self.token_stream.expect(TokenKind::Assign)?;
-                        let value = self.parse_constraint_value()?;
-                        Ok(Some(SemanticConstraint::MaxValue(value)))
-                    }
-                    
-                    // Length constraints
-                    "min_length" => {
-                        self.token_stream.expect(TokenKind::Assign)?;
-                        let value = self.parse_constraint_value()?;
-                        Ok(Some(SemanticConstraint::MinLength(value as usize)))
-                    }
-                    
-                    "max_length" => {
-                        self.token_stream.expect(TokenKind::Assign)?;
-                        let value = self.parse_constraint_value()?;
-                        Ok(Some(SemanticConstraint::MaxLength(value as usize)))
-                    }
-                    
-                    // Pattern constraints
-                    "pattern" => {
-                        self.token_stream.expect(TokenKind::Assign)?;
-                        let pattern = self.parse_string_literal()?;
-                        Ok(Some(SemanticConstraint::Pattern(pattern)))
-                    }
-                    
-                    "format" => {
-                        self.token_stream.expect(TokenKind::Assign)?;
-                        let format = self.parse_string_literal()?;
-                        Ok(Some(SemanticConstraint::Format(format)))
-                    }
-                    
-                    // Precision constraints
-                    "precision" => {
-                        self.token_stream.expect(TokenKind::Assign)?;
-                        let value = self.parse_constraint_value()?;
-                        Ok(Some(SemanticConstraint::Precision(value as u32)))
-                    }
-                    
-                    // Currency constraints
-                    "currency" => {
-                        self.token_stream.expect(TokenKind::Assign)?;
-                        let currency = self.parse_string_literal()?;
-                        Ok(Some(SemanticConstraint::Currency(currency)))
-                    }
-                    
-                    // Boolean constraints
-                    "non_negative" => {
-                        Ok(Some(SemanticConstraint::NonNegative))
-                    }
-                    
-                    "immutable" => {
-                        Ok(Some(SemanticConstraint::Immutable))
-                    }
-                    
-                    "validated" => {
-                        Ok(Some(SemanticConstraint::Validated))
-                    }
-                    
-                    _ => Ok(None),
-                }
-            }
-            _ => Ok(None),
+                metadata: prism_ast::SemanticTypeMetadata::default(),
+            };
+            
+            Ok(self.coordinator.create_node(
+                Type::Semantic(semantic_type),
+                span,
+            ))
+        } else {
+            Ok(*base_type)
         }
     }
 
-    /// Parse a business rule
-    fn parse_business_rule(&mut self) -> ParseResult<Option<BusinessRule>> {
+    /// Parse a type constraint
+    fn parse_type_constraint(&mut self) -> ParseResult<Option<TypeConstraint>> {
         match self.token_stream.current_kind() {
-            TokenKind::Identifier(name) => {
-                let rule_name = name.clone();
-                
-                match rule_name.as_str() {
+            TokenKind::Identifier(constraint_name) => {
+                match constraint_name.as_str() {
+                    "range" => {
+                        self.token_stream.advance();
+                        self.token_stream.expect(TokenKind::LeftParen)?;
+                        
+                        // Parse range bounds (simplified for now)
+                        let _min = self.parse_constraint_value()?;
+                        self.token_stream.expect(TokenKind::Comma)?;
+                        let _max = self.parse_constraint_value()?;
+                        
+                        self.token_stream.expect(TokenKind::RightParen)?;
+                        
+                        // Create a simple range constraint
+                        let range_constraint = prism_ast::RangeConstraint {
+                            min: None, // TODO: Parse actual expressions
+                            max: None, // TODO: Parse actual expressions
+                            inclusive: true,
+                        };
+                        
+                        Ok(Some(TypeConstraint::Range(range_constraint)))
+                    }
+                    "length" => {
+                        self.token_stream.advance();
+                        self.token_stream.expect(TokenKind::LeftParen)?;
+                        
+                        // Parse length constraints (simplified)
+                        let _length = self.parse_constraint_value()?;
+                        
+                        self.token_stream.expect(TokenKind::RightParen)?;
+                        
+                        let length_constraint = prism_ast::LengthConstraint {
+                            min_length: None, // TODO: Parse actual values
+                            max_length: None, // TODO: Parse actual values
+                        };
+                        
+                        Ok(Some(TypeConstraint::Length(length_constraint)))
+                    }
+                    "pattern" => {
+                        self.token_stream.advance();
+                        self.token_stream.expect(TokenKind::LeftParen)?;
+                        
+                        let pattern = self.parse_string_literal()?;
+                        
+                        self.token_stream.expect(TokenKind::RightParen)?;
+                        
+                        let pattern_constraint = prism_ast::PatternConstraint {
+                            pattern,
+                            flags: Vec::new(),
+                        };
+                        
+                        Ok(Some(TypeConstraint::Pattern(pattern_constraint)))
+                    }
+                    "custom" => {
+                        self.token_stream.advance();
+                        self.token_stream.expect(TokenKind::LeftParen)?;
+                        
+                        let rule_text = self.parse_string_literal()?;
+                        
+                        self.token_stream.expect(TokenKind::RightParen)?;
+                        
+                        let custom_constraint = prism_ast::CustomConstraint {
+                            expression: self.coordinator.create_node(
+                        prism_ast::Expr::Literal(prism_ast::LiteralValue::String(rule_text)),
+                        span
+                    ),
+                            parameters: std::collections::HashMap::new(),
+                        };
+                        
+                        Ok(Some(TypeConstraint::Custom(custom_constraint)))
+                    }
                     "business_rule" => {
                         self.token_stream.advance();
-                        self.token_stream.expect(TokenKind::Assign)?;
+                        self.token_stream.expect(TokenKind::LeftParen)?;
+                        
                         let rule_text = self.parse_string_literal()?;
-                        Ok(Some(BusinessRule::Custom(rule_text)))
+                        
+                        self.token_stream.expect(TokenKind::RightParen)?;
+                        
+                        let business_rule_constraint = prism_ast::BusinessRuleConstraint {
+                            rule_type: prism_ast::BusinessRuleType::Custom,
+                            description: rule_text,
+                            parameters: std::collections::HashMap::new(),
+                        };
+                        
+                        Ok(Some(TypeConstraint::BusinessRule(business_rule_constraint)))
                     }
-                    
-                    "security_classification" => {
-                        self.token_stream.advance();
-                        self.token_stream.expect(TokenKind::Assign)?;
-                        let classification = self.parse_string_literal()?;
-                        Ok(Some(BusinessRule::SecurityClassification(classification)))
-                    }
-                    
-                    "compliance" => {
-                        self.token_stream.advance();
-                        self.token_stream.expect(TokenKind::Assign)?;
-                        let standard = self.parse_string_literal()?;
-                        Ok(Some(BusinessRule::Compliance(standard)))
-                    }
-                    
-                    "ai_context" => {
-                        self.token_stream.advance();
-                        self.token_stream.expect(TokenKind::Assign)?;
-                        let context = self.parse_string_literal()?;
-                        Ok(Some(BusinessRule::AIContext(context)))
-                    }
-                    
-                    _ => Ok(None),
+                    _ => Ok(None)
                 }
             }
-            _ => Ok(None),
+            _ => Ok(None)
         }
     }
 
-    /// Parse a constraint value (number)
-    fn parse_constraint_value(&mut self) -> ParseResult<f64> {
+    /// Parse a constraint value
+    fn parse_constraint_value(&mut self) -> ParseResult<String> {
         match self.token_stream.current_kind() {
             TokenKind::IntegerLiteral(value) => {
-                let result = *value as f64;
+                let value_str = value.to_string();
                 self.token_stream.advance();
-                Ok(result)
+                Ok(value_str)
             }
-            TokenKind::FloatLiteral(value) => {
-                let result = *value;
+            TokenKind::StringLiteral(value) => {
+                let value_str = value.clone();
                 self.token_stream.advance();
-                Ok(result)
+                Ok(value_str)
             }
             _ => Err(ParseError::unexpected_token(
-                self.token_stream.current_token().clone(),
-                "numeric value".to_string(),
+                vec![TokenKind::IntegerLiteral(0), TokenKind::StringLiteral("".to_string())],
+                self.token_stream.current_kind().clone(),
+                self.token_stream.current_span(),
             )),
         }
     }
@@ -469,15 +572,23 @@ impl<'a> TypeParser<'a> {
     fn parse_string_literal(&mut self) -> ParseResult<String> {
         match self.token_stream.current_kind() {
             TokenKind::StringLiteral(value) => {
-                let result = value.clone();
+                let value_str = value.clone();
                 self.token_stream.advance();
-                Ok(result)
+                Ok(value_str)
             }
             _ => Err(ParseError::unexpected_token(
-                self.token_stream.current_token().clone(),
-                "string literal".to_string(),
+                vec![TokenKind::StringLiteral("".to_string())],
+                self.token_stream.current_kind().clone(),
+                self.token_stream.current_span(),
             )),
         }
+    }
+
+    /// Validate a constraint (placeholder for now)
+    fn validate_constraint(&mut self, constraint: &TypeConstraint, span: Span) -> Result<(), String> {
+        // For now, all constraints are valid
+        // TODO: Implement proper constraint validation
+        Ok(())
     }
 
     /// Validate semantic constraints for a type
@@ -485,7 +596,7 @@ impl<'a> TypeParser<'a> {
         // Use the constraint validator to check semantic validity
         for constraint in constraints {
             if let Err(error) = self.constraint_validator.validate_constraint(constraint) {
-                return Err(ParseError::semantic_error(error));
+                return Err(ParseError::semantic_error(error, "Constraint validation failed".to_string(), span));
             }
         }
         Ok(())

@@ -13,7 +13,7 @@
 //! - Enables AI tools to understand Prism code through structured data
 //! - Supports AI-assisted development through external services
 
-use crate::{Effect, EffectRegistry, EffectDefinition};
+use crate::effects::{Effect, EffectRegistry, EffectDefinition};
 use prism_ast::SecurityClassification;
 use std::collections::{HashMap, HashSet};
 
@@ -1184,7 +1184,7 @@ mod tests {
         let registry = EffectRegistry::new();
         
         let effects = vec![
-            Effect::new("IO.Network.Connect".to_string(), Span::new(0, 0, 0.into())),
+            Effect::new("IO.Network.Connect".to_string(), prism_common::span::Span::dummy()),
         ];
         
         let analysis = analyzer.analyze(&effects, &registry);
@@ -1197,7 +1197,7 @@ mod tests {
         let registry = EffectRegistry::new();
         
         let effects = vec![
-            Effect::new("Database.Query".to_string(), Span::new(0, 0, 0.into())),
+            Effect::new("Database.Query".to_string(), prism_common::span::Span::dummy()),
         ];
         
         let explanations = explainer.explain(&effects, &registry);

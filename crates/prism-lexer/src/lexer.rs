@@ -29,6 +29,14 @@ pub enum LexerError {
     InvalidEscape(Position),
     #[error("Unexpected end of file")]
     UnexpectedEof,
+    #[error("Invalid regex literal at position {0}")]
+    InvalidRegex(Position),
+    #[error("Invalid money literal at position {0}")]
+    InvalidMoney(Position),
+    #[error("Invalid duration literal at position {0}")]
+    InvalidDuration(Position),
+    #[error("Indentation error at position {0}")]
+    IndentationError(Position),
 }
 
 impl From<LexerError> for ErrorPattern {
@@ -39,6 +47,10 @@ impl From<LexerError> for ErrorPattern {
             LexerError::InvalidNumber(_) => ErrorPattern::InvalidNumber,
             LexerError::InvalidEscape(_) => ErrorPattern::InvalidEscape,
             LexerError::UnexpectedEof => ErrorPattern::UnexpectedEof,
+            LexerError::InvalidRegex(_) => ErrorPattern::InvalidRegex,
+            LexerError::InvalidMoney(_) => ErrorPattern::InvalidMoney,
+            LexerError::InvalidDuration(_) => ErrorPattern::InvalidDuration,
+            LexerError::IndentationError(_) => ErrorPattern::IndentationError,
         }
     }
 }
@@ -100,6 +112,12 @@ pub struct Lexer<'source> {
     config: LexerConfig,
     /// Error recovery handler
     error_recovery: ErrorRecovery,
+    /// Indentation stack for Python-like syntax
+    indent_stack: Vec<usize>,
+    /// Whether we're at the beginning of a line
+    at_line_start: bool,
+    /// Pending dedent tokens to emit
+    pending_dedents: Vec<usize>,
 }
 
 impl<'source> Lexer<'source> {
@@ -123,6 +141,9 @@ impl<'source> Lexer<'source> {
             current_char,
             config,
             error_recovery: ErrorRecovery::new(),
+            indent_stack: Vec::new(),
+            at_line_start: true,
+            pending_dedents: Vec::new(),
         }
     }
 
@@ -181,6 +202,12 @@ impl<'source> Lexer<'source> {
 
     /// Get the next token
     fn next_token(&mut self) -> Option<Result<Token, LexerError>> {
+        // Handle pending dedent tokens first
+        if let Some(dedent_level) = self.pending_dedents.pop() {
+            let span = Span::new(self.position, self.position, self.source_id);
+            return Some(Ok(Token::new(TokenKind::Dedent(dedent_level), span)));
+        }
+
         self.skip_whitespace_and_comments();
         
         let start_pos = self.position;
@@ -207,7 +234,7 @@ impl<'source> Lexer<'source> {
                     '-' => self.read_minus(),
                     '*' => self.read_star(),
                     '/' => self.read_slash(),
-                    '%' => Some(Ok(self.single_char_token(TokenKind::Percent))),
+                    '%' => self.read_percent(),
                     '=' => self.read_equals(),
                     '!' => self.read_bang(),
                     '<' => self.read_less(),
@@ -215,7 +242,7 @@ impl<'source> Lexer<'source> {
                     '&' => self.read_ampersand(),
                     '|' => self.read_pipe(),
                     '^' => Some(Ok(self.single_char_token(TokenKind::Caret))),
-                    '~' => Some(Ok(self.single_char_token(TokenKind::Tilde))),
+                    '~' => self.read_tilde(),
                     
                     // Delimiters
                     '(' => Some(Ok(self.single_char_token(TokenKind::LeftParen))),
@@ -230,8 +257,20 @@ impl<'source> Lexer<'source> {
                     ';' => Some(Ok(self.single_char_token(TokenKind::Semicolon))),
                     ':' => self.read_colon(),
                     '.' => self.read_dot(),
-                    '?' => Some(Ok(self.single_char_token(TokenKind::Question))),
+                    '?' => self.read_question(),
                     '@' => Some(Ok(self.single_char_token(TokenKind::At))),
+                    '#' => Some(Ok(self.single_char_token(TokenKind::Hash))),
+                    '$' => self.read_dollar(),
+                    '≈' => Some(Ok(self.single_char_token(TokenKind::ConceptuallySimilar))),
+                    
+                    // Currency symbols (money literals)
+                    '€' | '£' | '¥' | '₹' | '₽' | '₩' | '₪' | '₨' | '₡' | '₦' | '₵' | '₴' | '₸' | '₿' => {
+                        if self.peek_char().map_or(false, |c| c.is_ascii_digit()) {
+                            self.read_money_literal(ch)
+                        } else {
+                            Some(Err(LexerError::InvalidCharacter(ch, self.position)))
+                        }
+                    }
                     
                     // Whitespace (preserve if configured)
                     ' ' | '\t' | '\r' => {
@@ -243,15 +282,100 @@ impl<'source> Lexer<'source> {
                         }
                     }
                     
-                    // Newlines (always significant for some parsing)
-                    '\n' => Some(Ok(self.single_char_token(TokenKind::Newline))),
+                    // Newlines (handle indentation tracking)
+                    '\n' => {
+                        self.at_line_start = true;
+                        let newline_token = Some(Ok(self.single_char_token(TokenKind::Newline)));
+                        // After newline, check for indentation changes on next call
+                        self.process_indentation_after_newline();
+                        newline_token
+                    }
                     
                     // Invalid characters
                     _ => Some(Err(LexerError::InvalidCharacter(ch, self.position))),
                 };
                 
+                // Reset line start flag after processing any non-whitespace token
+                if !matches!(ch, ' ' | '\t' | '\r' | '\n') {
+                    self.at_line_start = false;
+                }
+                
                 result
             }
+        }
+    }
+
+    /// Process indentation changes after a newline
+    fn process_indentation_after_newline(&mut self) {
+        // This will be called on the next token request to handle indentation
+        // For now, we'll implement a simple version
+    }
+
+    /// Handle indentation at the start of a line
+    fn handle_line_start_indentation(&mut self) -> Option<Result<Token, LexerError>> {
+        if !self.at_line_start {
+            return None;
+        }
+
+        let start_pos = self.position;
+        let mut indent_level = 0;
+        
+        // Count spaces and tabs for indentation
+        while let Some(ch) = self.current_char {
+            match ch {
+                ' ' => {
+                    indent_level += 1;
+                    self.advance();
+                }
+                '\t' => {
+                    indent_level += 8; // Tab = 8 spaces
+                    self.advance();
+                }
+                '\n' | '\r' => {
+                    // Empty line, ignore indentation
+                    return None;
+                }
+                _ => break,
+            }
+        }
+        
+        self.at_line_start = false;
+        
+        // Compare with current indentation level
+        let current_level = self.indent_stack.last().copied().unwrap_or(0);
+        
+        if indent_level > current_level {
+            // Increased indentation
+            self.indent_stack.push(indent_level);
+            Some(Ok(Token::new(
+                TokenKind::Indent(indent_level),
+                Span::new(start_pos, self.position, self.source_id),
+            )))
+        } else if indent_level < current_level {
+            // Decreased indentation - may need multiple dedents
+            let mut dedent_count = 0;
+            while let Some(&level) = self.indent_stack.last() {
+                if level <= indent_level {
+                    break;
+                }
+                self.indent_stack.pop();
+                self.pending_dedents.push(level);
+                dedent_count += 1;
+            }
+            
+            if dedent_count > 0 {
+                // Return the first dedent, others will be returned on subsequent calls
+                let dedent_level = self.pending_dedents.pop().unwrap();
+                Some(Ok(Token::new(
+                    TokenKind::Dedent(dedent_level),
+                    Span::new(start_pos, self.position, self.source_id),
+                )))
+            } else {
+                None
+            }
+        } else {
+            // Same indentation level, no token needed
+            None
         }
     }
 
@@ -395,18 +519,96 @@ impl<'source> Lexer<'source> {
                     self.next_token()
                 }
             }
+            // Check for regex literal: /pattern/flags
+            Some(ch) if ch != '/' && ch != '*' && ch != '=' => {
+                // This could be a regex literal
+                if self.could_be_regex_literal() {
+                    self.read_regex_literal()
+                } else {
+                    Some(Ok(self.single_char_token(TokenKind::Slash)))
+                }
+            }
             _ => Some(Ok(self.single_char_token(TokenKind::Slash))),
         }
     }
 
+    /// Check if the current position could start a regex literal
+    /// This is a simple heuristic - in a real implementation, we'd need more context
+    fn could_be_regex_literal(&self) -> bool {
+        // Simple heuristic: if we're after certain tokens, this might be a regex
+        // In practice, this would need more sophisticated context analysis
+        true // For now, always try regex parsing
+    }
+
+    /// Read a regex literal: /pattern/flags
+    fn read_regex_literal(&mut self) -> Option<Result<Token, LexerError>> {
+        let start_pos = self.position;
+        self.advance(); // Skip opening '/'
+        
+        let mut pattern = String::new();
+        let mut escaped = false;
+        
+        // Read the pattern part
+        while let Some(ch) = self.current_char {
+            if escaped {
+                pattern.push('\\');
+                pattern.push(ch);
+                escaped = false;
+                self.advance();
+            } else if ch == '\\' {
+                escaped = true;
+                self.advance();
+            } else if ch == '/' {
+                // End of pattern
+                self.advance(); // Skip closing '/'
+                break;
+            } else if ch == '\n' {
+                return Some(Err(LexerError::UnterminatedString(self.position)));
+            } else {
+                pattern.push(ch);
+                self.advance();
+            }
+        }
+        
+        // Read optional flags (i, g, m, s, etc.)
+        let mut flags = String::new();
+        while let Some(ch) = self.current_char {
+            if ch.is_alphabetic() {
+                flags.push(ch);
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        
+        // Combine pattern and flags
+        let regex_value = if flags.is_empty() {
+            pattern
+        } else {
+            format!("{}|{}", pattern, flags)
+        };
+        
+        Some(Ok(Token::new(
+            TokenKind::RegexLiteral(regex_value),
+            Span::new(start_pos, self.position, self.source_id),
+        )))
+    }
+
     /// Read equals or double equals
     fn read_equals(&mut self) -> Option<Result<Token, LexerError>> {
-        if self.peek_char() == Some('=') {
-            self.advance(); // Skip '='
-            self.advance(); // Skip '='
-            Some(Ok(self.make_token(TokenKind::Equal)))
-        } else {
-            Some(Ok(self.single_char_token(TokenKind::Assign)))
+        match self.peek_char() {
+            Some('=') => {
+                self.advance(); // Skip '='
+                if self.peek_char() == Some('=') {
+                    self.advance(); // Skip second '='
+                    self.advance(); // Skip third '='
+                    Some(Ok(self.make_token(TokenKind::SemanticEqual)))
+                } else {
+                    self.advance(); // Skip second '='
+                    Some(Ok(self.make_token(TokenKind::Equal)))
+                }
+            }
+            _ => Some(Ok(self.single_char_token(TokenKind::Assign))),
         }
     }
 
@@ -414,8 +616,14 @@ impl<'source> Lexer<'source> {
     fn read_bang(&mut self) -> Option<Result<Token, LexerError>> {
         if self.peek_char() == Some('=') {
             self.advance(); // Skip '!'
-            self.advance(); // Skip '='
-            Some(Ok(self.make_token(TokenKind::NotEqual)))
+            if self.peek_char() == Some('=') {
+                self.advance(); // Skip '='
+                self.advance(); // Skip '='
+                Some(Ok(self.make_token(TokenKind::SemanticNotEqual)))
+            } else {
+                self.advance(); // Skip '='
+                Some(Ok(self.make_token(TokenKind::NotEqual)))
+            }
         } else {
             Some(Ok(self.single_char_token(TokenKind::Bang)))
         }
@@ -423,23 +631,35 @@ impl<'source> Lexer<'source> {
 
     /// Read less, less-equal, or left-shift
     fn read_less(&mut self) -> Option<Result<Token, LexerError>> {
-        if self.peek_char() == Some('=') {
-            self.advance(); // Skip '<'
-            self.advance(); // Skip '='
-            Some(Ok(self.make_token(TokenKind::LessEqual)))
-        } else {
-            Some(Ok(self.single_char_token(TokenKind::Less)))
+        match self.peek_char() {
+            Some('=') => {
+                self.advance(); // Skip '<'
+                self.advance(); // Skip '='
+                Some(Ok(self.make_token(TokenKind::LessEqual)))
+            }
+            Some('<') => {
+                self.advance(); // Skip '<'
+                self.advance(); // Skip '<'
+                Some(Ok(self.make_token(TokenKind::LeftShift)))
+            }
+            _ => Some(Ok(self.single_char_token(TokenKind::Less))),
         }
     }
 
     /// Read greater, greater-equal, or right-shift
     fn read_greater(&mut self) -> Option<Result<Token, LexerError>> {
-        if self.peek_char() == Some('=') {
-            self.advance(); // Skip '>'
-            self.advance(); // Skip '='
-            Some(Ok(self.make_token(TokenKind::GreaterEqual)))
-        } else {
-            Some(Ok(self.single_char_token(TokenKind::Greater)))
+        match self.peek_char() {
+            Some('=') => {
+                self.advance(); // Skip '>'
+                self.advance(); // Skip '='
+                Some(Ok(self.make_token(TokenKind::GreaterEqual)))
+            }
+            Some('>') => {
+                self.advance(); // Skip '>'
+                self.advance(); // Skip '>'
+                Some(Ok(self.make_token(TokenKind::RightShift)))
+            }
+            _ => Some(Ok(self.single_char_token(TokenKind::Greater))),
         }
     }
 
@@ -476,19 +696,59 @@ impl<'source> Lexer<'source> {
         }
     }
 
-    /// Read dot
+    /// Read dot, range, or spread operators
     fn read_dot(&mut self) -> Option<Result<Token, LexerError>> {
-        Some(Ok(self.single_char_token(TokenKind::Dot)))
+        if self.peek_char() == Some('.') {
+            self.advance(); // Skip first '.'
+            if self.peek_char() == Some('.') {
+                self.advance(); // Skip second '.'
+                self.advance(); // Skip third '.'
+                Some(Ok(self.make_token(TokenKind::DotDotDot)))
+            } else {
+                self.advance(); // Skip second '.'
+                Some(Ok(self.make_token(TokenKind::DotDot)))
+            }
+        } else {
+            Some(Ok(self.single_char_token(TokenKind::Dot)))
+        }
     }
 
-    /// Read question mark
+    /// Read question or null coalescing operator
     fn read_question(&mut self) -> Option<Result<Token, LexerError>> {
-        Some(Ok(self.single_char_token(TokenKind::Question)))
+        if self.peek_char() == Some('?') {
+            self.advance(); // Skip '?'
+            self.advance(); // Skip '?'
+            Some(Ok(self.make_token(TokenKind::DoubleQuestion)))
+        } else {
+            Some(Ok(self.single_char_token(TokenKind::Question)))
+        }
     }
 
     /// Read at symbol
     fn read_at(&mut self) -> Option<Result<Token, LexerError>> {
         Some(Ok(self.single_char_token(TokenKind::At)))
+    }
+
+    /// Read tilde or type compatible operator
+    fn read_tilde(&mut self) -> Option<Result<Token, LexerError>> {
+        if self.peek_char() == Some('=') {
+            self.advance(); // Skip '~'
+            self.advance(); // Skip '='
+            Some(Ok(self.make_token(TokenKind::TypeCompatible)))
+        } else {
+            Some(Ok(self.single_char_token(TokenKind::Tilde)))
+        }
+    }
+
+    /// Read percent or percent-assign
+    fn read_percent(&mut self) -> Option<Result<Token, LexerError>> {
+        if self.peek_char() == Some('=') {
+            self.advance(); // Skip '%'
+            self.advance(); // Skip '='
+            Some(Ok(self.make_token(TokenKind::PercentAssign)))
+        } else {
+            Some(Ok(self.single_char_token(TokenKind::Percent)))
+        }
     }
 
     /// Read line comment as token
@@ -623,7 +883,7 @@ impl<'source> Lexer<'source> {
         Some(Err(LexerError::UnterminatedString(start_pos)))
     }
 
-    /// Read a number literal
+    /// Read a number literal (enhanced to detect money and duration literals)
     fn read_number(&mut self) -> Option<Result<Token, LexerError>> {
         let start_pos = self.position;
         let mut value = String::new();
@@ -656,7 +916,15 @@ impl<'source> Lexer<'source> {
             }
         }
         
-        // Parse the number
+        // Check for duration suffixes (s, m, h, d, ms, etc.)
+        if let Some(duration_literal) = self.try_read_duration_suffix(&value) {
+            return Some(Ok(Token::new(
+                TokenKind::DurationLiteral(duration_literal),
+                Span::new(start_pos, self.position, self.source_id),
+            )));
+        }
+        
+        // Parse the number normally
         let token_kind = if is_float {
             match value.parse::<f64>() {
                 Ok(f) => TokenKind::FloatLiteral(f),
@@ -673,6 +941,117 @@ impl<'source> Lexer<'source> {
             token_kind,
             Span::new(start_pos, self.position, self.source_id),
         )))
+    }
+
+    /// Try to read duration suffix and return complete duration literal
+    fn try_read_duration_suffix(&mut self, number: &str) -> Option<String> {
+        let checkpoint = self.position;
+        let current_char_checkpoint = self.current_char;
+        
+        // Try to read duration units
+        let mut unit = String::new();
+        
+        // Read alphabetic characters for the unit
+        while let Some(ch) = self.current_char {
+            if ch.is_alphabetic() {
+                unit.push(ch);
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        
+        // Check if it's a valid duration unit
+        if self.is_valid_duration_unit(&unit) {
+            Some(format!("{}{}", number, unit))
+        } else {
+            // Restore position if not a valid duration
+            self.position = checkpoint;
+            self.current_char = current_char_checkpoint;
+            None
+        }
+    }
+
+    /// Check if a string is a valid duration unit
+    fn is_valid_duration_unit(&self, unit: &str) -> bool {
+        matches!(
+            unit,
+            "ns" | "us" | "μs" | "ms" | "s" | "m" | "h" | "d" | "w" | "y" |
+            "nanosecond" | "nanoseconds" |
+            "microsecond" | "microseconds" |
+            "millisecond" | "milliseconds" |
+            "second" | "seconds" |
+            "minute" | "minutes" |
+            "hour" | "hours" |
+            "day" | "days" |
+            "week" | "weeks" |
+            "year" | "years"
+        )
+    }
+
+    /// Read dollar sign - check for money literal
+    fn read_dollar(&mut self) -> Option<Result<Token, LexerError>> {
+        // Check if this starts a money literal
+        if self.peek_char().map_or(false, |c| c.is_ascii_digit()) {
+            self.read_money_literal('$')
+        } else {
+            Some(Ok(self.single_char_token(TokenKind::Dollar)))
+        }
+    }
+
+    /// Read a money literal starting with a currency symbol
+    fn read_money_literal(&mut self, currency_symbol: char) -> Option<Result<Token, LexerError>> {
+        let start_pos = self.position;
+        let mut value = String::new();
+        
+        // Add currency symbol
+        value.push(currency_symbol);
+        self.advance(); // Skip currency symbol
+        
+        // Read the numeric part
+        while let Some(ch) = self.current_char {
+            if ch.is_ascii_digit() || ch == '.' || ch == ',' {
+                value.push(ch);
+                self.advance();
+            } else {
+                break;
+            }
+        }
+        
+        // Validate that we have a valid money format
+        if self.is_valid_money_format(&value) {
+            Some(Ok(Token::new(
+                TokenKind::MoneyLiteral(value),
+                Span::new(start_pos, self.position, self.source_id),
+            )))
+        } else {
+            Some(Err(LexerError::InvalidMoney(start_pos)))
+        }
+    }
+
+    /// Check if a string represents a valid money format
+    fn is_valid_money_format(&self, value: &str) -> bool {
+        if value.len() < 2 {
+            return false;
+        }
+        
+        // Should start with currency symbol
+        let first_char = value.chars().next().unwrap();
+        if !self.is_currency_symbol(first_char) {
+            return false;
+        }
+        
+        // Rest should be a valid number (allowing commas for thousands)
+        let number_part = &value[1..];
+        let cleaned = number_part.replace(',', "");
+        
+        // Should be a valid float
+        cleaned.parse::<f64>().is_ok()
+    }
+
+    /// Check if a character is a currency symbol
+    fn is_currency_symbol(&self, ch: char) -> bool {
+        matches!(ch, '$' | '€' | '£' | '¥' | '₹' | '₽' | '₩' | '₪' | '₨' | '₡' | '₦' | '₵' | '₴' | '₸' | '₿')
     }
 
     /// Read an identifier or keyword
@@ -709,7 +1088,9 @@ impl<'source> Lexer<'source> {
             "for" => TokenKind::For,
             "loop" => TokenKind::Loop,
             "match" => TokenKind::Match,
+            "switch" => TokenKind::Switch,
             "case" => TokenKind::Case,
+            "default" => TokenKind::Default,
             "return" => TokenKind::Return,
             "break" => TokenKind::Break,
             "continue" => TokenKind::Continue,
@@ -729,6 +1110,7 @@ impl<'source> Lexer<'source> {
             "await" => TokenKind::Await,
             "try" => TokenKind::Try,
             "catch" => TokenKind::Catch,
+            "finally" => TokenKind::Finally,
             "throw" => TokenKind::Throw,
             "error" => TokenKind::Error,
             "result" => TokenKind::Result,
@@ -746,6 +1128,15 @@ impl<'source> Lexer<'source> {
             "in" => TokenKind::In,
             "as" => TokenKind::As,
             "is" => TokenKind::Is,
+            "elif" => TokenKind::ElseIf,
+            "when" => TokenKind::When,
+            "sync" => TokenKind::Sync,
+            "protected" => TokenKind::Protected,
+            "nil" => TokenKind::Nil,
+            "undefined" => TokenKind::Undefined,
+            "typeof" => TokenKind::Typeof,
+            "sizeof" => TokenKind::Sizeof,
+            "performance" => TokenKind::Performance,
             // Everything else is an identifier
             _ => TokenKind::Identifier(value),
         };

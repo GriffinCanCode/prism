@@ -61,8 +61,9 @@ pub fn infix_precedence(token: &TokenKind) -> Option<Precedence> {
         | TokenKind::PlusAssign
         | TokenKind::MinusAssign
         | TokenKind::StarAssign
-        | TokenKind::SlashAssign => Some(Precedence::Assignment),
-
+        | TokenKind::SlashAssign
+        | TokenKind::WalrusOperator => Some(Precedence::Assignment),
+        
         // Logical operators
         TokenKind::OrOr => Some(Precedence::Or),
         TokenKind::AndAnd => Some(Precedence::And),
@@ -83,18 +84,20 @@ pub fn infix_precedence(token: &TokenKind) -> Option<Precedence> {
         | TokenKind::GreaterEqual => Some(Precedence::Comparison),
 
         // Shift operators
-        TokenKind::LeftShift | TokenKind::RightShift => Some(Precedence::Shift),
+        // Shift operators not yet defined in lexer
+        // TokenKind::LeftShift | TokenKind::RightShift => Some(Precedence::Shift),
 
         // Arithmetic operators
         TokenKind::Plus | TokenKind::Minus => Some(Precedence::Term),
-        TokenKind::Star | TokenKind::Slash | TokenKind::Percent => Some(Precedence::Factor),
+        TokenKind::Star | TokenKind::Slash | TokenKind::Percent | TokenKind::IntegerDivision | TokenKind::At => Some(Precedence::Factor),
         TokenKind::Power => Some(Precedence::Power),
 
         // Call and access operators
         TokenKind::LeftParen | TokenKind::Dot | TokenKind::LeftBracket => Some(Precedence::Call),
 
         // Range operators
-        TokenKind::DotDot => Some(Precedence::Comparison),
+        // Range operator not yet defined in lexer
+        // TokenKind::DotDot => Some(Precedence::Comparison),
 
         // Type operators
         TokenKind::As => Some(Precedence::Comparison),
@@ -122,6 +125,7 @@ pub fn associativity(token: &TokenKind) -> Associativity {
         | TokenKind::MinusAssign
         | TokenKind::StarAssign
         | TokenKind::SlashAssign
+        | TokenKind::WalrusOperator  // Python walrus operator is right-associative
         | TokenKind::Power => Associativity::Right,
 
         // Non-associative operators
@@ -146,7 +150,9 @@ pub fn can_start_expression(token: &TokenKind) -> bool {
         TokenKind::IntegerLiteral(_)
             | TokenKind::FloatLiteral(_)
             | TokenKind::StringLiteral(_)
-            | TokenKind::BooleanLiteral(_)
+            | TokenKind::FStringStart(_)  // Python f-strings
+            // Boolean literal handled by True/False tokens
+            // | TokenKind::BooleanLiteral(_)
             | TokenKind::True
             | TokenKind::False
             | TokenKind::Null
@@ -283,7 +289,7 @@ mod tests {
         use prism_common::symbol::Symbol;
         
         assert!(can_start_expression(&TokenKind::IntegerLiteral(42)));
-        assert!(can_start_expression(&TokenKind::Identifier(Symbol::intern("test"))));
+        assert!(can_start_expression(&TokenKind::Identifier("test".to_string())));
         assert!(can_start_expression(&TokenKind::LeftParen));
         assert!(can_start_expression(&TokenKind::Minus));
         assert!(!can_start_expression(&TokenKind::Plus));
