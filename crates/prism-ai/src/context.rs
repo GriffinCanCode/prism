@@ -215,7 +215,6 @@ impl ContextExtractor for DependenciesExtractor {
 }
 
 /// Context aggregator that combines multiple extractors
-#[derive(Debug)]
 pub struct ContextAggregator {
     extractors: Vec<Box<dyn ContextExtractor>>,
 }

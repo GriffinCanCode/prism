@@ -208,7 +208,7 @@ impl ValidationMetadata {
 }
 
 /// Trait for constraint validators
-pub trait ConstraintValidator: Send + Sync {
+pub trait ConstraintValidator: Send + Sync + std::fmt::Debug {
     /// Validate a value against this constraint
     fn validate(&self, value: &ConstraintValue, context: &ValidationContext) -> ConstraintResult<ValidationResult>;
 

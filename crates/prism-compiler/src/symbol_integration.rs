@@ -10,7 +10,7 @@
 //! **What it doesn't do**: symbol storage, scope management, resolution (delegates to specialized modules)
 
 use crate::error::{CompilerError, CompilerResult};
-use crate::symbol_table::{SymbolTable, SymbolData, SymbolTableConfig};
+use crate::symbols::{SymbolTable, SymbolData, SymbolTableConfig, SymbolKind};
 use crate::scope::{ScopeTree, ScopeId, ScopeKind, ScopeTreeConfig};
 use crate::resolution::{SymbolResolver, ResolutionContext, ResolvedSymbol, ResolverConfig};
 use crate::semantic::SemanticDatabase;
@@ -282,7 +282,7 @@ impl Default for SymbolSystemSnapshot {
 #[derive(Debug, Clone)]
 pub struct SymbolSystemStats {
     /// Symbol table statistics
-    pub symbol_table: crate::symbol_table::SymbolTableStats,
+    pub symbol_table: crate::symbols::table::SymbolTableStats,
     /// Scope tree statistics
     pub scope_tree: crate::scope::ScopeTreeStats,
     /// Resolver statistics
@@ -292,23 +292,23 @@ pub struct SymbolSystemStats {
 /// High-level API for common symbol operations
 impl SymbolSystem {
     /// Find all symbols of a specific kind
-    pub fn find_symbols_by_kind(&self, kind_filter: impl Fn(&crate::symbol_table::SymbolKind) -> bool) -> Vec<SymbolData> {
+    pub fn find_symbols_by_kind(&self, kind_filter: impl Fn(&SymbolKind) -> bool) -> Vec<SymbolData> {
         self.symbol_table.get_symbols_by_kind(kind_filter)
     }
 
     /// Find all functions in the system
     pub fn find_functions(&self) -> Vec<SymbolData> {
-        self.find_symbols_by_kind(|kind| matches!(kind, crate::symbol_table::SymbolKind::Function { .. }))
+        self.find_symbols_by_kind(|kind| matches!(kind, SymbolKind::Function { .. }))
     }
 
     /// Find all modules in the system
     pub fn find_modules(&self) -> Vec<SymbolData> {
-        self.find_symbols_by_kind(|kind| matches!(kind, crate::symbol_table::SymbolKind::Module { .. }))
+        self.find_symbols_by_kind(|kind| matches!(kind, SymbolKind::Module { .. }))
     }
 
     /// Find all types in the system
     pub fn find_types(&self) -> Vec<SymbolData> {
-        self.find_symbols_by_kind(|kind| matches!(kind, crate::symbol_table::SymbolKind::Type { .. }))
+        self.find_symbols_by_kind(|kind| matches!(kind, SymbolKind::Type { .. }))
     }
 
     /// Get all scopes of a specific kind

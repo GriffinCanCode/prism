@@ -808,11 +808,11 @@ impl LanguageServer for PrismLanguageServer {
 mod tests {
     use super::*;
     use crate::query::QueryEngine;
-    use crate::context::CompilationContext;
+    use crate::context::{CompilationContext, ContextBuilder};
 
     #[tokio::test]
     async fn test_language_server_initialization() {
-        let context = Arc::new(CompilationContext::new());
+        let context = Arc::new(ContextBuilder::development().unwrap());
         let query_engine = Arc::new(QueryEngine::new());
         let server = PrismLanguageServer::new(context, query_engine);
 
@@ -833,13 +833,13 @@ mod tests {
 
     #[tokio::test]
     async fn test_completion() {
-        let context = Arc::new(CompilationContext::new());
+        let context = Arc::new(ContextBuilder::development().unwrap());
         let query_engine = Arc::new(QueryEngine::new());
         let server = PrismLanguageServer::new(context, query_engine);
 
         let params = CompletionParams {
             text_document: TextDocumentIdentifier {
-                uri: "file:///test.prism".to_string(),
+                uri: "file:///test.prsm".to_string(),
             },
             position: Position { line: 0, character: 0 },
             context: None,

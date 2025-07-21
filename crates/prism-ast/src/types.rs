@@ -39,7 +39,7 @@ pub enum Type {
 }
 
 /// Primitive type
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum PrimitiveType {
     /// Boolean type
@@ -59,7 +59,7 @@ pub enum PrimitiveType {
 }
 
 /// Integer type variants
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum IntegerType {
     /// Signed integers
@@ -73,7 +73,7 @@ pub enum IntegerType {
 }
 
 /// Float type variants
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FloatType {
     /// IEEE 754 single precision

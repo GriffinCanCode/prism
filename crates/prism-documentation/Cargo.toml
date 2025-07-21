@@ -37,12 +37,4 @@ default = ["validation", "jsdoc", "ai-integration"]
 validation = []
 jsdoc = []
 ai-integration = []
-tracing = ["dep:tracing"]
-
-[[example]]
-name = "validate_documentation"
-required-features = ["validation"]
-
-[[example]]
-name = "jsdoc_compatibility"
-required-features = ["jsdoc"] 
+tracing = ["dep:tracing"] 

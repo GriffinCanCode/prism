@@ -416,6 +416,17 @@ pub struct FormatValidator {
     examples: Vec<String>,
 }
 
+impl std::fmt::Debug for FormatValidator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FormatValidator")
+            .field("format_name", &self.format_name)
+            .field("validator", &"<function>")
+            .field("description", &self.description)
+            .field("examples", &self.examples)
+            .finish()
+    }
+}
+
 impl FormatValidator {
     /// Create a new format validator
     pub fn new<F>(
@@ -564,6 +575,7 @@ impl ConstraintValidator for FormatValidator {
 }
 
 /// Registry of built-in constraint validators
+#[derive(Debug)]
 pub struct BuiltinValidatorRegistry {
     validators: HashMap<String, Box<dyn ConstraintValidator>>,
 }

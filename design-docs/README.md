@@ -204,7 +204,7 @@ The compiler measures conceptual cohesion and suggests improvements when code do
 Instead of rigid file structures, Prism uses **Smart Modules**—files that represent single, cohesive business concepts. Each module is organized into logical sections that the compiler understands:
 
 ```prism
-// File: UserManagement.prism
+// File: UserManagement.prsm
 @capability "User Management"
 @description "Handles user lifecycle operations"
 

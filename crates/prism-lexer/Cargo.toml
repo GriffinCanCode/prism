@@ -18,6 +18,10 @@ thiserror.workspace = true
 regex = "1.10"
 serde = { workspace = true, features = ["derive"], optional = true }
 
+# Additional utilities for semantic analysis
+strsim = "0.11"  # String similarity for naming analysis
+rustc-hash = "1.1"  # Fast hashing for caches
+
 [features]
 default = []
 serde = ["dep:serde", "prism-common/serde"]

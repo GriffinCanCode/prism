@@ -139,11 +139,108 @@ impl EffectRegistry {
              .with_business_rule("Generated metadata must not include sensitive implementation details"),
         ];
 
+        // Concurrency Effects (PLD-005)
+        let concurrency_effects = vec![
+            // Actor system effects
+            EffectDefinition::new(
+                "Actor.Spawn".to_string(),
+                "Spawn a new actor instance".to_string(),
+                EffectCategory::Actor,
+            ).with_ai_context("Creates a new actor with isolated state and message handling")
+             .with_security_implication("New actors inherit attenuated capabilities from parent")
+             .with_capability_requirement("Concurrency", vec!["ActorSpawn".to_string()])
+             .with_business_rule("Actors must declare their required capabilities"),
+
+            EffectDefinition::new(
+                "Actor.MessageSend".to_string(),
+                "Send a message to an actor".to_string(),
+                EffectCategory::Actor,
+            ).with_ai_context("Enables asynchronous communication between actors")
+             .with_security_implication("Messages may contain sensitive data")
+             .with_capability_requirement("Concurrency", vec!["MessagePassing".to_string()]),
+
+            EffectDefinition::new(
+                "Actor.Supervision".to_string(),
+                "Supervise child actors and handle failures".to_string(),
+                EffectCategory::Actor,
+            ).with_ai_context("Implements fault tolerance through supervision trees")
+             .with_security_implication("Supervisor can restart or stop child actors")
+             .with_capability_requirement("Concurrency", vec!["Supervision".to_string()]),
+
+            // Async runtime effects
+            EffectDefinition::new(
+                "Async.TaskSpawn".to_string(),
+                "Spawn an asynchronous task".to_string(),
+                EffectCategory::Async,
+            ).with_ai_context("Creates concurrent execution context for I/O-bound operations")
+             .with_security_implication("Tasks run with inherited capabilities")
+             .with_capability_requirement("Concurrency", vec!["TaskSpawn".to_string()]),
+
+            EffectDefinition::new(
+                "Async.Await".to_string(),
+                "Await completion of an asynchronous operation".to_string(),
+                EffectCategory::Async,
+            ).with_ai_context("Suspends execution until async operation completes")
+             .with_security_implication("May expose timing information")
+             .with_capability_requirement("Concurrency", vec!["AsyncExecution".to_string()]),
+
+            EffectDefinition::new(
+                "Async.Cancel".to_string(),
+                "Cancel an asynchronous operation".to_string(),
+                EffectCategory::Async,
+            ).with_ai_context("Implements structured concurrency cancellation")
+             .with_security_implication("Cancellation may interrupt security-sensitive operations")
+             .with_capability_requirement("Concurrency", vec!["Cancellation".to_string()]),
+
+            // Channel effects
+            EffectDefinition::new(
+                "Channel.Create".to_string(),
+                "Create a new communication channel".to_string(),
+                EffectCategory::Channel,
+            ).with_ai_context("Establishes typed communication channel between concurrent entities")
+             .with_security_implication("Channels may leak information through timing")
+             .with_capability_requirement("Concurrency", vec!["ChannelCreation".to_string()]),
+
+            EffectDefinition::new(
+                "Channel.Send".to_string(),
+                "Send a value through a channel".to_string(),
+                EffectCategory::Channel,
+            ).with_ai_context("Enables safe data transfer between concurrent contexts")
+             .with_security_implication("Sent data must not violate information flow policies")
+             .with_capability_requirement("Concurrency", vec!["ChannelSend".to_string()]),
+
+            EffectDefinition::new(
+                "Channel.Receive".to_string(),
+                "Receive a value from a channel".to_string(),
+                EffectCategory::Channel,
+            ).with_ai_context("Blocks until data is available from concurrent sender")
+             .with_security_implication("May expose timing and availability information")
+             .with_capability_requirement("Concurrency", vec!["ChannelReceive".to_string()]),
+
+            // Structured concurrency effects
+            EffectDefinition::new(
+                "Concurrency.ScopeCreate".to_string(),
+                "Create a structured concurrency scope".to_string(),
+                EffectCategory::Concurrency,
+            ).with_ai_context("Establishes bounded context for concurrent operations")
+             .with_security_implication("Scopes inherit and attenuate parent capabilities")
+             .with_capability_requirement("Concurrency", vec!["ScopeManagement".to_string()]),
+
+            EffectDefinition::new(
+                "Concurrency.Join".to_string(),
+                "Join multiple concurrent operations".to_string(),
+                EffectCategory::Concurrency,
+            ).with_ai_context("Waits for multiple concurrent operations to complete")
+             .with_security_implication("May expose timing relationships between operations")
+             .with_capability_requirement("Concurrency", vec!["ConcurrentJoin".to_string()]),
+        ];
+
         // Register all effects
         for effect in io_effects.into_iter()
             .chain(database_effects)
             .chain(crypto_effects)
             .chain(ai_integration_effects)
+            .chain(concurrency_effects)  // Add concurrency effects to registration
         {
             let _ = self.register(effect);
         }
@@ -286,6 +383,14 @@ pub enum EffectCategory {
     Memory,
     /// System-level operations
     System,
+    /// Concurrency and parallelism operations
+    Concurrency,
+    /// Actor system operations
+    Actor,
+    /// Async runtime operations
+    Async,
+    /// Channel operations
+    Channel,
     /// Unsafe operations requiring special handling
     Unsafe,
     /// Custom effect category
@@ -303,6 +408,10 @@ impl fmt::Display for EffectCategory {
             Self::AI => write!(f, "AI"),
             Self::Memory => write!(f, "Memory"),
             Self::System => write!(f, "System"),
+            Self::Concurrency => write!(f, "Concurrency"),
+            Self::Actor => write!(f, "Actor"),
+            Self::Async => write!(f, "Async"),
+            Self::Channel => write!(f, "Channel"),
             Self::Unsafe => write!(f, "Unsafe"),
             Self::Custom(name) => write!(f, "Custom({})", name),
         }

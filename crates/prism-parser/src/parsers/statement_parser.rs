@@ -121,6 +121,9 @@ impl<'a> StatementParser<'a> {
             TokenKind::Module => self.parse_module_statement(attributes, visibility),
             TokenKind::Section => self.parse_section_statement(attributes, visibility),
             
+            // Actor declarations
+            TokenKind::Actor => self.parse_actor_statement(attributes, visibility),
+            
             // Block statement
             TokenKind::LeftBrace => self.parse_block_statement(),
             
@@ -1204,6 +1207,167 @@ impl<'a> StatementParser<'a> {
         });
         
         Ok(self.coordinator.create_node(section_stmt, span))
+    }
+
+    /// Parse an actor statement: `actor Name capabilities [...] { ... }`
+    fn parse_actor_statement(&mut self, attributes: Vec<Attribute>, visibility: Visibility) -> ParseResult<AstNode<Stmt>> {
+        let start_span = self.token_stream.current_span();
+        self.token_stream.expect(TokenKind::Actor)?;
+        
+        // Parse actor name
+        let name = Symbol::intern(&self.token_stream.expect_identifier()?);
+        
+        // Parse capabilities
+        let mut capabilities = Vec::new();
+        if self.token_stream.consume(TokenKind::Capability) {
+            self.token_stream.expect(TokenKind::LeftBracket)?;
+            while !self.token_stream.check(TokenKind::RightBracket) && !self.token_stream.is_at_end() {
+                let capability = self.expr_parser.parse_expression()?;
+                capabilities.push(capability);
+                
+                if !self.token_stream.check(TokenKind::RightBracket) {
+                    self.token_stream.expect(TokenKind::Comma)?;
+                }
+            }
+            self.token_stream.expect(TokenKind::RightBracket)?;
+        }
+        
+        // Parse effects
+        let mut effects = Vec::new();
+        if self.token_stream.consume(TokenKind::Effects) {
+            self.token_stream.expect(TokenKind::LeftBracket)?;
+            while !self.token_stream.check(TokenKind::RightBracket) && !self.token_stream.is_at_end() {
+                let effect = self.expr_parser.parse_expression()?;
+                effects.push(effect);
+                
+                if !self.token_stream.check(TokenKind::RightBracket) {
+                    self.token_stream.expect(TokenKind::Comma)?;
+                }
+            }
+            self.token_stream.expect(TokenKind::RightBracket)?;
+        }
+        
+        // Parse actor body
+        self.token_stream.expect(TokenKind::LeftBrace)?;
+        
+        let mut message_handlers = Vec::new();
+        let mut lifecycle_hooks = Vec::new();
+        
+        while !self.token_stream.check(TokenKind::RightBrace) && !self.token_stream.is_at_end() {
+            match self.token_stream.current_kind() {
+                TokenKind::Identifier(s) if s == "message" => {
+                    let handler = self.parse_message_handler()?;
+                    message_handlers.push(handler);
+                }
+                TokenKind::Identifier(s) if s == "on_start" || s == "on_stop" || s == "on_error" => {
+                    let hook = self.parse_lifecycle_hook()?;
+                    lifecycle_hooks.push(hook);
+                }
+                _ => {
+                    // Skip unknown tokens for now
+                    self.token_stream.advance();
+                }
+            }
+        }
+        
+        self.token_stream.expect(TokenKind::RightBrace)?;
+        
+        let end_span = self.token_stream.previous_span();
+        let span = self.combine_spans(start_span, end_span);
+        
+        let actor_decl = Stmt::Actor(prism_ast::ActorDecl {
+            name,
+            capabilities,
+            effects,
+            message_handlers,
+            lifecycle_hooks,
+            supervision_strategy: prism_ast::SupervisionStrategy::OneForOne, // Default
+            ai_context: None,
+            visibility,
+        });
+        
+        Ok(self.coordinator.create_node(actor_decl, span))
+    }
+    
+    /// Parse a message handler: `message MessageName(params) -> ReturnType { ... }`
+    fn parse_message_handler(&mut self) -> ParseResult<prism_ast::MessageHandler> {
+        let start_span = self.token_stream.current_span();
+        
+        // Consume 'message' keyword
+        self.token_stream.advance();
+        
+        // Parse message name
+        let name = Symbol::intern(&self.token_stream.expect_identifier()?);
+        
+        // Parse parameters
+        let mut parameters = Vec::new();
+        self.token_stream.expect(TokenKind::LeftParen)?;
+        while !self.token_stream.check(TokenKind::RightParen) && !self.token_stream.is_at_end() {
+            let param_name = Symbol::intern(&self.token_stream.expect_identifier()?);
+            self.token_stream.expect(TokenKind::Colon)?;
+            let param_type = self.type_parser.parse_type()?;
+            
+            parameters.push(prism_ast::Parameter {
+                name: param_name,
+                param_type: param_type,
+                default_value: None,
+                is_variadic: false,
+            });
+            
+            if !self.token_stream.check(TokenKind::RightParen) {
+                self.token_stream.expect(TokenKind::Comma)?;
+            }
+        }
+        self.token_stream.expect(TokenKind::RightParen)?;
+        
+        // Parse return type
+        let return_type = if self.token_stream.consume(TokenKind::Arrow) {
+            Some(self.type_parser.parse_type()?)
+        } else {
+            None
+        };
+        
+        // Parse body
+        let body = self.parse_block_statement()?;
+        
+        let end_span = self.token_stream.current_span();
+        let span = self.combine_spans(start_span, end_span);
+        
+        Ok(prism_ast::MessageHandler {
+            name,
+            parameters,
+            return_type,
+            body,
+            is_async: false, // Could be enhanced to detect async
+        })
+    }
+    
+    /// Parse a lifecycle hook: `on_start { ... }`
+    fn parse_lifecycle_hook(&mut self) -> ParseResult<prism_ast::LifecycleHook> {
+        let start_span = self.token_stream.current_span();
+        
+        // Parse hook type
+        let hook_type = match self.token_stream.expect_identifier()?.as_str() {
+            "on_start" => prism_ast::LifecycleHookType::OnStart,
+            "on_stop" => prism_ast::LifecycleHookType::OnStop,
+            "on_error" => prism_ast::LifecycleHookType::OnError,
+            other => return Err(ParseError::unexpected_token(
+                vec![TokenKind::Identifier("on_start".to_string())],
+                TokenKind::Identifier(other.to_string()),
+                self.token_stream.current_span(),
+            )),
+        };
+        
+        // Parse body
+        let body = self.parse_block_statement()?;
+        
+        let end_span = self.token_stream.current_span();
+        let span = self.combine_spans(start_span, end_span);
+        
+        Ok(prism_ast::LifecycleHook {
+            hook_type,
+            body,
+        })
     }
 
     /// Parse a block statement: `{ statements... }`

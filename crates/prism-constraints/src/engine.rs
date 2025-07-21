@@ -14,6 +14,7 @@ use std::time::Instant;
 use tracing::debug;
 
 /// Main constraint validation engine
+#[derive(Debug)]
 pub struct ConstraintEngine {
     /// Configuration for constraint validation
     config: ValidationConfig,

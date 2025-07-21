@@ -16,6 +16,8 @@ rust-version.workspace = true
 prism-common = { workspace = true }
 prism-lexer = { workspace = true }
 prism-ast = { workspace = true }
+prism-ai = { workspace = true }
+async-trait = { workspace = true }
 
 # Parsing and text processing
 nom = { workspace = true }

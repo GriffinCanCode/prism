@@ -101,162 +101,131 @@ impl ConfidenceScorer {
     /// Create a new confidence scorer
     pub fn new() -> Self {
         Self {
-            config: ScoringConfig::default(),
+            scoring_algorithm: ScoringAlgorithm::Weighted,
+            min_confidence_threshold: 0.6,
+            max_alternatives: 3,
         }
     }
     
-    /// Score confidence for each syntax style based on evidence
-    pub fn score_styles(&self, evidence: &[SyntaxEvidence]) -> HashMap<SyntaxStyle, f64> {
-        let mut scores = HashMap::new();
-        
-        // Initialize base scores
-        for style in [SyntaxStyle::CLike, SyntaxStyle::PythonLike, SyntaxStyle::RustLike, SyntaxStyle::Canonical] {
-            scores.insert(style, self.config.base_confidence);
-        }
-        
+    /// Calculate confidence scores and produce final detection result
+    pub fn calculate_confidence(&self, evidence: &[SyntaxEvidence]) -> Result<DetectionResult, DetectionError> {
         if evidence.is_empty() {
-            return scores;
-        }
-        
-        // Group evidence by style
-        let mut style_evidence: HashMap<SyntaxStyle, Vec<&SyntaxEvidence>> = HashMap::new();
-        for ev in evidence {
-            style_evidence.entry(ev.style).or_default().push(ev);
-        }
-        
-        // Calculate scores for each style
-        for (style, style_ev) in style_evidence {
-            let score = self.calculate_style_score(&style_ev);
-            scores.insert(style, score);
-        }
-        
-        // Apply conflict penalties
-        self.apply_conflict_penalties(&mut scores, evidence);
-        
-        // Normalize scores to ensure they sum to a reasonable range
-        self.normalize_scores(&mut scores);
-        
-        scores
-    }
-    
-    /// Calculate detailed confidence information
-    pub fn calculate_confidence(&self, evidence: &[SyntaxEvidence], style: SyntaxStyle) -> DetectionConfidence {
-        let style_evidence: Vec<_> = evidence.iter().filter(|e| e.style == style).collect();
-        let score = self.calculate_style_score(&style_evidence);
-        let level = Self::classify_confidence(score);
-        
-        let mut evidence_breakdown = HashMap::new();
-        let mut confidence_factors = Vec::new();
-        
-        // Breakdown by pattern
-        for ev in &style_evidence {
-            evidence_breakdown.insert(ev.pattern.clone(), ev.weight);
-            confidence_factors.push(ConfidenceFactor {
-                name: ev.pattern.clone(),
-                impact: ev.weight,
-                description: ev.description.clone(),
+            return Ok(DetectionResult {
+                detected_style: SyntaxStyle::Canonical, // Default fallback
+                confidence: 0.5,
+                alternative_styles: Vec::new(),
+                detection_metadata: std::collections::HashMap::new(),
             });
         }
         
-        // Add conflict factors
-        let conflicting_evidence: Vec<_> = evidence.iter()
-            .filter(|e| e.style != style)
-            .collect();
+        // Group evidence by syntax style
+        let mut style_scores: std::collections::HashMap<SyntaxStyle, Vec<f64>> = std::collections::HashMap::new();
+        
+        for evidence_item in evidence {
+            style_scores
+                .entry(evidence_item.style)
+                .or_insert_with(Vec::new)
+                .push(evidence_item.confidence);
+        }
+        
+        // Calculate aggregate scores for each style
+        let mut final_scores: std::collections::HashMap<SyntaxStyle, f64> = std::collections::HashMap::new();
+        
+        for (style, scores) in style_scores {
+            let aggregate_score = match self.scoring_algorithm {
+                ScoringAlgorithm::Weighted => self.calculate_weighted_score(&scores),
+                ScoringAlgorithm::Bayesian => self.calculate_bayesian_score(&scores),
+                ScoringAlgorithm::MaxConfidence => self.calculate_max_confidence_score(&scores),
+            };
             
-        if !conflicting_evidence.is_empty() {
-            let conflict_weight: f64 = conflicting_evidence.iter().map(|e| e.weight).sum();
-            confidence_factors.push(ConfidenceFactor {
-                name: "conflicting_evidence".to_string(),
-                impact: -conflict_weight * self.config.conflict_penalty,
-                description: format!("Conflicting evidence from other styles (weight: {:.2})", conflict_weight),
-            });
+            final_scores.insert(style, aggregate_score);
         }
         
-        DetectionConfidence {
-            score,
-            level,
-            evidence_breakdown,
-            confidence_factors,
+        // Find the highest scoring style
+        let (detected_style, confidence) = final_scores
+            .iter()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(&style, &conf)| (style, conf))
+            .unwrap_or((SyntaxStyle::Canonical, 0.5));
+        
+        // Generate alternative styles
+        let mut alternatives: Vec<SyntaxStyle> = final_scores
+            .iter()
+            .filter(|(&style, &conf)| style != detected_style && conf > 0.3)
+            .map(|(&style, _)| style)
+            .collect();
+        
+        // Sort alternatives by confidence (descending)
+        alternatives.sort_by(|&a, &b| {
+            let conf_a = final_scores.get(&a).unwrap_or(&0.0);
+            let conf_b = final_scores.get(&b).unwrap_or(&0.0);
+            conf_b.partial_cmp(conf_a).unwrap_or(std::cmp::Ordering::Equal)
+        });
+        
+        // Limit number of alternatives
+        alternatives.truncate(self.max_alternatives);
+        
+        // Create detection metadata
+        let mut metadata = std::collections::HashMap::new();
+        metadata.insert("evidence_count".to_string(), evidence.len().to_string());
+        metadata.insert("scoring_algorithm".to_string(), format!("{:?}", self.scoring_algorithm));
+        
+        for (style, score) in &final_scores {
+            metadata.insert(format!("score_{:?}", style).to_lowercase(), format!("{:.3}", score));
+        }
+        
+        Ok(DetectionResult {
+            detected_style,
+            confidence,
+            alternative_styles: alternatives,
+            detection_metadata: metadata,
+        })
+    }
+    
+    /// Calculate weighted average of confidence scores
+    fn calculate_weighted_score(&self, scores: &[f64]) -> f64 {
+        if scores.is_empty() {
+            return 0.0;
+        }
+        
+        // Weight higher scores more heavily
+        let mut weighted_sum = 0.0;
+        let mut weight_sum = 0.0;
+        
+        for &score in scores {
+            let weight = score * score; // Quadratic weighting favors high confidence
+            weighted_sum += score * weight;
+            weight_sum += weight;
+        }
+        
+        if weight_sum > 0.0 {
+            (weighted_sum / weight_sum).min(1.0)
+        } else {
+            0.0
         }
     }
     
-    /// Calculate confidence score for a specific style
-    fn calculate_style_score(&self, evidence: &[&SyntaxEvidence]) -> f64 {
-        if evidence.is_empty() {
-            return self.config.base_confidence;
+    /// Calculate Bayesian-style score (simplified)
+    fn calculate_bayesian_score(&self, scores: &[f64]) -> f64 {
+        if scores.is_empty() {
+            return 0.0;
         }
         
-        let mut total_weight = 0.0;
-        let mut evidence_count = 0;
+        // Simplified Bayesian approach: combine probabilities
+        let mut combined_prob = 0.5; // Prior probability
         
-        for ev in evidence {
-            let multiplier = self.config.evidence_multipliers
-                .get(&ev.pattern)
-                .copied()
-                .unwrap_or(1.0);
-                
-            total_weight += ev.weight * multiplier;
-            evidence_count += 1;
+        for &score in scores {
+            // Update probability using Bayes' theorem (simplified)
+            combined_prob = (combined_prob * score) / 
+                (combined_prob * score + (1.0 - combined_prob) * (1.0 - score));
         }
         
-        // Base score plus weighted evidence, with diminishing returns
-        let evidence_score = total_weight / (1.0 + total_weight * 0.1);
-        let diversity_bonus = if evidence_count > 1 { 0.1 } else { 0.0 };
-        
-        (self.config.base_confidence + evidence_score + diversity_bonus).min(1.0)
+        combined_prob.min(1.0)
     }
     
-    /// Apply penalties for conflicting evidence
-    fn apply_conflict_penalties(&self, scores: &mut HashMap<SyntaxStyle, f64>, evidence: &[SyntaxEvidence]) {
-        // Calculate total evidence weight for each style
-        let mut style_weights: HashMap<SyntaxStyle, f64> = HashMap::new();
-        for ev in evidence {
-            *style_weights.entry(ev.style).or_default() += ev.weight;
-        }
-        
-        // Apply conflict penalty based on competing evidence
-        for (style, score) in scores.iter_mut() {
-            let style_weight = style_weights.get(style).copied().unwrap_or(0.0);
-            let competing_weight: f64 = style_weights.iter()
-                .filter(|(s, _)| *s != style)
-                .map(|(_, w)| *w)
-                .sum();
-                
-            if competing_weight > 0.0 {
-                let penalty = competing_weight * self.config.conflict_penalty;
-                *score = (*score - penalty).max(0.0);
-            }
-        }
-    }
-    
-    /// Normalize scores to prevent extreme values
-    fn normalize_scores(&self, scores: &mut HashMap<SyntaxStyle, f64>) {
-        let max_score = scores.values().fold(0.0f64, |a, &b| a.max(b));
-        
-        // If all scores are very low, boost the highest one
-        if max_score < 0.2 {
-            if let Some((best_style, _)) = scores.iter()
-                .max_by(|a, b| a.1.partial_cmp(b.1).unwrap()) {
-                let best_style = *best_style;
-                scores.insert(best_style, 0.3); // Minimum reasonable confidence
-            }
-        }
-        
-        // Ensure scores don't exceed 1.0
-        for score in scores.values_mut() {
-            *score = score.min(1.0);
-        }
-    }
-    
-    /// Classify numeric confidence into levels
-    fn classify_confidence(score: f64) -> ConfidenceLevel {
-        match score {
-            s if s < 0.3 => ConfidenceLevel::VeryLow,
-            s if s < 0.5 => ConfidenceLevel::Low,
-            s if s < 0.7 => ConfidenceLevel::Medium,
-            s if s < 0.9 => ConfidenceLevel::High,
-            _ => ConfidenceLevel::VeryHigh,
-        }
+    /// Calculate maximum confidence score
+    fn calculate_max_confidence_score(&self, scores: &[f64]) -> f64 {
+        scores.iter().fold(0.0, |acc, &x| acc.max(x))
     }
 }
 

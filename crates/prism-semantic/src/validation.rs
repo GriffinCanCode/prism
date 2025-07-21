@@ -12,7 +12,7 @@ use crate::{SemanticResult, SemanticError, SemanticConfig};
 use crate::analyzer::AnalysisResult;
 use crate::types::BusinessRule;
 use prism_ast::Program;
-use prism_common::span::Span;
+use prism_common::{span::{Span, Position}, SourceId};
 use prism_constraints::{ConstraintEngine, ConstraintValue, ValidationContext};
 use serde::{Serialize, Deserialize};
 
@@ -252,20 +252,24 @@ impl SemanticValidator {
         for constraint in constraints {
             match constraint {
                 ConstraintSpec::Range { value, min, max, inclusive } => {
-                    let result = self.constraint_engine.validate_range(
-                        value, min.clone(), max.clone(), *inclusive, &context
-                    ).map_err(|e| SemanticError::ValidationError { 
-                        message: e.to_string(),
-                        location: None
-                    })?;
+                                    let result = self.constraint_engine.validate_range(
+                    value, min.clone(), max.clone(), *inclusive, &context
+                ).map_err(|e| SemanticError::ValidationError { 
+                    message: e.to_string()
+                })?;
                     
                     if !result.is_valid {
                         for error in result.errors {
                             violations.push(ConstraintViolation {
-                                constraint_type: error.constraint_type,
-                                message: error.message,
-                                location: error.location.unwrap_or_default(),
-                                suggestions: error.suggestions,
+                                constraint: error.constraint_type,
+                                description: error.message,
+                                location: error.location.unwrap_or_else(|| Span::new(
+                                    Position::new(1, 1, 0), 
+                                    Position::new(1, 1, 0), 
+                                    SourceId::new(0)
+                                )),
+                                actual_value: error.actual,
+                                expected_value: error.expected,
                             });
                         }
                     }
@@ -274,17 +278,21 @@ impl SemanticValidator {
                     let result = self.constraint_engine.validate_pattern(
                         value, pattern, &context
                     ).map_err(|e| SemanticError::ValidationError { 
-                        message: e.to_string(),
-                        location: None
+                        message: e.to_string()
                     })?;
                     
                     if !result.is_valid {
                         for error in result.errors {
                             violations.push(ConstraintViolation {
-                                constraint_type: error.constraint_type,
-                                message: error.message,
-                                location: error.location.unwrap_or_default(),
-                                suggestions: error.suggestions,
+                                constraint: error.constraint_type,
+                                description: error.message,
+                                location: error.location.unwrap_or_else(|| Span::new(
+                                    Position::new(1, 1, 0), 
+                                    Position::new(1, 1, 0), 
+                                    SourceId::new(0)
+                                )),
+                                actual_value: error.actual,
+                                expected_value: error.expected,
                             });
                         }
                     }
@@ -293,17 +301,21 @@ impl SemanticValidator {
                     let result = self.constraint_engine.validate_length(
                         value, *min_length, *max_length, &context
                     ).map_err(|e| SemanticError::ValidationError { 
-                        message: e.to_string(),
-                        location: None
+                        message: e.to_string()
                     })?;
                     
                     if !result.is_valid {
                         for error in result.errors {
                             violations.push(ConstraintViolation {
-                                constraint_type: error.constraint_type,
-                                message: error.message,
-                                location: error.location.unwrap_or_default(),
-                                suggestions: error.suggestions,
+                                constraint: error.constraint_type,
+                                description: error.message,
+                                location: error.location.unwrap_or_else(|| Span::new(
+                                    Position::new(1, 1, 0), 
+                                    Position::new(1, 1, 0), 
+                                    SourceId::new(0)
+                                )),
+                                actual_value: error.actual,
+                                expected_value: error.expected,
                             });
                         }
                     }
@@ -312,17 +324,21 @@ impl SemanticValidator {
                     let result = self.constraint_engine.validate_format(
                         value, format_name, &context
                     ).map_err(|e| SemanticError::ValidationError { 
-                        message: e.to_string(),
-                        location: None
+                        message: e.to_string()
                     })?;
                     
                     if !result.is_valid {
                         for error in result.errors {
                             violations.push(ConstraintViolation {
-                                constraint_type: error.constraint_type,
-                                message: error.message,
-                                location: error.location.unwrap_or_default(),
-                                suggestions: error.suggestions,
+                                constraint: error.constraint_type,
+                                description: error.message,
+                                location: error.location.unwrap_or_else(|| Span::new(
+                                    Position::new(1, 1, 0), 
+                                    Position::new(1, 1, 0), 
+                                    SourceId::new(0)
+                                )),
+                                actual_value: error.actual,
+                                expected_value: error.expected,
                             });
                         }
                     }

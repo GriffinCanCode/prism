@@ -7,10 +7,12 @@
 use prism_compiler::{
     CompilerResult, CompilerConfig,
     SymbolSystem, SymbolSystemConfig,
-    SymbolData, SymbolKind, SymbolVisibility, TypeCategory,
+    SymbolData, SymbolKind, SymbolBuilder,
     ScopeKind, ResolutionContext,
     SemanticDatabase, CompilationCache, CacheConfig,
 };
+use prism_compiler::symbols::data::SymbolVisibility;
+use prism_compiler::symbols::kinds::TypeCategory;
 use prism_common::{span::Span, symbol::Symbol};
 use prism_effects::effects::EffectRegistry;
 use std::sync::Arc;
@@ -103,76 +105,36 @@ fn create_custom_config() -> SymbolSystemConfig {
 fn register_example_symbols(symbol_system: &SymbolSystem) -> CompilerResult<()> {
     let symbol_table = symbol_system.symbol_table();
 
-    // Register a module symbol
-    let module_symbol = SymbolData {
-        symbol: Symbol::intern("UserManagement"),
-        name: "UserManagement".to_string(),
-        kind: SymbolKind::Module {
-            sections: vec!["types".to_string(), "interface".to_string(), "internal".to_string()],
-            capabilities: vec!["UserDatabase".to_string(), "Authentication".to_string()],
-        },
-        location: Span::new(0, 100),
-        visibility: SymbolVisibility::Public,
-        ast_node: None,
-        semantic_type: Some("module".to_string()),
-        effects: Vec::new(),
-        required_capabilities: vec!["UserDatabase".to_string()],
-        documentation: Some("Module for managing user accounts and authentication".to_string()),
-        responsibility: Some("User account lifecycle and authentication management".to_string()),
-        ai_context: Some("This module handles all user-related operations including registration, authentication, and profile management".to_string()),
-    };
+    // Register a module symbol using the builder API
+    let module_symbol = SymbolBuilder::module("UserManagement", Span::dummy())
+        .public()
+        .with_responsibility("User account lifecycle and authentication management")
+        .with_capability("UserDatabase")
+        .build()?;
     symbol_table.register_symbol(module_symbol)?;
 
-    // Register a function symbol
-    let function_symbol = SymbolData {
-        symbol: Symbol::intern("authenticateUser"),
-        name: "authenticateUser".to_string(),
-        kind: SymbolKind::Function {
-            parameters: vec!["email".to_string(), "password".to_string()],
-            return_type: Some("Result<User, AuthError>".to_string()),
-            is_async: true,
-        },
-        location: Span::new(50, 150),
-        visibility: SymbolVisibility::Public,
-        ast_node: None,
-        semantic_type: Some("async_function".to_string()),
-        effects: vec![
-            crate::symbol_table::SymbolEffect {
-                name: "Database.Query".to_string(),
-                category: "IO".to_string(),
-                parameters: vec!["user_table".to_string()],
-            },
-            crate::symbol_table::SymbolEffect {
-                name: "Cryptography.Hash".to_string(),
-                category: "Security".to_string(),
-                parameters: vec!["password_hash".to_string()],
-            },
-        ],
-        required_capabilities: vec!["UserDatabase".to_string(), "PasswordHashing".to_string()],
-        documentation: Some("Authenticates a user with email and password".to_string()),
-        responsibility: Some("Verify user credentials securely".to_string()),
-        ai_context: Some("This function takes user credentials and returns an authenticated user or an error. It uses database queries and cryptographic hashing for security.".to_string()),
-    };
+    // Register a function symbol using the builder API
+    let function_symbol = SymbolBuilder::function("authenticateUser", Span::dummy())
+        .public()
+        .with_responsibility("Verify user credentials securely")
+        .with_capability("UserDatabase")
+        .with_capability("PasswordHashing")
+        .build()?;
     symbol_table.register_symbol(function_symbol)?;
 
-    // Register a type symbol
-    let type_symbol = SymbolData {
-        symbol: Symbol::intern("User"),
-        name: "User".to_string(),
-        kind: SymbolKind::Type {
-            type_category: TypeCategory::Semantic,
-            constraints: vec!["email.is_validated()".to_string(), "id.is_unique()".to_string()],
-        },
-        location: Span::new(20, 40),
-        visibility: SymbolVisibility::Public,
-        ast_node: None,
-        semantic_type: Some("semantic_type".to_string()),
-        effects: Vec::new(),
-        required_capabilities: Vec::new(),
-        documentation: Some("Represents a validated user in the system".to_string()),
-        responsibility: Some("Store user identity with validation constraints".to_string()),
-        ai_context: Some("User type with semantic constraints ensuring data integrity and business rule compliance".to_string()),
+    // Register a type symbol using the builder API
+    use prism_compiler::symbols::kinds::{TypeCategory, PrimitiveType};
+    let semantic_type_category = TypeCategory::Semantic {
+        base_type: "UserRecord".to_string(),
+        domain: "UserManagement".to_string(),
+        constraints: vec!["email.is_validated()".to_string(), "id.is_unique()".to_string()],
+        business_rules: Vec::new(),
     };
+    
+    let type_symbol = SymbolBuilder::type_symbol("User", Span::dummy(), semantic_type_category)
+        .public()
+        .with_responsibility("Store user identity with validation constraints")
+        .build()?;
     symbol_table.register_symbol(type_symbol)?;
 
     println!("   📦 Registered module: UserManagement");

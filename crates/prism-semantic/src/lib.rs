@@ -34,20 +34,34 @@
 pub mod analyzer;
 pub mod types;
 pub mod inference;
+pub mod type_inference;  // NEW: Complete type inference subsystem
 pub mod validation;
 pub mod context;
 pub mod database;
 pub mod patterns;
+pub mod ai_integration;  // NEW: AI integration and metadata provider
 
 // Re-export main types for convenience
 pub use analyzer::{SemanticAnalyzer, AnalysisConfig, AnalysisResult};
 pub use types::{SemanticType, TypeConstraint, BusinessRule, SemanticTypeSystem};
 pub use inference::{TypeInferenceEngine, InferredType, InferenceConfig};
-pub use validation::{SemanticValidator, ValidationResult, ValidationError};
-pub use context::{AIContextExtractor, SemanticContext, AIMetadata};
-pub use database::{SemanticDatabase, SemanticInfo};
-pub use analyzer::SymbolInfo;
-pub use patterns::{PatternRecognizer, SemanticPattern, PatternType};
+pub use type_inference::{
+    TypeInferenceEngine as NewTypeInferenceEngine, 
+    InferenceConfig as NewInferenceConfig,
+    TypeInferenceResult, 
+    InferredType as NewInferredType,
+    TypeVar,
+    ConstraintSolver,
+    Unifier,
+    TypeEnvironment,
+    TypeError,
+    TypeInferenceAI,
+};
+pub use validation::{SemanticValidator, ValidationResult, ValidationConfig};
+pub use context::{SemanticContext, ContextExtractor, AIContext};
+pub use database::{SemanticDatabase, SemanticQuery, SemanticResult};
+pub use patterns::{SemanticPattern, PatternRecognizer, PatternResult};
+pub use ai_integration::SemanticMetadataProvider;
 
 // Common error type
 use thiserror::Error;
@@ -167,7 +181,7 @@ pub struct SemanticEngine {
     /// Validator
     validator: SemanticValidator,
     /// Context extractor
-    context_extractor: AIContextExtractor,
+    context_extractor: ContextExtractor,
     /// Database
     database: SemanticDatabase,
     /// Pattern recognizer
@@ -181,7 +195,7 @@ impl SemanticEngine {
         let type_system = SemanticTypeSystem::new(&config)?;
         let inference_engine = TypeInferenceEngine::new(&config)?;
         let validator = SemanticValidator::new(&config)?;
-        let context_extractor = AIContextExtractor::new(&config)?;
+        let context_extractor = ContextExtractor::new(&config)?;
         let database = SemanticDatabase::new(&config)?;
         let pattern_recognizer = PatternRecognizer::new(&config)?;
 

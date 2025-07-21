@@ -348,6 +348,6 @@ Exceptional PEPs that set the standard:
 ## Links
 
 - [PEP Repository](https://github.com/prism-lang/peps)
-- [Discussion Forum](https://discuss.prism-lang.org/c/peps)
+- [Discussion Forum](https://discuss.prsm-lang.org/c/peps)
 - [PEP Status Board](https://prism-lang.org/peps)
 - [Core Team](https://prism-lang.org/team)

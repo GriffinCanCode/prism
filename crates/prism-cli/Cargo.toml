@@ -16,22 +16,46 @@ name = "prism"
 path = "src/main.rs"
 
 [dependencies]
+# Workspace dependencies - Core Integration
 prism-common.workspace = true
 prism-lexer.workspace = true
 prism-parser.workspace = true
 prism-semantic.workspace = true
 prism-effects.workspace = true
 prism-codegen.workspace = true
-prism-ai.workspace = true
+prism-ai = { workspace = true }
+prism-compiler.workspace = true  # Main integration point
+
+# CLI Framework
 clap.workspace = true
+
+# Async Runtime
+tokio.workspace = true
+
+# Logging and Tracing
 tracing.workspace = true
 tracing-subscriber.workspace = true
-tokio.workspace = true
+
+# Error Handling
 anyhow.workspace = true
 thiserror.workspace = true
-serde = { workspace = true, features = ["derive"], optional = true }
-serde_json = { workspace = true, optional = true }
+
+# Serialization for config and output
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+serde_yaml = "0.9"  # For YAML output support
+
+# Additional CLI utilities
+uuid = { version = "1.0", features = ["v4"] }  # For unique identifiers
+futures = "0.3"  # For async utilities
 
 [features]
-default = []
-serde = ["dep:serde", "dep:serde_json", "prism-common/serde"] 
+default = ["full"]
+full = ["ai-integration", "resource-monitoring"]
+ai-integration = ["prism-compiler/ai-integration"]
+resource-monitoring = ["monitoring"]
+monitoring = []
+
+[dev-dependencies]
+tempfile = "3.8"
+tokio-test = "0.4" 

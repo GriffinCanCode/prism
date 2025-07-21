@@ -38,6 +38,8 @@ pub struct PIRModule {
     pub dependencies: Vec<ModuleDependency>,
     /// Business context information
     pub business_context: crate::business::BusinessContext,
+    /// Smart module metadata
+    pub smart_module_metadata: SmartModuleMetadata,
     /// Domain-specific rules
     pub domain_rules: Vec<DomainRule>,
     /// Effects provided or required by this module
@@ -48,6 +50,837 @@ pub struct PIRModule {
     pub performance_profile: crate::quality::PerformanceProfile,
     /// Conceptual cohesion score (0.0 to 1.0)
     pub cohesion_score: f64,
+}
+
+/// Comprehensive smart module metadata for AI comprehension and analysis
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SmartModuleMetadata {
+    /// Module discovery information
+    pub discovery_info: ModuleDiscoveryInfo,
+    /// Capability mapping and compatibility
+    pub capability_mapping: CapabilityMapping,
+    /// Business context analysis
+    pub business_analysis: BusinessAnalysis,
+    /// Cohesion metrics and trends
+    pub cohesion_analysis: CohesionAnalysis,
+    /// AI-generated insights and recommendations
+    pub ai_insights: AIInsights,
+    /// Module lifecycle information
+    pub lifecycle_info: ModuleLifecycleInfo,
+    /// Integration patterns and relationships
+    pub integration_patterns: IntegrationPatterns,
+    /// Quality metrics and assessments
+    pub quality_metrics: QualityMetrics,
+}
+
+/// Module discovery and identification information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModuleDiscoveryInfo {
+    /// Primary module identifier
+    pub module_id: String,
+    /// Module version information
+    pub version: Option<String>,
+    /// Module stability level
+    pub stability: StabilityLevel,
+    /// Module visibility scope
+    pub visibility: ModuleVisibility,
+    /// Tags for categorization and search
+    pub tags: Vec<String>,
+    /// Module classification (domain, layer, etc.)
+    pub classification: ModuleClassification,
+    /// Search keywords for discovery
+    pub search_keywords: Vec<String>,
+}
+
+/// Module stability levels for lifecycle management
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum StabilityLevel {
+    /// Experimental - may change significantly
+    Experimental,
+    /// Alpha - basic functionality, may have breaking changes
+    Alpha,
+    /// Beta - feature complete, API may change
+    Beta,
+    /// Stable - production ready, API stable
+    Stable,
+    /// Deprecated - marked for removal
+    Deprecated,
+    /// Legacy - maintained but not enhanced
+    Legacy,
+}
+
+/// Module visibility levels for access control
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ModuleVisibility {
+    /// Public - accessible to all
+    Public,
+    /// Internal - accessible within the same project
+    Internal,
+    /// Private - accessible only within the same module
+    Private,
+    /// Protected - accessible within inheritance hierarchy
+    Protected,
+}
+
+/// Module classification for organizational structure
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModuleClassification {
+    /// Domain classification (business domain)
+    pub domain: Option<String>,
+    /// Layer classification (presentation, business, data, etc.)
+    pub layer: Option<String>,
+    /// Architectural pattern (MVC, hexagonal, etc.)
+    pub pattern: Option<String>,
+    /// Technology stack classification
+    pub technology_stack: Vec<String>,
+}
+
+/// Capability mapping and compatibility information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CapabilityMapping {
+    /// Capabilities this module provides
+    pub provides: Vec<ProvidedCapability>,
+    /// Capabilities this module requires
+    pub requires: Vec<RequiredCapability>,
+    /// Optional capabilities (graceful degradation)
+    pub optional: Vec<OptionalCapability>,
+    /// Capability compatibility matrix
+    pub compatibility_matrix: HashMap<String, CompatibilityInfo>,
+    /// Version compatibility information
+    pub version_compatibility: VersionCompatibility,
+}
+
+/// Information about a capability this module provides
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProvidedCapability {
+    /// Capability name
+    pub name: String,
+    /// Capability version
+    pub version: String,
+    /// Capability description
+    pub description: Option<String>,
+    /// Quality of service level
+    pub qos_level: QoSLevel,
+    /// Performance characteristics
+    pub performance_hints: Vec<String>,
+    /// Security requirements
+    pub security_requirements: Vec<String>,
+}
+
+/// Information about a capability this module requires
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RequiredCapability {
+    /// Capability name
+    pub name: String,
+    /// Minimum required version
+    pub min_version: String,
+    /// Maximum compatible version
+    pub max_version: Option<String>,
+    /// Criticality level
+    pub criticality: CriticalityLevel,
+    /// Fallback behavior if unavailable
+    pub fallback_strategy: Option<String>,
+}
+
+/// Information about an optional capability
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OptionalCapability {
+    /// Capability name
+    pub name: String,
+    /// Preferred version
+    pub preferred_version: Option<String>,
+    /// Enhanced functionality when available
+    pub enhanced_features: Vec<String>,
+    /// Degraded behavior when unavailable
+    pub degraded_behavior: Option<String>,
+}
+
+/// Compatibility information for capabilities
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompatibilityInfo {
+    /// Compatible versions
+    pub compatible_versions: Vec<String>,
+    /// Incompatible versions
+    pub incompatible_versions: Vec<String>,
+    /// Migration paths for upgrades
+    pub migration_paths: Vec<MigrationPath>,
+    /// Breaking changes information
+    pub breaking_changes: Vec<BreakingChange>,
+}
+
+/// Quality of Service levels
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum QoSLevel {
+    /// Best effort - no guarantees
+    BestEffort,
+    /// Standard - typical performance expectations
+    Standard,
+    /// High - above average performance requirements
+    High,
+    /// Critical - mission critical performance requirements
+    Critical,
+}
+
+/// Criticality levels for requirements
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum CriticalityLevel {
+    /// Low - nice to have
+    Low,
+    /// Medium - important for full functionality
+    Medium,
+    /// High - essential for core functionality
+    High,
+    /// Critical - module cannot function without this
+    Critical,
+}
+
+/// Version compatibility information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VersionCompatibility {
+    /// Semantic versioning compatibility
+    pub semantic_versioning: bool,
+    /// Backward compatibility guarantees
+    pub backward_compatible_versions: Vec<String>,
+    /// Forward compatibility information
+    pub forward_compatible_versions: Vec<String>,
+    /// API evolution strategy
+    pub evolution_strategy: String,
+}
+
+/// Business context analysis for the module
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BusinessAnalysis {
+    /// Primary business domain
+    pub primary_domain: String,
+    /// Secondary domains (if applicable)
+    pub secondary_domains: Vec<String>,
+    /// Business value proposition
+    pub value_proposition: String,
+    /// Key business entities handled
+    pub business_entities: Vec<BusinessEntityInfo>,
+    /// Business processes supported
+    pub business_processes: Vec<BusinessProcessInfo>,
+    /// Business rules enforced
+    pub business_rules: Vec<BusinessRuleInfo>,
+    /// Stakeholder information
+    pub stakeholders: Vec<StakeholderInfo>,
+}
+
+/// Information about business entities
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BusinessEntityInfo {
+    /// Entity name
+    pub name: String,
+    /// Entity description
+    pub description: Option<String>,
+    /// Entity lifecycle states
+    pub lifecycle_states: Vec<String>,
+    /// Related entities
+    pub relationships: Vec<String>,
+    /// Business constraints
+    pub constraints: Vec<String>,
+}
+
+/// Information about business processes
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BusinessProcessInfo {
+    /// Process name
+    pub name: String,
+    /// Process description
+    pub description: Option<String>,
+    /// Process steps
+    pub steps: Vec<String>,
+    /// Input requirements
+    pub inputs: Vec<String>,
+    /// Output deliverables
+    pub outputs: Vec<String>,
+    /// Success criteria
+    pub success_criteria: Vec<String>,
+}
+
+/// Information about business rules
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BusinessRuleInfo {
+    /// Rule name
+    pub name: String,
+    /// Rule description
+    pub description: String,
+    /// Rule type (validation, calculation, etc.)
+    pub rule_type: String,
+    /// Enforcement level
+    pub enforcement_level: EnforcementLevel,
+    /// Related entities
+    pub related_entities: Vec<String>,
+}
+
+/// Information about stakeholders
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StakeholderInfo {
+    /// Stakeholder role
+    pub role: String,
+    /// Stakeholder interests
+    pub interests: Vec<String>,
+    /// Interaction patterns
+    pub interaction_patterns: Vec<String>,
+}
+
+/// Cohesion analysis and metrics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CohesionAnalysis {
+    /// Overall cohesion score
+    pub overall_score: f64,
+    /// Detailed cohesion metrics
+    pub detailed_metrics: DetailedCohesionMetrics,
+    /// Cohesion trends over time
+    pub trends: CohesionTrends,
+    /// Cohesion violations and issues
+    pub violations: Vec<CohesionViolation>,
+    /// Improvement suggestions
+    pub improvement_suggestions: Vec<CohesionSuggestion>,
+}
+
+/// Detailed cohesion metrics breakdown
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DetailedCohesionMetrics {
+    /// Functional cohesion score
+    pub functional_cohesion: f64,
+    /// Sequential cohesion score
+    pub sequential_cohesion: f64,
+    /// Communicational cohesion score
+    pub communicational_cohesion: f64,
+    /// Procedural cohesion score
+    pub procedural_cohesion: f64,
+    /// Temporal cohesion score
+    pub temporal_cohesion: f64,
+    /// Logical cohesion score
+    pub logical_cohesion: f64,
+    /// Coincidental cohesion score
+    pub coincidental_cohesion: f64,
+}
+
+/// Cohesion trends over time
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CohesionTrends {
+    /// Historical cohesion scores
+    pub historical_scores: Vec<CohesionSnapshot>,
+    /// Trend direction (improving, declining, stable)
+    pub trend_direction: TrendDirection,
+    /// Rate of change
+    pub change_rate: f64,
+    /// Predicted future trend
+    pub future_prediction: Option<f64>,
+}
+
+/// Cohesion snapshot at a point in time
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CohesionSnapshot {
+    /// Timestamp of measurement
+    pub timestamp: String,
+    /// Cohesion score at that time
+    pub score: f64,
+    /// What triggered this measurement
+    pub trigger: String,
+    /// Context information
+    pub context: Option<String>,
+}
+
+/// Trend direction enumeration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum TrendDirection {
+    /// Cohesion is improving
+    Improving,
+    /// Cohesion is declining
+    Declining,
+    /// Cohesion is stable
+    Stable,
+    /// Insufficient data to determine trend
+    Unknown,
+}
+
+/// Cohesion violation information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CohesionViolation {
+    /// Violation type
+    pub violation_type: String,
+    /// Violation description
+    pub description: String,
+    /// Severity level
+    pub severity: ViolationSeverity,
+    /// Location information
+    pub location: Option<String>,
+    /// Impact assessment
+    pub impact: String,
+}
+
+/// Violation severity levels
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ViolationSeverity {
+    /// Low severity - minor issue
+    Low,
+    /// Medium severity - should be addressed
+    Medium,
+    /// High severity - important to fix
+    High,
+    /// Critical severity - must be fixed
+    Critical,
+}
+
+/// Cohesion improvement suggestion
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CohesionSuggestion {
+    /// Suggestion title
+    pub title: String,
+    /// Detailed suggestion description
+    pub description: String,
+    /// Estimated effort to implement
+    pub effort_estimate: EffortLevel,
+    /// Expected impact
+    pub expected_impact: f64,
+    /// Implementation steps
+    pub implementation_steps: Vec<String>,
+}
+
+/// Effort levels for improvements
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum EffortLevel {
+    /// Minimal effort required
+    Minimal,
+    /// Low effort required
+    Low,
+    /// Medium effort required
+    Medium,
+    /// High effort required
+    High,
+    /// Significant effort required
+    Significant,
+}
+
+/// AI-generated insights and recommendations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AIInsights {
+    /// Generated summary of the module
+    pub module_summary: String,
+    /// Architectural insights
+    pub architectural_insights: Vec<String>,
+    /// Performance insights
+    pub performance_insights: Vec<String>,
+    /// Security insights
+    pub security_insights: Vec<String>,
+    /// Maintainability insights
+    pub maintainability_insights: Vec<String>,
+    /// Reusability assessment
+    pub reusability_assessment: ReusabilityAssessment,
+    /// Suggested improvements
+    pub suggested_improvements: Vec<ImprovementSuggestion>,
+    /// Related modules and patterns
+    pub related_modules: Vec<String>,
+    /// Learning resources
+    pub learning_resources: Vec<LearningResource>,
+}
+
+/// Reusability assessment information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReusabilityAssessment {
+    /// Reusability score (0.0 to 1.0)
+    pub score: f64,
+    /// Factors that enhance reusability
+    pub enhancing_factors: Vec<String>,
+    /// Factors that limit reusability
+    pub limiting_factors: Vec<String>,
+    /// Suggested improvements for reusability
+    pub improvement_suggestions: Vec<String>,
+}
+
+/// Improvement suggestion with detailed information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImprovementSuggestion {
+    /// Suggestion category
+    pub category: String,
+    /// Suggestion title
+    pub title: String,
+    /// Detailed description
+    pub description: String,
+    /// Priority level
+    pub priority: Priority,
+    /// Estimated effort
+    pub effort: EffortLevel,
+    /// Expected benefits
+    pub benefits: Vec<String>,
+    /// Implementation guidance
+    pub implementation_guidance: Option<String>,
+}
+
+/// Priority levels for suggestions
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Priority {
+    /// Low priority
+    Low,
+    /// Medium priority
+    Medium,
+    /// High priority
+    High,
+    /// Critical priority
+    Critical,
+}
+
+/// Learning resource information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LearningResource {
+    /// Resource title
+    pub title: String,
+    /// Resource type (documentation, tutorial, example, etc.)
+    pub resource_type: String,
+    /// Resource URL or location
+    pub location: String,
+    /// Resource description
+    pub description: Option<String>,
+    /// Relevance score
+    pub relevance: f64,
+}
+
+/// Module lifecycle information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModuleLifecycleInfo {
+    /// Current lifecycle stage
+    pub current_stage: LifecycleStage,
+    /// Creation timestamp
+    pub created_at: String,
+    /// Last modification timestamp
+    pub last_modified: String,
+    /// Version history
+    pub version_history: Vec<VersionInfo>,
+    /// Deprecation information
+    pub deprecation_info: Option<DeprecationInfo>,
+    /// Migration information
+    pub migration_info: Option<MigrationInfo>,
+}
+
+/// Module lifecycle stages
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum LifecycleStage {
+    /// Planning stage
+    Planning,
+    /// Development stage
+    Development,
+    /// Testing stage
+    Testing,
+    /// Production stage
+    Production,
+    /// Maintenance stage
+    Maintenance,
+    /// Deprecated stage
+    Deprecated,
+    /// Retired stage
+    Retired,
+}
+
+/// Version information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VersionInfo {
+    /// Version number
+    pub version: String,
+    /// Release date
+    pub release_date: String,
+    /// Changes in this version
+    pub changes: Vec<String>,
+    /// Breaking changes
+    pub breaking_changes: Vec<String>,
+    /// Migration notes
+    pub migration_notes: Option<String>,
+}
+
+/// Deprecation information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeprecationInfo {
+    /// Deprecation reason
+    pub reason: String,
+    /// Deprecation date
+    pub deprecated_at: String,
+    /// Planned removal date
+    pub removal_date: Option<String>,
+    /// Replacement module
+    pub replacement: Option<String>,
+    /// Migration guide
+    pub migration_guide: Option<String>,
+}
+
+/// Migration information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MigrationInfo {
+    /// Source version
+    pub from_version: String,
+    /// Target version
+    pub to_version: String,
+    /// Migration steps
+    pub migration_steps: Vec<MigrationStep>,
+    /// Automated migration available
+    pub automated_migration: bool,
+    /// Migration complexity
+    pub complexity: MigrationComplexity,
+}
+
+/// Migration step information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MigrationStep {
+    /// Step number
+    pub step_number: u32,
+    /// Step description
+    pub description: String,
+    /// Required actions
+    pub actions: Vec<String>,
+    /// Validation criteria
+    pub validation: Vec<String>,
+}
+
+/// Migration complexity levels
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum MigrationComplexity {
+    /// Simple migration
+    Simple,
+    /// Moderate complexity
+    Moderate,
+    /// Complex migration
+    Complex,
+    /// Very complex migration
+    VeryComplex,
+}
+
+/// Migration path information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MigrationPath {
+    /// Source version
+    pub from: String,
+    /// Target version
+    pub to: String,
+    /// Migration steps
+    pub steps: Vec<String>,
+    /// Estimated effort
+    pub effort: EffortLevel,
+    /// Risk level
+    pub risk: RiskLevel,
+}
+
+/// Risk levels for migrations
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RiskLevel {
+    /// Low risk
+    Low,
+    /// Medium risk
+    Medium,
+    /// High risk
+    High,
+    /// Very high risk
+    VeryHigh,
+}
+
+/// Breaking change information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BreakingChange {
+    /// Change description
+    pub description: String,
+    /// Affected APIs
+    pub affected_apis: Vec<String>,
+    /// Migration instructions
+    pub migration_instructions: String,
+    /// Introduced in version
+    pub introduced_in: String,
+}
+
+/// Integration patterns and relationships
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrationPatterns {
+    /// Common integration patterns used
+    pub patterns: Vec<IntegrationPattern>,
+    /// Module relationships
+    pub relationships: Vec<ModuleRelationship>,
+    /// Communication patterns
+    pub communication_patterns: Vec<CommunicationPattern>,
+    /// Data flow patterns
+    pub data_flow_patterns: Vec<DataFlowPattern>,
+}
+
+/// Integration pattern information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntegrationPattern {
+    /// Pattern name
+    pub name: String,
+    /// Pattern description
+    pub description: String,
+    /// When to use this pattern
+    pub use_cases: Vec<String>,
+    /// Benefits of this pattern
+    pub benefits: Vec<String>,
+    /// Drawbacks of this pattern
+    pub drawbacks: Vec<String>,
+    /// Implementation examples
+    pub examples: Vec<String>,
+}
+
+/// Module relationship information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModuleRelationship {
+    /// Related module name
+    pub module_name: String,
+    /// Relationship type
+    pub relationship_type: RelationshipType,
+    /// Relationship strength (0.0 to 1.0)
+    pub strength: f64,
+    /// Relationship description
+    pub description: Option<String>,
+    /// Dependencies involved
+    pub dependencies: Vec<String>,
+}
+
+/// Types of module relationships
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RelationshipType {
+    /// Direct dependency
+    Depends,
+    /// Provides services to
+    Provides,
+    /// Collaborates with
+    Collaborates,
+    /// Extends functionality of
+    Extends,
+    /// Composes with
+    Composes,
+    /// Similar functionality
+    Similar,
+    /// Conflicting functionality
+    Conflicts,
+}
+
+/// Communication pattern information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CommunicationPattern {
+    /// Pattern name
+    pub name: String,
+    /// Communication type (synchronous, asynchronous, etc.)
+    pub communication_type: String,
+    /// Protocol used
+    pub protocol: Option<String>,
+    /// Message format
+    pub message_format: Option<String>,
+    /// Error handling strategy
+    pub error_handling: Option<String>,
+}
+
+/// Data flow pattern information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DataFlowPattern {
+    /// Pattern name
+    pub name: String,
+    /// Data source
+    pub source: String,
+    /// Data destination
+    pub destination: String,
+    /// Transformation applied
+    pub transformation: Option<String>,
+    /// Validation rules
+    pub validation: Vec<String>,
+}
+
+/// Quality metrics and assessments
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QualityMetrics {
+    /// Overall quality score
+    pub overall_score: f64,
+    /// Code quality metrics
+    pub code_quality: CodeQualityMetrics,
+    /// Design quality metrics
+    pub design_quality: DesignQualityMetrics,
+    /// Documentation quality
+    pub documentation_quality: DocumentationQualityMetrics,
+    /// Test coverage metrics
+    pub test_coverage: TestCoverageMetrics,
+    /// Performance metrics
+    pub performance_metrics: PerformanceMetrics,
+    /// Security metrics
+    pub security_metrics: SecurityMetrics,
+}
+
+/// Code quality metrics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CodeQualityMetrics {
+    /// Cyclomatic complexity
+    pub cyclomatic_complexity: f64,
+    /// Lines of code
+    pub lines_of_code: u32,
+    /// Code duplication percentage
+    pub duplication_percentage: f64,
+    /// Technical debt ratio
+    pub technical_debt_ratio: f64,
+    /// Maintainability index
+    pub maintainability_index: f64,
+}
+
+/// Design quality metrics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DesignQualityMetrics {
+    /// Coupling metrics
+    pub coupling: CouplingMetrics,
+    /// Cohesion score
+    pub cohesion: f64,
+    /// Abstraction level
+    pub abstraction_level: f64,
+    /// Interface quality
+    pub interface_quality: f64,
+    /// Design pattern adherence
+    pub pattern_adherence: f64,
+}
+
+/// Documentation quality metrics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DocumentationQualityMetrics {
+    /// Documentation coverage percentage
+    pub coverage_percentage: f64,
+    /// Documentation quality score
+    pub quality_score: f64,
+    /// Up-to-date percentage
+    pub up_to_date_percentage: f64,
+    /// Completeness score
+    pub completeness_score: f64,
+}
+
+/// Test coverage metrics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TestCoverageMetrics {
+    /// Line coverage percentage
+    pub line_coverage: f64,
+    /// Branch coverage percentage
+    pub branch_coverage: f64,
+    /// Function coverage percentage
+    pub function_coverage: f64,
+    /// Integration test coverage
+    pub integration_coverage: f64,
+}
+
+/// Performance metrics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PerformanceMetrics {
+    /// Average response time (ms)
+    pub avg_response_time: f64,
+    /// Throughput (requests/second)
+    pub throughput: f64,
+    /// Memory usage (MB)
+    pub memory_usage: f64,
+    /// CPU usage percentage
+    pub cpu_usage: f64,
+    /// Error rate percentage
+    pub error_rate: f64,
+}
+
+/// Security metrics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SecurityMetrics {
+    /// Security score (0.0 to 1.0)
+    pub security_score: f64,
+    /// Vulnerability count
+    pub vulnerability_count: u32,
+    /// Security test coverage
+    pub security_test_coverage: f64,
+    /// Compliance score
+    pub compliance_score: f64,
 }
 
 /// PIR section organized by conceptual purpose within a module

@@ -7,7 +7,7 @@
 use crate::{
     detection::SyntaxStyle,
     normalization::{
-        traits::{StyleNormalizer, AIMetadata, ComplexityMetrics, SemanticRelationship},
+        traits::{StyleNormalizer, AIMetadata, ComplexityMetrics, SemanticRelationship, RelationshipType},
         c_like::CLikeNormalizer,
         python_like::PythonLikeNormalizer,
         rust_like::RustLikeNormalizer,
@@ -1223,14 +1223,14 @@ impl Normalizer {
                  nesting_depth: 1,
                  dependency_count: syntax.modules.len(),
              },
-            semantic_relationships: vec![
-                SemanticRelationship {
-                    source: "module".to_string(),
-                    target: "function".to_string(),
-                    relationship_type: "contains".to_string(),
-                    confidence: 0.9,
-                }
-            ],
+                         semantic_relationships: vec![
+                 SemanticRelationship {
+                     source: "module".to_string(),
+                     target: "function".to_string(),
+                     relationship_type: RelationshipType::Composition,
+                     strength: 0.9,
+                 }
+             ],
         };
         
         Ok(metadata)

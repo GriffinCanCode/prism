@@ -1316,8 +1316,15 @@ impl PythonLikeParser {
         let mut params = Vec::new();
         
         while !self.is_at_end() && !self.check_token(TokenKind::RightBracket) {
-            let name_token = self.expect_token(TokenKind::Identifier)?;
-            let name = name_token.value;
+            let name_token = self.advance().unwrap();
+            let name = if let TokenKind::Identifier(name) = name_token.kind {
+                name
+            } else {
+                return Err(PythonParseError::UnexpectedToken {
+                    expected: "identifier".to_string(),
+                    found: format!("{:?}", name_token.kind),
+                });
+            };
             let span = name_token.span;
             
             // Determine parameter kind
@@ -1355,8 +1362,15 @@ impl PythonLikeParser {
         let mut params = Vec::new();
         
         while !self.is_at_end() && !self.check_token(TokenKind::RightParen) {
-            let name_token = self.expect_token(TokenKind::Identifier)?;
-            let name = name_token.value;
+            let name_token = self.advance().unwrap();
+            let name = if let TokenKind::Identifier(name) = name_token.kind {
+                name
+            } else {
+                return Err(PythonParseError::UnexpectedToken {
+                    expected: "identifier".to_string(),
+                    found: format!("{:?}", name_token.kind),
+                });
+            };
             let span = name_token.span;
             
             // Parse type annotation
@@ -1397,7 +1411,14 @@ impl PythonLikeParser {
         if let Some(token) = self.peek() {
             match &token.kind {
                 TokenKind::Identifier => {
-                    let name = self.advance().unwrap().value;
+                    let token = self.advance().unwrap();
+                let name = if let TokenKind::Identifier(name) = token.kind {
+                    name
+                } else {
+                    return Err(PythonParseError::InvalidSyntax {
+                        message: "Expected identifier".to_string(),
+                    });
+                };
                     let span = token.span;
                     Ok(TypeExpression::Name { name, span })
                 }

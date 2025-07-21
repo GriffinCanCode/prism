@@ -43,14 +43,15 @@ pub struct PlatformManager {
 impl PlatformManager {
     /// Create a new platform manager
     pub fn new() -> Result<Self, PlatformError> {
-        let execution_manager = Arc::new(execution::ExecutionManager::new()?);
+        let execution_manager = Arc::new(execution::ExecutionManager::new()
+            .map_err(|e| PlatformError::ExecutionError(e))?);
 
         Ok(Self {
             execution_manager,
         })
     }
 
-    /// Execute code with monitoring across platforms
+    /// Execute code with monitoring and capability checking across targets
     pub fn execute_monitored<T>(
         &self,
         code: &dyn crate::Executable<T>,
@@ -59,21 +60,58 @@ impl PlatformManager {
         resource_handle: &resources::ResourceHandle,
     ) -> Result<T, PlatformError> {
         self.execution_manager
-            .execute_monitored(code, capabilities, context, &resource_handle.effect_handle)
-            .map_err(PlatformError::Execution)
+            .execute_monitored(code, capabilities, context, resource_handle)
+            .map_err(PlatformError::ExecutionError)
+    }
+
+    /// Get execution statistics from the platform
+    pub fn get_execution_stats(&self) -> PlatformStats {
+        // In a real implementation, this would aggregate stats from execution manager
+        PlatformStats {
+            total_executions: 0,
+            successful_executions: 0,
+            failed_executions: 0,
+            average_execution_time: std::time::Duration::ZERO,
+        }
+    }
+
+    /// Check if a target is supported
+    pub fn is_target_supported(&self, target: &execution::ExecutionTarget) -> bool {
+        match target {
+            execution::ExecutionTarget::TypeScript |
+            execution::ExecutionTarget::WebAssembly |
+            execution::ExecutionTarget::Native => true,
+        }
     }
 }
 
-/// Platform execution errors
+/// Platform statistics
+#[derive(Debug, Clone)]
+pub struct PlatformStats {
+    /// Total executions across all targets
+    pub total_executions: u64,
+    /// Successful executions
+    pub successful_executions: u64,
+    /// Failed executions
+    pub failed_executions: u64,
+    /// Average execution time
+    pub average_execution_time: std::time::Duration,
+}
+
+/// Platform-related errors
 #[derive(Debug, Error)]
 pub enum PlatformError {
     /// Execution error
     #[error("Execution error: {0}")]
-    Execution(#[from] execution::ExecutionError),
+    ExecutionError(#[from] execution::ExecutionError),
 
-    /// Platform adaptation error
-    #[error("Platform adaptation error: {message}")]
-    Adaptation { message: String },
+    /// Authority error
+    #[error("Authority error: {0}")]
+    Authority(#[from] authority::CapabilityError),
+
+    /// Resource error
+    #[error("Resource error: {0}")]
+    Resource(#[from] resources::ResourceError),
 
     /// Generic platform error
     #[error("Platform error: {message}")]

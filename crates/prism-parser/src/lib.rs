@@ -1,19 +1,29 @@
-//! Parser for the Prism programming language
+//! AST construction and semantic analysis for Prism.
 //!
-//! This crate provides a hybrid parsing approach combining recursive descent
-//! for complex language constructs with parser combinators for simpler patterns.
-//! The parser is designed for AI-first development with rich error recovery
-//! and semantic metadata extraction.
+//! ## Clear Separation of Concerns (Fixed Architecture)
 //!
-//! ## PLT-001 Implementation
+//! **✅ prism-parser responsibilities:**
+//! - AST construction from canonical forms or token streams
+//! - Multi-token semantic analysis and relationship detection
+//! - Cross-token pattern recognition and validation
+//! - Semantic-aware error recovery with meaning preservation
+//! - AI metadata generation from parsed structures
+//! - Integration with semantic analysis systems
 //!
-//! This crate implements PLT-001: AST Design & Parser Architecture, providing:
-//! - **Multi-syntax parsing**: Support for C-like, Python-like, Rust-like, and Canonical syntax
-//! - **Semantic awareness**: Integration with PLD-001 (Semantic Types), PLD-002 (Modules), PLD-003 (Effects)
-//! - **Documentation validation**: Full PSG-003 compliance checking
-//! - **Cohesion analysis**: PLD-002 conceptual cohesion metrics and suggestions
-//! - **AI metadata generation**: Comprehensive AI-readable metadata for external tools
-//! - **Error recovery**: Semantic-aware error recovery with preservation of meaning
+//! **❌ NOT prism-parser responsibilities:**
+//! - ❌ Character-to-token conversion (→ prism-lexer)
+//! - ❌ Syntax style detection (→ prism-syntax)
+//! - ❌ Single-token enrichment (→ prism-lexer)
+//! - ❌ Style-specific parsing (→ prism-syntax)
+//!
+//! ## Data Flow Position
+//! 
+//! ```
+//! prism-lexer (tokens) → prism-syntax (canonical) → prism-parser (AST) → prism-semantic (analysis)
+//! ```
+//!
+//! This crate focuses on the **AST construction and multi-token analysis** layer,
+//! taking normalized input and producing rich semantic structures.
 //!
 //! ## Architecture
 //!
@@ -203,7 +213,7 @@ pub fn parse_type(tokens: Vec<Token>) -> ParseResult<prism_common::NodeId> {
 /// 
 /// This is the recommended entry point for parsing Prism code as it provides
 /// the complete PLT-001 functionality including:
-/// - Multi-syntax parsing with semantic preservation
+/// - Multi-syntax parsing with semantic preservation (UPDATED: using factory system)
 /// - Documentation validation (PSG-003)
 /// - Cohesion analysis (PLD-002)
 /// - Semantic type integration (PLD-001)
@@ -245,9 +255,9 @@ pub fn parse_source_with_full_analysis(
 
 /// **NEW**: Parse source code with basic parsing only (fast path)
 /// 
-/// This provides fast parsing without the full PLT-001 analysis pipeline.
-/// Use this when you only need the AST without documentation validation,
-/// cohesion analysis, or AI metadata generation.
+/// This provides fast parsing using the new factory-based orchestrator without 
+/// the full PLT-001 analysis pipeline. Use this when you only need the AST 
+/// without documentation validation, cohesion analysis, or AI metadata generation.
 pub fn parse_source_basic(
     source: &str,
     source_id: prism_common::SourceId,

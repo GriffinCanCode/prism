@@ -819,7 +819,7 @@ fn test_expression_parsing_compatibility() {
 
 #[test]
 fn test_performance_regression() {
-    let source = include_str!("../test_data/large_file.prism");
+    let source = include_str!("../test_data/large_file.prsm");
     let tokens = Lexer::new(source).collect_tokens().unwrap();
     
     let start = std::time::Instant::now();

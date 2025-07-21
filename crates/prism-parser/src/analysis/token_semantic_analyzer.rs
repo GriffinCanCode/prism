@@ -1,12 +1,22 @@
-//! Token-based Semantic Analysis
+//! Multi-Token Semantic Analysis
 //!
-//! This module embodies the single concept of "Token Stream Semantic Analysis".
-//! Following Prism's Conceptual Cohesion principle, this file is responsible
-//! for ONE thing: analyzing token streams to extract semantic patterns and summaries.
+//! ## Clear Separation of Concerns
 //!
-//! **Conceptual Responsibility**: Analyze token relationships and patterns
-//! **What it does**: semantic summaries, token pattern recognition, identifier analysis
-//! **What it doesn't do**: tokenization, AST construction, syntax detection
+//! **✅ What this module DOES (expanded role):**
+//! - Cross-token relationship analysis and pattern recognition
+//! - Multi-token semantic summaries and insights
+//! - Complex identifier usage analysis across token streams
+//! - Semantic pattern detection requiring multiple tokens
+//! - Integration with higher-level semantic analysis systems
+//!
+//! **❌ What this module does NOT do:**
+//! - ❌ Single-token enrichment (→ prism-lexer)
+//! - ❌ Character-to-token conversion (→ prism-lexer)
+//! - ❌ Syntax style detection (→ prism-syntax)
+//! - ❌ AST construction (→ parser core)
+//!
+//! **Conceptual Responsibility**: Multi-token semantic analysis and cross-token relationships
+//! **Position in Pipeline**: Takes enriched tokens → produces semantic insights for AST construction
 
 use prism_lexer::{Token, TokenKind};
 use prism_common::{span::Span, symbol::Symbol};

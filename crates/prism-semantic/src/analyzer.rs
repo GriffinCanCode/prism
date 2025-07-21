@@ -14,6 +14,40 @@ use prism_common::{NodeId, span::Span, symbol::Symbol};
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 
+/// Business rule extracted from semantic analysis
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BusinessRule {
+    /// Rule name
+    pub rule_name: String,
+    /// Rule type/category
+    pub rule_type: String,
+    /// Confidence in this rule (0.0 to 1.0)
+    pub confidence: f64,
+    /// Rule description
+    pub description: String,
+    /// Evidence supporting this rule
+    pub evidence: Vec<String>,
+    /// Location where rule was detected
+    pub location: Option<Span>,
+}
+
+/// Semantic relationship between code elements
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SemanticRelationship {
+    /// Source element
+    pub source: String,
+    /// Target element
+    pub target: String,
+    /// Type of relationship
+    pub relationship_type: String,
+    /// Relationship strength (0.0 to 1.0)
+    pub strength: f64,
+    /// Evidence supporting this relationship
+    pub evidence: Vec<String>,
+    /// Location where relationship was detected
+    pub location: Option<Span>,
+}
+
 /// Core semantic analyzer that orchestrates all semantic analysis
 #[derive(Debug)]
 pub struct SemanticAnalyzer {
@@ -716,5 +750,184 @@ impl SemanticAnalyzer {
             hints.push("Follows standard constant naming convention".to_string());
         }
         hints
+    }
+
+    /// Extract business rules from analysis results
+    pub fn extract_business_rules(&self, analysis: &AnalysisResult) -> Vec<BusinessRule> {
+        let mut rules = Vec::new();
+
+        // Extract business rules from symbols
+        for (symbol, symbol_info) in &analysis.symbols {
+            // Business context rules
+            if let Some(ref business_context) = symbol_info.business_context {
+                rules.push(BusinessRule {
+                    rule_name: format!("{} business rule", symbol_info.name),
+                    rule_type: "business_context".to_string(),
+                    confidence: 0.85,
+                    description: format!("Business context: {}", business_context),
+                    evidence: vec![format!("Symbol {} has business context", symbol_info.name)],
+                    location: Some(symbol_info.location),
+                });
+            }
+
+            // Validation rules from function names
+            if symbol_info.name.contains("validate") || symbol_info.name.contains("check") {
+                rules.push(BusinessRule {
+                    rule_name: format!("{} validation rule", symbol_info.name),
+                    rule_type: "validation".to_string(),
+                    confidence: 0.8,
+                    description: format!("Function {} performs validation", symbol_info.name),
+                    evidence: vec!["Function name suggests validation behavior".to_string()],
+                    location: Some(symbol_info.location),
+                });
+            }
+
+            // Security rules from capability usage
+            if !symbol_info.ai_hints.is_empty() {
+                let security_hints: Vec<_> = symbol_info.ai_hints.iter()
+                    .filter(|hint| hint.contains("security") || hint.contains("permission") || hint.contains("auth"))
+                    .collect();
+                
+                if !security_hints.is_empty() {
+                    rules.push(BusinessRule {
+                        rule_name: format!("{} security rule", symbol_info.name),
+                        rule_type: "security".to_string(),
+                        confidence: 0.9,
+                        description: format!("Symbol {} has security implications", symbol_info.name),
+                        evidence: security_hints.iter().map(|s| s.to_string()).collect(),
+                        location: Some(symbol_info.location),
+                    });
+                }
+            }
+        }
+
+        // Extract business rules from types
+        for (type_id, type_info) in &analysis.types {
+            // Configuration rules
+            if type_info.domain.as_ref().map_or(false, |d| d.contains("config")) {
+                rules.push(BusinessRule {
+                    rule_name: "Configuration type rule".to_string(),
+                    rule_type: "configuration".to_string(),
+                    confidence: 0.75,
+                    description: "Type used for configuration management".to_string(),
+                    evidence: vec![format!("Domain: {:?}", type_info.domain)],
+                    location: Some(type_info.location),
+                });
+            }
+
+            // Data validation rules from AI descriptions
+            if let Some(ref ai_description) = type_info.ai_description {
+                if ai_description.contains("constraint") || ai_description.contains("validation") {
+                    rules.push(BusinessRule {
+                        rule_name: "Data constraint rule".to_string(),
+                        rule_type: "data_constraint".to_string(),
+                        confidence: 0.8,
+                        description: format!("Type has data constraints: {}", ai_description),
+                        evidence: vec![ai_description.clone()],
+                        location: Some(type_info.location),
+                    });
+                }
+            }
+        }
+
+        // Extract module-level business rules
+        let symbol_count = analysis.symbols.len();
+        let business_context_count = analysis.symbols.values()
+            .filter(|s| s.business_context.is_some())
+            .count();
+
+        if symbol_count > 0 {
+            let business_context_ratio = business_context_count as f64 / symbol_count as f64;
+            
+            if business_context_ratio > 0.5 {
+                rules.push(BusinessRule {
+                    rule_name: "Domain-driven design rule".to_string(),
+                    rule_type: "architecture".to_string(),
+                    confidence: 0.7 + business_context_ratio * 0.3,
+                    description: format!("Module follows domain-driven design with {}% business context coverage", 
+                                       (business_context_ratio * 100.0) as u32),
+                    evidence: vec![
+                        format!("{} out of {} symbols have business context", business_context_count, symbol_count)
+                    ],
+                    location: None,
+                });
+            }
+        }
+
+        // Sort by confidence
+        rules.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap());
+        
+        rules
+    }
+
+    /// Extract semantic relationships from analysis
+    pub fn extract_semantic_relationships(&self, analysis: &AnalysisResult) -> Vec<SemanticRelationship> {
+        let mut relationships = Vec::new();
+
+        // Symbol-to-type relationships
+        for (symbol, symbol_info) in &analysis.symbols {
+            for (type_id, type_info) in &analysis.types {
+                // Check if symbol and type are related by location proximity
+                if self.are_locations_related(&symbol_info.location, &type_info.location) {
+                    relationships.push(SemanticRelationship {
+                        source: symbol_info.name.clone(),
+                        target: type_info.ai_description.clone().unwrap_or_else(|| "Unknown type".to_string()),
+                        relationship_type: "uses_type".to_string(),
+                        strength: 0.8,
+                        evidence: vec!["Location proximity suggests type usage".to_string()],
+                        location: Some(symbol_info.location),
+                    });
+                }
+            }
+
+            // Business context relationships
+            if let Some(ref business_context) = symbol_info.business_context {
+                relationships.push(SemanticRelationship {
+                    source: symbol_info.name.clone(),
+                    target: business_context.clone(),
+                    relationship_type: "implements_business_rule".to_string(),
+                    strength: 0.9,
+                    evidence: vec!["Symbol has explicit business context".to_string()],
+                    location: Some(symbol_info.location),
+                });
+            }
+        }
+
+        // Module cohesion relationships
+        let symbols_with_business_context: Vec<_> = analysis.symbols.values()
+            .filter(|s| s.business_context.is_some())
+            .collect();
+
+        if symbols_with_business_context.len() >= 2 {
+            for i in 0..symbols_with_business_context.len() {
+                for j in (i + 1)..symbols_with_business_context.len() {
+                    let symbol_a = symbols_with_business_context[i];
+                    let symbol_b = symbols_with_business_context[j];
+                    
+                    relationships.push(SemanticRelationship {
+                        source: symbol_a.name.clone(),
+                        target: symbol_b.name.clone(),
+                        relationship_type: "cohesive_with".to_string(),
+                        strength: 0.6,
+                        evidence: vec!["Both symbols have business context in same module".to_string()],
+                        location: Some(symbol_a.location),
+                    });
+                }
+            }
+        }
+
+        relationships
+    }
+
+    /// Check if two locations are semantically related
+    fn are_locations_related(&self, loc1: &Span, loc2: &Span) -> bool {
+        // Simple heuristic: locations are related if they're within 50 lines of each other
+        let line_diff = if loc1.start.line > loc2.start.line {
+            loc1.start.line - loc2.start.line
+        } else {
+            loc2.start.line - loc1.start.line
+        };
+        
+        line_diff <= 50
     }
 } 

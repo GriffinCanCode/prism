@@ -12,12 +12,13 @@ categories = ["development-tools", "compilers"]
 # Core Prism dependencies
 prism-common = { path = "../prism-common" }
 prism-ast = { path = "../prism-ast" }
+# prism-compiler = { path = "../prism-compiler" }  # Commented out to break circular dependency
 
 # Graph analysis for dependency tracking
 petgraph = "0.6"
 
 # Fast hashing for large codebases
-rustc-hash = "1.1"
+rustc-hash = "2.0"
 
 # Serialization and data handling
 serde = { version = "1.0", features = ["derive"] }
@@ -30,7 +31,10 @@ thiserror = "1.0"
 strsim = "0.11"
 
 # Statistical analysis
-statrs = "0.16"
+statrs = "0.17"
+
+# Date/time handling for timestamps
+chrono = { version = "0.4", features = ["serde"] }
 
 # Optional features
 tracing = { version = "0.1", optional = true }
@@ -45,16 +49,4 @@ default = ["analysis", "metrics", "ai-insights"]
 analysis = []
 metrics = []
 ai-insights = []
-tracing = ["dep:tracing"]
-
-[[example]]
-name = "analyze_cohesion"
-required-features = ["analysis"]
-
-[[example]]
-name = "cohesion_metrics"
-required-features = ["metrics"]
-
-[[bench]]
-name = "cohesion_benchmarks"
-harness = false 
+tracing = ["dep:tracing"] 

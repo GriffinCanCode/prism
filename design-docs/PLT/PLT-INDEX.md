@@ -381,7 +381,7 @@ All PLTs follow this structure:
 - [Testing Standards](./TESTING.md)
 - [Performance Benchmarks](./BENCHMARKS.md)
 - [Compiler Repository](https://github.com/prism-lang/prism)
-- [Technical Forum](https://discuss.prism-lang.org/c/technical)
+- [Technical Forum](https://discuss.prsm-lang.org/c/technical)
 
 ## Index Maintenance
 

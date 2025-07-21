@@ -202,6 +202,20 @@ impl ExpressionParser {
                 Self::parse_f_string(coordinator)
             }
 
+            // Concurrency expressions
+            TokenKind::Spawn => {
+                Self::parse_spawn_expression(coordinator)
+            }
+            TokenKind::Channel => {
+                Self::parse_channel_expression(coordinator)
+            }
+            TokenKind::Select => {
+                Self::parse_select_expression(coordinator)
+            }
+            TokenKind::Actor => {
+                Self::parse_actor_expression(coordinator)
+            }
+
             _ => {
                 // Create error expression for recovery
                 coordinator.add_error(ParseError::invalid_syntax(
@@ -694,6 +708,317 @@ impl ExpressionParser {
             Expr::NamedExpression(NamedExpressionExpr {
                 target,
                 value: Box::new(value),
+            }),
+            full_span,
+        ))
+    }
+
+    // Concurrency expression parsing methods
+
+    /// Parse spawn expression: `spawn expr` or `spawn(expr, capabilities: [...], priority: expr)`
+    fn parse_spawn_expression(coordinator: &mut ParsingCoordinator) -> ParseResult<AstNode<Expr>> {
+        use prism_ast::SpawnExpr;
+        
+        let start_token = coordinator.token_manager_mut().expect(TokenKind::Spawn)?;
+        
+        // Parse the expression to spawn
+        let expression = Self::parse_expression_with_precedence(coordinator, Precedence::Unary)?;
+        
+        // Parse optional capabilities and priority
+        let mut capabilities = Vec::new();
+        let mut priority = None;
+        
+        // Check for function-call style spawn(expr, capabilities: [...], priority: expr)
+        if coordinator.token_manager().check(TokenKind::LeftParen) {
+            coordinator.token_manager_mut().advance(); // consume '('
+            
+            // Parse named arguments
+            while !coordinator.token_manager().check(TokenKind::RightParen) && !coordinator.token_manager().is_at_end() {
+                if let TokenKind::Identifier(name) = &coordinator.token_manager().peek().kind {
+                    let name = name.clone();
+                    coordinator.token_manager_mut().advance();
+                    coordinator.token_manager_mut().expect(TokenKind::Colon)?;
+                    
+                    match name.as_str() {
+                        "capabilities" => {
+                            coordinator.token_manager_mut().expect(TokenKind::LeftBracket)?;
+                            while !coordinator.token_manager().check(TokenKind::RightBracket) {
+                                let cap = Self::parse_expression_with_precedence(coordinator, Precedence::Assignment)?;
+                                capabilities.push(cap);
+                                
+                                if !coordinator.token_manager().check(TokenKind::RightBracket) {
+                                    coordinator.token_manager_mut().expect(TokenKind::Comma)?;
+                                }
+                            }
+                            coordinator.token_manager_mut().expect(TokenKind::RightBracket)?;
+                        }
+                        "priority" => {
+                            priority = Some(Box::new(Self::parse_expression_with_precedence(coordinator, Precedence::Assignment)?));
+                        }
+                        _ => {
+                            // Skip unknown named arguments
+                            Self::parse_expression_with_precedence(coordinator, Precedence::Assignment)?;
+                        }
+                    }
+                    
+                    if coordinator.token_manager().check(TokenKind::Comma) {
+                        coordinator.token_manager_mut().advance();
+                    }
+                }
+            }
+            
+            coordinator.token_manager_mut().expect(TokenKind::RightParen)?;
+        }
+        
+        let end_span = coordinator.token_manager().peek().span;
+        let full_span = Span::new(start_token.span.start, end_span.end, start_token.span.source_id);
+        
+        Ok(coordinator.create_node(
+            Expr::Spawn(SpawnExpr {
+                expression: Box::new(expression),
+                capabilities,
+                priority,
+            }),
+            full_span,
+        ))
+    }
+
+    /// Parse channel expression: `channel()`, `channel.send(value)`, `channel.receive()`
+    fn parse_channel_expression(coordinator: &mut ParsingCoordinator) -> ParseResult<AstNode<Expr>> {
+        use prism_ast::{ChannelExpr, ChannelOperation};
+        
+        let start_token = coordinator.token_manager_mut().expect(TokenKind::Channel)?;
+        
+        // Parse channel operation
+        let (operation, channel, value, buffer_size) = if coordinator.token_manager().check(TokenKind::LeftParen) {
+            // Channel creation: channel(buffer_size?)
+            coordinator.token_manager_mut().advance(); // consume '('
+            
+            let buffer_size = if !coordinator.token_manager().check(TokenKind::RightParen) {
+                Some(Box::new(Self::parse_expression_with_precedence(coordinator, Precedence::Assignment)?))
+            } else {
+                None
+            };
+            
+            coordinator.token_manager_mut().expect(TokenKind::RightParen)?;
+            (ChannelOperation::Create, None, None, buffer_size)
+        } else if coordinator.token_manager().check(TokenKind::Dot) {
+            // Channel method call: channel.send(value) or channel.receive()
+            coordinator.token_manager_mut().advance(); // consume '.'
+            
+            if let TokenKind::Identifier(method) = &coordinator.token_manager().peek().kind {
+                let method = method.clone();
+                coordinator.token_manager_mut().advance();
+                
+                match method.as_str() {
+                    "send" => {
+                        coordinator.token_manager_mut().expect(TokenKind::LeftParen)?;
+                        let value = Self::parse_expression_with_precedence(coordinator, Precedence::Assignment)?;
+                        coordinator.token_manager_mut().expect(TokenKind::RightParen)?;
+                        (ChannelOperation::Send, None, Some(Box::new(value)), None)
+                    }
+                    "receive" => {
+                        coordinator.token_manager_mut().expect(TokenKind::LeftParen)?;
+                        coordinator.token_manager_mut().expect(TokenKind::RightParen)?;
+                        (ChannelOperation::Receive, None, None, None)
+                    }
+                    _ => {
+                        return Err(ParseError::invalid_syntax(
+                            "channel_method".to_string(),
+                            format!("Unknown channel method: {}", method),
+                            coordinator.token_manager().peek().span,
+                        ));
+                    }
+                }
+            } else {
+                return Err(ParseError::invalid_syntax(
+                    "channel_method".to_string(),
+                    "Expected method name after '.'".to_string(),
+                    coordinator.token_manager().peek().span,
+                ));
+            }
+        } else {
+            // Simple channel reference
+            (ChannelOperation::Create, None, None, None)
+        };
+        
+        let end_span = coordinator.token_manager().peek().span;
+        let full_span = Span::new(start_token.span.start, end_span.end, start_token.span.source_id);
+        
+        Ok(coordinator.create_node(
+            Expr::Channel(ChannelExpr {
+                operation,
+                channel,
+                value,
+                buffer_size,
+            }),
+            full_span,
+        ))
+    }
+
+    /// Parse select expression: `select { channel_pattern => expr, ... }`
+    fn parse_select_expression(coordinator: &mut ParsingCoordinator) -> ParseResult<AstNode<Expr>> {
+        use prism_ast::{SelectExpr, SelectArm, ChannelPattern};
+        
+        let start_token = coordinator.token_manager_mut().expect(TokenKind::Select)?;
+        coordinator.token_manager_mut().expect(TokenKind::LeftBrace)?;
+        
+        let mut arms = Vec::new();
+        let mut default_arm = None;
+        
+        while !coordinator.token_manager().check(TokenKind::RightBrace) && !coordinator.token_manager().is_at_end() {
+            if coordinator.token_manager().check(TokenKind::Default) {
+                // Default arm
+                coordinator.token_manager_mut().advance();
+                coordinator.token_manager_mut().expect(TokenKind::FatArrow)?;
+                let body = Self::parse_expression_with_precedence(coordinator, Precedence::Assignment)?;
+                
+                default_arm = Some(Box::new(SelectArm {
+                    pattern: ChannelPattern::Receive {
+                        channel: coordinator.create_node(
+                            Expr::Error(prism_ast::ErrorExpr {
+                                message: "Default pattern placeholder".to_string(),
+                            }),
+                            Span::dummy(),
+                        ),
+                        variable: None,
+                    },
+                    guard: None,
+                    body,
+                }));
+            } else {
+                // Regular channel pattern arm
+                let pattern = Self::parse_channel_pattern(coordinator)?;
+                
+                // Optional guard
+                let guard = if coordinator.token_manager().check_keyword("if") {
+                    coordinator.token_manager_mut().advance();
+                    Some(Box::new(Self::parse_expression_with_precedence(coordinator, Precedence::Assignment)?))
+                } else {
+                    None
+                };
+                
+                coordinator.token_manager_mut().expect(TokenKind::FatArrow)?;
+                let body = Self::parse_expression_with_precedence(coordinator, Precedence::Assignment)?;
+                
+                arms.push(SelectArm {
+                    pattern,
+                    guard,
+                    body,
+                });
+            }
+            
+            if coordinator.token_manager().check(TokenKind::Comma) {
+                coordinator.token_manager_mut().advance();
+            }
+        }
+        
+        coordinator.token_manager_mut().expect(TokenKind::RightBrace)?;
+        
+        let end_span = coordinator.token_manager().peek().span;
+        let full_span = Span::new(start_token.span.start, end_span.end, start_token.span.source_id);
+        
+        Ok(coordinator.create_node(
+            Expr::Select(SelectExpr {
+                arms,
+                default_arm,
+            }),
+            full_span,
+        ))
+    }
+
+    /// Parse channel pattern for select expressions
+    fn parse_channel_pattern(coordinator: &mut ParsingCoordinator) -> ParseResult<prism_ast::ChannelPattern> {
+        use prism_ast::ChannelPattern;
+        
+        let channel = Self::parse_expression_with_precedence(coordinator, Precedence::Call)?;
+        
+        if coordinator.token_manager().check(TokenKind::Dot) {
+            coordinator.token_manager_mut().advance();
+            
+            if let TokenKind::Identifier(method) = &coordinator.token_manager().peek().kind {
+                let method = method.clone();
+                coordinator.token_manager_mut().advance();
+                
+                match method.as_str() {
+                    "send" => {
+                        coordinator.token_manager_mut().expect(TokenKind::LeftParen)?;
+                        let value = Self::parse_expression_with_precedence(coordinator, Precedence::Assignment)?;
+                        coordinator.token_manager_mut().expect(TokenKind::RightParen)?;
+                        
+                        Ok(ChannelPattern::Send { channel, value })
+                    }
+                    "receive" => {
+                        coordinator.token_manager_mut().expect(TokenKind::LeftParen)?;
+                        
+                        let variable = if let TokenKind::Identifier(var_name) = &coordinator.token_manager().peek().kind {
+                            let var_name = var_name.clone();
+                            coordinator.token_manager_mut().advance();
+                            Some(prism_common::symbol::Symbol::intern(&var_name))
+                        } else {
+                            None
+                        };
+                        
+                        coordinator.token_manager_mut().expect(TokenKind::RightParen)?;
+                        
+                        Ok(ChannelPattern::Receive { channel, variable })
+                    }
+                    _ => {
+                        Err(ParseError::invalid_syntax(
+                            "channel_pattern".to_string(),
+                            format!("Unknown channel pattern method: {}", method),
+                            coordinator.token_manager().peek().span,
+                        ))
+                    }
+                }
+            } else {
+                Err(ParseError::invalid_syntax(
+                    "channel_pattern".to_string(),
+                    "Expected method name after '.'".to_string(),
+                    coordinator.token_manager().peek().span,
+                ))
+            }
+        } else {
+            // Default to receive pattern
+            Ok(ChannelPattern::Receive { channel, variable: None })
+        }
+    }
+
+    /// Parse actor expression: `actor { ... }`
+    fn parse_actor_expression(coordinator: &mut ParsingCoordinator) -> ParseResult<AstNode<Expr>> {
+        use prism_ast::ActorExpr;
+        
+        let start_token = coordinator.token_manager_mut().expect(TokenKind::Actor)?;
+        
+        // Parse capabilities
+        let mut capabilities = Vec::new();
+        if coordinator.token_manager().check_keyword("capabilities") {
+            coordinator.token_manager_mut().advance();
+            coordinator.token_manager_mut().expect(TokenKind::LeftBracket)?;
+            
+            while !coordinator.token_manager().check(TokenKind::RightBracket) {
+                let cap = Self::parse_expression_with_precedence(coordinator, Precedence::Assignment)?;
+                capabilities.push(cap);
+                
+                if !coordinator.token_manager().check(TokenKind::RightBracket) {
+                    coordinator.token_manager_mut().expect(TokenKind::Comma)?;
+                }
+            }
+            
+            coordinator.token_manager_mut().expect(TokenKind::RightBracket)?;
+        }
+        
+        // Parse actor implementation (block expression)
+        let actor_impl = Self::parse_block_expression(coordinator)?;
+        
+        let end_span = actor_impl.span;
+        let full_span = Span::new(start_token.span.start, end_span.end, start_token.span.source_id);
+        
+        Ok(coordinator.create_node(
+            Expr::Actor(ActorExpr {
+                actor_impl: Box::new(actor_impl),
+                capabilities,
+                config: None, // Could be extended to parse configuration
             }),
             full_span,
         ))

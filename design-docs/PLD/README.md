@@ -253,7 +253,7 @@ All PLDs follow this structure:
 - [Design Philosophy](./PHILOSOPHY.md)
 - [Contributing Guide](./CONTRIBUTING.md)
 - [Compiler Repository](https://github.com/prism-lang/prism)
-- [Community Forum](https://discuss.prism-lang.org)
+- [Community Forum](https://discuss.prsm-lang.org)
 
 ## Index Maintenance
 

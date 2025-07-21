@@ -374,7 +374,6 @@ enum RelationshipType {
 }
 
 /// Export manager that coordinates multiple exporters
-#[derive(Debug)]
 pub struct ExportManager {
     exporters: HashMap<ExportFormat, Box<dyn MetadataExporter>>,
 }

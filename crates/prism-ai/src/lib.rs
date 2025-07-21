@@ -32,7 +32,7 @@ pub use context::*;
 pub use providers::*;  // NEW: Provider traits and types
 
 /// Central AI integration coordinator
-#[derive(Debug)]
+
 pub struct AIIntegrationCoordinator {
     /// Configuration for AI features
     config: AIIntegrationConfig,
@@ -235,8 +235,8 @@ pub enum AIIntegrationError {
     #[error("Configuration error: {message}")]
     ConfigurationError { message: String },
 
-    #[error("Metadata collection failed: {source}")]
-    MetadataCollectionFailed { source: String },
+    #[error("Metadata collection failed: {message}")]
+    MetadataCollectionFailed { message: String },
 
     #[error("Export failed: {format:?} - {reason}")]
     ExportFailed { format: ExportFormat, reason: String },
@@ -387,7 +387,7 @@ impl AIIntegrationCoordinator {
                 }
                 Err(e) => {
                     return Err(AIIntegrationError::MetadataCollectionFailed {
-                        source: format!("Collector '{}': {}", name, e),
+                        message: format!("Collector '{}': {}", name, e),
                     });
                 }
             }

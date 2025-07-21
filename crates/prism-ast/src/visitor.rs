@@ -130,9 +130,52 @@ impl AstVisitor for DefaultVisitor {
                     self.visit_expr(value);
                 }
             }
-            Expr::Range(range) => {
-                self.visit_expr(&range.start);
-                self.visit_expr(&range.end);
+            Expr::Actor(actor_expr) => {
+                self.visit_expr(&actor_expr.actor_impl);
+                for cap in &actor_expr.capabilities {
+                    self.visit_expr(cap);
+                }
+                if let Some(config) = &actor_expr.config {
+                    self.visit_expr(config);
+                }
+            }
+            Expr::Spawn(spawn_expr) => {
+                self.visit_expr(&spawn_expr.expression);
+                for cap in &spawn_expr.capabilities {
+                    self.visit_expr(cap);
+                }
+                if let Some(priority) = &spawn_expr.priority {
+                    self.visit_expr(priority);
+                }
+            }
+            Expr::Channel(channel_expr) => {
+                if let Some(channel) = &channel_expr.channel {
+                    self.visit_expr(channel);
+                }
+                if let Some(value) = &channel_expr.value {
+                    self.visit_expr(value);
+                }
+                if let Some(buffer_size) = &channel_expr.buffer_size {
+                    self.visit_expr(buffer_size);
+                }
+            }
+            Expr::Select(select_expr) => {
+                for arm in &select_expr.arms {
+                    if let Some(guard) = &arm.guard {
+                        self.visit_expr(guard);
+                    }
+                    self.visit_expr(&arm.body);
+                }
+                if let Some(default_arm) = &select_expr.default_arm {
+                    if let Some(guard) = &default_arm.guard {
+                        self.visit_expr(guard);
+                    }
+                    self.visit_expr(&default_arm.body);
+                }
+            }
+            Expr::Range(range_expr) => {
+                self.visit_expr(&range_expr.start);
+                self.visit_expr(&range_expr.end);
             }
             Expr::Tuple(tuple) => {
                 for element in &tuple.elements {
@@ -176,6 +219,68 @@ impl AstVisitor for DefaultVisitor {
             Expr::GeneratorExpression(_) => {},
             Expr::NamedExpression(_) => {},
             Expr::StarredExpression(_) => {},
+            // Concurrency expressions
+            // Expr::Actor(actor_expr) => {
+            //     self.visit_expr(&actor_expr.actor_impl);
+            //     for cap in &actor_expr.capabilities {
+            //         self.visit_expr(cap);
+            //     }
+            //     if let Some(config) = &actor_expr.config {
+            //         self.visit_expr(config);
+            //     }
+            // },
+            // Expr::Spawn(spawn_expr) => {
+            //     self.visit_expr(&spawn_expr.expression);
+            //     for cap in &spawn_expr.capabilities {
+            //         self.visit_expr(cap);
+            //     }
+            //     if let Some(priority) = &spawn_expr.priority {
+            //         self.visit_expr(priority);
+            //     }
+            // },
+            // Expr::Channel(channel_expr) => {
+            //     if let Some(channel) = &channel_expr.channel {
+            //         self.visit_expr(channel);
+            //     }
+            //     if let Some(value) = &channel_expr.value {
+            //         self.visit_expr(value);
+            //     }
+            //     if let Some(buffer_size) = &channel_expr.buffer_size {
+            //         self.visit_expr(buffer_size);
+            //     }
+            // },
+            // Expr::Select(select_expr) => {
+            //     for arm in &select_expr.arms {
+            //         match &arm.pattern {
+            //             crate::ChannelPattern::Receive { channel, .. } => {
+            //                 self.visit_expr(channel);
+            //             },
+            //             crate::ChannelPattern::Send { channel, value } => {
+            //                 self.visit_expr(channel);
+            //                 self.visit_expr(value);
+            //             },
+            //         }
+            //         if let Some(guard) = &arm.guard {
+            //             self.visit_expr(guard);
+            //         }
+            //         self.visit_expr(&arm.body);
+            //     }
+            //     if let Some(default_arm) = &select_expr.default_arm {
+            //         match &default_arm.pattern {
+            //             crate::ChannelPattern::Receive { channel, .. } => {
+            //                 self.visit_expr(channel);
+            //             },
+            //             crate::ChannelPattern::Send { channel, value } => {
+            //                 self.visit_expr(channel);
+            //                 self.visit_expr(value);
+            //             },
+            //         }
+            //         if let Some(guard) = &default_arm.guard {
+            //             self.visit_expr(guard);
+            //         }
+            //         self.visit_expr(&default_arm.body);
+            //     }
+            // },
         }
     }
 
@@ -213,6 +318,34 @@ impl AstVisitor for DefaultVisitor {
             Stmt::Section(section_decl) => {
                 for item in &section_decl.items {
                     self.visit_stmt(item);
+                }
+            }
+            Stmt::Actor(actor_decl) => {
+                for field in &actor_decl.state_fields {
+                    if let Some(type_annotation) = &field.type_annotation {
+                        self.visit_type(type_annotation);
+                    }
+                    if let Some(default_value) = &field.default_value {
+                        self.visit_expr(default_value);
+                    }
+                }
+                if let Some(message_type) = &actor_decl.message_type {
+                    self.visit_type(message_type);
+                }
+                for handler in &actor_decl.message_handlers {
+                    self.visit_stmt(&handler.body);
+                    for effect in &handler.effects {
+                        self.visit_expr(effect);
+                    }
+                }
+                for capability in &actor_decl.capabilities {
+                    self.visit_expr(capability);
+                }
+                for effect in &actor_decl.effects {
+                    self.visit_expr(effect);
+                }
+                for hook in &actor_decl.lifecycle_hooks {
+                    self.visit_stmt(&hook.body);
                 }
             }
             Stmt::Import(_) | Stmt::Export(_) | Stmt::Const(_) => {
@@ -279,6 +412,24 @@ impl AstVisitor for DefaultVisitor {
                 }
             }
             Stmt::Error(_) => {},
+            Stmt::Actor(actor_decl) => {
+                // Visit message handlers
+                for handler in &actor_decl.message_handlers {
+                    self.visit_stmt(&handler.body);
+                }
+                // Visit capabilities
+                for cap in &actor_decl.capabilities {
+                    self.visit_expr(cap);
+                }
+                // Visit effects
+                for effect in &actor_decl.effects {
+                    self.visit_expr(effect);
+                }
+                // Visit lifecycle hooks
+                for hook in &actor_decl.lifecycle_hooks {
+                    self.visit_stmt(&hook.body);
+                }
+            },
         }
     }
 

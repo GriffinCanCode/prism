@@ -86,7 +86,6 @@ impl CollectedMetadata {
 }
 
 /// Enhanced metadata aggregator that uses the provider system
-#[derive(Debug)]
 pub struct MetadataAggregator {
     /// Legacy collectors for backward compatibility
     collectors: Vec<Box<dyn MetadataCollector>>,
@@ -131,7 +130,7 @@ impl MetadataAggregator {
                     Ok(metadata) => results.push(metadata),
                     Err(e) => {
                         return Err(AIIntegrationError::MetadataCollectionFailed {
-                            source: format!("Collector '{}': {}", collector.name(), e),
+                            message: format!("Collector '{}': {}", collector.name(), e),
                         });
                     }
                 }

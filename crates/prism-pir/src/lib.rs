@@ -59,7 +59,8 @@ pub mod semantic;
 pub mod business;
 pub mod ai_integration;
 pub mod quality;
-pub mod transformation_pipeline;
+pub mod optimization;  // PIR optimization and normalization utilities
+pub mod construction;  // NEW: Query-based construction subsystem
 
 // Legacy modules (to be migrated or removed)
 pub mod contracts;
@@ -86,9 +87,28 @@ pub use quality::{
     NetworkProfile, ScalabilityProfile, TransformationHistory,
 };
 
-pub use transformation_pipeline::{
-    PIRBuilder, PIRBuilderConfig,
+// Main PIR construction interface - use new construction subsystem
+pub use construction::{
+    PIRConstructionBuilder, ConstructionConfig, ConstructionResult,
+    ASTToPIRQuery, PIRModuleQuery, PIRFunctionQuery, PIRTypeQuery,
+    transformation::{ASTToPIRTransformer, SemanticContextExtractor, BusinessContextExtractorPlaceholder, 
+                    AIMetadataExtractorPlaceholder, TransformationContext, TransformationDiagnostic},
+    compiler_integration::{PIRConstructionQuery, PIRConstructionOrchestrator, PIRConstructionInput,
+                          PIRCompilerIntegration, CompilerIntegrationConfig},
+    semantic_preservation::{SemanticPreservationValidator, PreservationConfig, PreservationResult},
+    business_extraction::{BusinessContextExtractor, BusinessExtractionConfig},
+    effect_integration::{EffectSystemIntegrator, EffectIntegrationConfig, EffectIntegrationResult},
+    ai_extraction::{AIMetadataExtractor as AIExtractor, AIExtractionConfig, AIExtractionResult},
+};
+
+// Backward compatibility aliases
+pub type PIRBuilder = PIRConstructionBuilder;
+pub type PIRBuilderConfig = ConstructionConfig;
+
+// PIR optimization utilities
+pub use optimization::{
     PIROptimizer, PIRNormalizer, TransformationUtils,
+    OptimizerConfig, NormalizerConfig, OptimizationLevel,
 };
 
 // Legacy re-exports for compatibility (will be removed)

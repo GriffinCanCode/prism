@@ -610,6 +610,10 @@ pub enum ParseError {
     /// AI metadata generation failed
     #[error("AI metadata generation failed: {reason}")]
     AIMetadataFailed { reason: String },
+    
+    /// Conversion failed
+    #[error("Conversion failed: {reason}")]
+    ConversionFailed { reason: String },
 }
 
 impl Parser {
@@ -658,39 +662,471 @@ impl Parser {
                 .map_err(|e| ParseError::DetectionFailed { reason: e.to_string() })?
         };
         
-        // Step 2: Parse using the appropriate style parser
+        // Step 2: Tokenize the source once
+        let tokens = self.tokenize_source(source, source_id)?;
+        
+        // Step 3: Parse using the appropriate style parser and convert to Program
         let program = match detection_result.detected_style {
             SyntaxStyle::CLike => {
-                self.c_like_parser.parse_source(source, source_id)
+                let mut c_like_parser = CLikeParser::new();
+                let c_like_syntax = c_like_parser.parse(tokens)
                     .map_err(|e| ParseError::ParsingFailed { 
                         syntax: SyntaxStyle::CLike, 
                         reason: e.to_string() 
-                    })?
+                    })?;
+                self.convert_c_like_to_program(c_like_syntax, source_id, &detection_result)?
             }
             SyntaxStyle::PythonLike => {
-                self.python_like_parser.parse_source(source, source_id)
+                let mut python_parser = PythonLikeParser::new();
+                let python_syntax = python_parser.parse(tokens)
                     .map_err(|e| ParseError::ParsingFailed { 
                         syntax: SyntaxStyle::PythonLike, 
                         reason: e.to_string() 
-                    })?
+                    })?;
+                self.convert_python_like_to_program(python_syntax, source_id, &detection_result)?
             }
             SyntaxStyle::RustLike => {
-                self.rust_like_parser.parse_source(source, source_id)
+                let mut rust_parser = RustLikeParser::new();
+                let rust_syntax = rust_parser.parse(tokens)
                     .map_err(|e| ParseError::ParsingFailed { 
                         syntax: SyntaxStyle::RustLike, 
                         reason: e.to_string() 
-                    })?
+                    })?;
+                self.convert_rust_like_to_program(rust_syntax, source_id, &detection_result)?
             }
             SyntaxStyle::Canonical => {
-                self.canonical_parser.parse_source(source, source_id)
+                let mut canonical_parser = CanonicalParser::new();
+                let ast_nodes = canonical_parser.parse_source(source, source_id)
                     .map_err(|e| ParseError::ParsingFailed { 
                         syntax: SyntaxStyle::Canonical, 
                         reason: e.to_string() 
-                    })?
+                    })?;
+                self.convert_canonical_to_program(ast_nodes, source_id, &detection_result)?
             }
         };
         
+        // Step 4: Apply additional analysis if enabled
+        if self.context.generate_ai_metadata || self.context.validate_documentation || 
+           self.context.analyze_cohesion || self.context.analyze_semantic_types || 
+           self.context.analyze_effects {
+            self.apply_additional_analysis(&program)?;
+        }
+        
         Ok(program)
+    }
+    
+    /// Tokenize source code once for reuse across parsers
+    fn tokenize_source(&self, source: &str, source_id: SourceId) -> Result<Vec<Token>, ParseError> {
+        // Create a dummy symbol table for lexing
+        let mut symbol_table = prism_common::symbol::SymbolTable::new();
+        let lexer_config = prism_lexer::LexerConfig::default();
+        let lexer = prism_lexer::Lexer::new(source, source_id, &mut symbol_table, lexer_config);
+        
+        let lex_result = lexer.tokenize();
+        Ok(lex_result.tokens)
+    }
+    
+    /// Convert C-like syntax to unified Program representation
+    fn convert_c_like_to_program(&self, c_like_syntax: crate::styles::c_like::CLikeSyntax, source_id: SourceId, detection_result: &DetectionResult) -> Result<Program, ParseError> {
+        use crate::styles::c_like::*;
+        
+        let mut items = Vec::new();
+        
+        // Convert modules
+        for module in c_like_syntax.modules {
+            let module_item = self.convert_c_like_module_to_item(module)?;
+            items.push(module_item);
+        }
+        
+        // Convert functions
+        for function in c_like_syntax.functions {
+            let function_item = self.convert_c_like_function_to_item(function)?;
+            items.push(function_item);
+        }
+        
+        // Convert statements to items
+        for statement in c_like_syntax.statements {
+            let statement_item = self.convert_c_like_statement_to_item(statement)?;
+            items.push(statement_item);
+        }
+        
+        Ok(Program {
+            items,
+            source_id,
+            metadata: self.create_program_metadata("C-like", detection_result),
+        })
+    }
+    
+    /// Convert Python-like syntax to unified Program representation
+    fn convert_python_like_to_program(&self, python_syntax: crate::styles::python_like::PythonSyntaxTree, source_id: SourceId, detection_result: &DetectionResult) -> Result<Program, ParseError> {
+        use crate::styles::python_like::*;
+        
+        let mut items = Vec::new();
+        
+        // Convert imports to items
+        for import in python_syntax.imports {
+            let import_item = self.convert_python_import_to_item(import)?;
+            items.push(import_item);
+        }
+        
+        // Convert type aliases to items
+        for type_alias in python_syntax.type_aliases {
+            let type_item = self.convert_python_type_alias_to_item(type_alias)?;
+            items.push(type_item);
+        }
+        
+        // Convert statements to items
+        for statement in python_syntax.statements {
+            let statement_item = self.convert_python_statement_to_item(statement)?;
+            items.push(statement_item);
+        }
+        
+        Ok(Program {
+            items,
+            source_id,
+            metadata: self.create_program_metadata("Python-like", detection_result),
+        })
+    }
+    
+    /// Convert Rust-like syntax to unified Program representation
+    fn convert_rust_like_to_program(&self, rust_syntax: crate::styles::rust_like::RustLikeSyntax, source_id: SourceId, detection_result: &DetectionResult) -> Result<Program, ParseError> {
+        use crate::styles::rust_like::*;
+        
+        let mut items = Vec::new();
+        
+        // Convert modules
+        for module in rust_syntax.modules {
+            let module_item = self.convert_rust_like_module_to_item(module)?;
+            items.push(module_item);
+        }
+        
+        // Convert functions
+        for function in rust_syntax.functions {
+            let function_item = self.convert_rust_like_function_to_item(function)?;
+            items.push(function_item);
+        }
+        
+        // Convert statements to items
+        for statement in rust_syntax.statements {
+            let statement_item = self.convert_rust_like_statement_to_item(statement)?;
+            items.push(statement_item);
+        }
+        
+        Ok(Program {
+            items,
+            source_id,
+            metadata: self.create_program_metadata("Rust-like", detection_result),
+        })
+    }
+    
+    /// Convert canonical AST nodes to unified Program representation
+    fn convert_canonical_to_program(&self, ast_nodes: Vec<AstNode<prism_ast::Stmt>>, source_id: SourceId, detection_result: &DetectionResult) -> Result<Program, ParseError> {
+        let mut items = Vec::new();
+        
+        // Convert each AST statement to an Item
+        for ast_node in ast_nodes {
+            let item = self.convert_ast_stmt_to_item(ast_node)?;
+            items.push(item);
+        }
+        
+        Ok(Program {
+            items,
+            source_id,
+            metadata: self.create_program_metadata("Canonical", detection_result),
+        })
+    }
+    
+    /// Apply additional analysis (PLD-001, PLD-002, PLD-003, PSG-003)
+    fn apply_additional_analysis(&self, program: &Program) -> Result<(), ParseError> {
+        // TODO: Implement additional analysis
+        // This is where we would integrate:
+        // - PLD-001: Semantic type analysis
+        // - PLD-002: Cohesion analysis
+        // - PLD-003: Effect system analysis
+        // - PSG-003: Documentation validation
+        
+        // For now, this is a placeholder
+        Ok(())
+    }
+    
+    /// Create program metadata for the parsed result
+    fn create_program_metadata(&self, style_name: &str, detection_result: &DetectionResult) -> ProgramMetadata {
+        ProgramMetadata {
+            primary_capability: Some(format!("Multi-syntax parsing ({})", style_name)),
+            capabilities: vec![
+                format!("syntax_parsing_{}", style_name.to_lowercase()),
+                "multi_syntax_coordination".to_string(),
+                "semantic_preservation".to_string(),
+            ],
+            dependencies: detection_result.alternative_styles
+                .iter()
+                .map(|s| format!("syntax_style_{:?}", s).to_lowercase())
+                .collect(),
+            security_implications: vec![
+                "Syntax parsing may expose input validation vulnerabilities".to_string(),
+                "Multi-syntax support increases attack surface".to_string(),
+            ],
+            performance_notes: vec![
+                format!("Parsing confidence: {:.2}%", detection_result.confidence * 100.0),
+                format!("Syntax style: {}", style_name),
+            ],
+            ai_insights: vec![
+                format!("Successfully parsed {} syntax with {:.1}% confidence", 
+                    style_name, detection_result.confidence * 100.0),
+                format!("Alternative syntax styles considered: {}", 
+                    detection_result.alternative_styles.len()),
+            ],
+        }
+    }
+
+    // C-like conversion helpers
+    fn convert_c_like_module_to_item(&self, _module: crate::styles::c_like::CLikeModule) -> Result<AstNode<prism_ast::Item>, ParseError> {
+        // TODO: Implement proper conversion from C-like module to AST Item
+        Err(ParseError::ConversionFailed { 
+            reason: "C-like module conversion not yet implemented".to_string() 
+        })
+    }
+    
+    fn convert_c_like_function_to_item(&self, _function: crate::styles::c_like::CLikeFunction) -> Result<AstNode<prism_ast::Item>, ParseError> {
+        // TODO: Implement proper conversion from C-like function to AST Item
+        Err(ParseError::ConversionFailed { 
+            reason: "C-like function conversion not yet implemented".to_string() 
+        })
+    }
+    
+    fn convert_c_like_statement_to_item(&self, _statement: crate::styles::c_like::CLikeStatement) -> Result<AstNode<prism_ast::Item>, ParseError> {
+        // TODO: Implement proper conversion from C-like statement to AST Item
+        Err(ParseError::ConversionFailed { 
+            reason: "C-like statement conversion not yet implemented".to_string() 
+        })
+    }
+    
+    // Python-like conversion helpers
+    fn convert_python_import_to_item(&self, import: crate::styles::python_like::ImportStatement) -> Result<AstNode<prism_ast::Item>, ParseError> {
+        use prism_ast::{Item, ImportDecl, ImportItems, ImportItem};
+        use prism_common::{NodeId, symbol::Symbol};
+        
+        let import_decl = match import {
+            crate::styles::python_like::ImportStatement::Import { modules, span } => {
+                // Convert "import module1, module2" to ImportDecl
+                let import_items = modules.into_iter().map(|module| {
+                    ImportItem {
+                        name: Symbol::intern(&module.name),
+                        alias: module.alias.map(|a| Symbol::intern(&a)),
+                    }
+                }).collect();
+                
+                ImportDecl {
+                    path: "".to_string(), // Will be filled from first module
+                    items: ImportItems::Specific(import_items),
+                    alias: None,
+                }
+            }
+            crate::styles::python_like::ImportStatement::FromImport { module, names, span, .. } => {
+                // Convert "from module import name1, name2" to ImportDecl
+                let import_items = names.into_iter().map(|name| {
+                    ImportItem {
+                        name: Symbol::intern(&name.name),
+                        alias: name.alias.map(|a| Symbol::intern(&a)),
+                    }
+                }).collect();
+                
+                ImportDecl {
+                    path: module.unwrap_or_default(),
+                    items: ImportItems::Specific(import_items),
+                    alias: None,
+                }
+            }
+        };
+        
+        let node_id = NodeId::new(self.next_node_id());
+        let span = prism_common::span::Span::dummy(); // TODO: Use actual span
+        
+        Ok(AstNode::new(Item::Import(import_decl), span, node_id))
+    }
+    
+    fn convert_python_type_alias_to_item(&self, type_alias: crate::styles::python_like::TypeAlias) -> Result<AstNode<prism_ast::Item>, ParseError> {
+        use prism_ast::{Item, TypeDecl, TypeKind, Visibility};
+        use prism_common::{NodeId, symbol::Symbol};
+        
+        // Convert Python type alias to Prism TypeDecl
+        let type_decl = TypeDecl {
+            name: Symbol::intern(&type_alias.name),
+            type_parameters: Vec::new(), // TODO: Convert type parameters
+            kind: TypeKind::Alias(self.convert_python_type_expression_to_ast_type(type_alias.value)?),
+            visibility: Visibility::Public, // Default visibility
+        };
+        
+        let node_id = NodeId::new(self.next_node_id());
+        let span = prism_common::span::Span::dummy(); // TODO: Use actual span from type_alias.span
+        
+        Ok(AstNode::new(Item::Type(type_decl), span, node_id))
+    }
+    
+    fn convert_python_statement_to_item(&self, statement: crate::styles::python_like::Statement) -> Result<AstNode<prism_ast::Item>, ParseError> {
+        use prism_ast::{Item, FunctionDecl, Stmt, ExpressionStmt, Visibility};
+        use prism_common::{NodeId, symbol::Symbol};
+        
+        let node_id = NodeId::new(self.next_node_id());
+        let span = prism_common::span::Span::dummy(); // TODO: Use actual span
+        
+        match statement {
+            crate::styles::python_like::Statement::FunctionDef { 
+                name, parameters, return_type, body, is_async, .. 
+            } => {
+                // Convert Python function to Prism FunctionDecl
+                let function_decl = FunctionDecl {
+                    name: Symbol::intern(&name),
+                    parameters: self.convert_python_parameters(parameters)?,
+                    return_type: if let Some(ret_type) = return_type {
+                        Some(self.convert_python_type_expression_to_ast_type(ret_type)?)
+                    } else {
+                        None
+                    },
+                    body: if !body.is_empty() {
+                        Some(self.convert_python_statements_to_block(body)?)
+                    } else {
+                        None
+                    },
+                    visibility: Visibility::Public, // Default visibility
+                    attributes: Vec::new(), // TODO: Convert decorators to attributes
+                    contracts: None, // TODO: Extract contracts from docstrings
+                    is_async,
+                };
+                
+                Ok(AstNode::new(Item::Function(function_decl), span, node_id))
+            }
+            
+            crate::styles::python_like::Statement::ClassDef { name, .. } => {
+                // For now, convert class to a placeholder type
+                use prism_ast::{TypeDecl, TypeKind, StructType};
+                
+                let type_decl = TypeDecl {
+                    name: Symbol::intern(&name),
+                    type_parameters: Vec::new(),
+                    kind: TypeKind::Struct(StructType { fields: Vec::new() }),
+                    visibility: Visibility::Public,
+                };
+                
+                Ok(AstNode::new(Item::Type(type_decl), span, node_id))
+            }
+            
+            other => {
+                // Convert other statements to statement items
+                let stmt = self.convert_python_statement_to_stmt(other)?;
+                Ok(AstNode::new(Item::Statement(stmt), span, node_id))
+            }
+        }
+    }
+    
+    // Helper methods for Python conversion
+    fn convert_python_parameters(&self, params: Vec<crate::styles::python_like::Parameter>) -> Result<Vec<prism_ast::Parameter>, ParseError> {
+        // TODO: Implement parameter conversion
+        Ok(Vec::new())
+    }
+    
+    fn convert_python_type_expression_to_ast_type(&self, _type_expr: crate::styles::python_like::TypeExpression) -> Result<AstNode<prism_ast::Type>, ParseError> {
+        use prism_ast::{Type, PrimitiveType};
+        use prism_common::NodeId;
+        
+        // TODO: Implement proper type expression conversion
+        let node_id = NodeId::new(self.next_node_id());
+        let span = prism_common::span::Span::dummy();
+        
+        Ok(AstNode::new(Type::Primitive(PrimitiveType::String), span, node_id))
+    }
+    
+    fn convert_python_statements_to_block(&self, _statements: Vec<crate::styles::python_like::Statement>) -> Result<AstNode<prism_ast::Stmt>, ParseError> {
+        use prism_ast::{Stmt, BlockStmt};
+        use prism_common::NodeId;
+        
+        // TODO: Implement statement block conversion
+        let node_id = NodeId::new(self.next_node_id());
+        let span = prism_common::span::Span::dummy();
+        
+        Ok(AstNode::new(Stmt::Block(BlockStmt { statements: Vec::new() }), span, node_id))
+    }
+    
+    fn convert_python_statement_to_stmt(&self, _statement: crate::styles::python_like::Statement) -> Result<prism_ast::Stmt, ParseError> {
+        use prism_ast::{Stmt, ExpressionStmt, Expr, LiteralExpr, LiteralValue};
+        use prism_common::NodeId;
+        
+        // TODO: Implement proper statement conversion
+        let node_id = NodeId::new(self.next_node_id());
+        let span = prism_common::span::Span::dummy();
+        let expr = AstNode::new(
+            Expr::Literal(LiteralExpr { value: LiteralValue::String("placeholder".to_string()) }), 
+            span, 
+            node_id
+        );
+        
+        Ok(Stmt::Expression(ExpressionStmt { expression: expr }))
+    }
+    
+    // Rust-like conversion helpers
+    fn convert_rust_like_module_to_item(&self, _module: crate::styles::rust_like::RustLikeModule) -> Result<AstNode<prism_ast::Item>, ParseError> {
+        // TODO: Implement proper conversion from Rust-like module to AST Item
+        Err(ParseError::ConversionFailed { 
+            reason: "Rust-like module conversion not yet implemented".to_string() 
+        })
+    }
+    
+    fn convert_rust_like_function_to_item(&self, _function: crate::styles::rust_like::RustLikeFunction) -> Result<AstNode<prism_ast::Item>, ParseError> {
+        // TODO: Implement proper conversion from Rust-like function to AST Item
+        Err(ParseError::ConversionFailed { 
+            reason: "Rust-like function conversion not yet implemented".to_string() 
+        })
+    }
+    
+    fn convert_rust_like_statement_to_item(&self, _statement: crate::styles::rust_like::RustLikeStatement) -> Result<AstNode<prism_ast::Item>, ParseError> {
+        // TODO: Implement proper conversion from Rust-like statement to AST Item
+        Err(ParseError::ConversionFailed { 
+            reason: "Rust-like statement conversion not yet implemented".to_string() 
+        })
+    }
+    
+    // Canonical conversion helper
+    fn convert_ast_stmt_to_item(&self, ast_node: AstNode<prism_ast::Stmt>) -> Result<AstNode<prism_ast::Item>, ParseError> {
+        // Convert AST statement to Item based on the statement type
+        use prism_ast::{Item, Stmt};
+        
+        let item = match &ast_node.kind {
+            Stmt::Module(module_decl) => {
+                Item::Module(module_decl.clone())
+            }
+            Stmt::Function(function_decl) => {
+                Item::Function(function_decl.clone())
+            }
+            Stmt::Type(type_decl) => {
+                Item::Type(type_decl.clone())
+            }
+            Stmt::Variable(var_decl) => {
+                Item::Variable(var_decl.clone())
+            }
+            Stmt::Const(const_decl) => {
+                Item::Const(const_decl.clone())
+            }
+            Stmt::Import(import_decl) => {
+                Item::Import(import_decl.clone())
+            }
+            Stmt::Export(export_decl) => {
+                Item::Export(export_decl.clone())
+            }
+            other_stmt => {
+                // For other statement types, wrap as a statement item
+                Item::Statement(other_stmt.clone())
+            }
+        };
+        
+        Ok(AstNode::new(item, ast_node.span, ast_node.id))
+    }
+    
+    fn next_node_id(&self) -> u64 {
+        // TODO: Implement proper node ID generation
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos() as u64
     }
     
     /// Parse source code with full analysis and validation

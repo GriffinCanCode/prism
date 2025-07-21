@@ -56,32 +56,30 @@
 #![warn(clippy::all, clippy::pedantic, clippy::nursery)]
 #![allow(clippy::module_name_repetitions)]
 
-pub mod metrics;
+// Re-export main types for public API
+pub use analysis::{CohesionAnalyzer, AnalysisConfig, AnalysisResult, AnalysisDepth};
+pub use metrics::{MetricsCalculator, CohesionMetrics, CohesionAnalysis, MetricsMetadata};
+pub use boundaries::{BoundaryDetector, ConceptualBoundary, BoundaryType, BoundaryStrength};
+pub use violations::{ViolationDetector, CohesionViolation, ViolationType, ViolationSeverity};
+pub use suggestions::{SuggestionEngine, CohesionSuggestion, SuggestionType, EffortLevel};
+pub use ai_insights::{AIInsightGenerator, CohesionAIInsights, InsightCategory, InsightType};
+pub use confidence::{ConfidenceCalculator, ConfidenceBreakdown, ConfidenceLevel};
+
+// Re-export types defined in this module
+pub use {
+    CohesionConfig, MetricWeights, ViolationThresholds, OptimizationLevel,
+    CohesionSystem, ProgramCohesionAnalysis, ModuleCohesionAnalysis, 
+    SectionCohesionAnalysis, AnalysisMetadata
+};
+
+// Main modules - each with a single responsibility
 pub mod analysis;
+pub mod metrics;
 pub mod boundaries;
 pub mod violations;
 pub mod suggestions;
 pub mod ai_insights;
-
-// Re-export main types for convenience
-pub use metrics::{
-    CohesionMetrics, MetricsCalculator, CohesionScore, MetricType
-};
-pub use analysis::{
-    CohesionAnalyzer, AnalysisConfig, AnalysisResult, AnalysisContext
-};
-pub use boundaries::{
-    BoundaryDetector, ConceptualBoundary, BoundaryType, ResponsibilityScope
-};
-pub use violations::{
-    ViolationDetector, CohesionViolation, ViolationSeverity, ViolationType
-};
-pub use suggestions::{
-    SuggestionEngine, CohesionSuggestion, SuggestionType, SuggestionPriority
-};
-pub use ai_insights::{
-    AIInsightGenerator, CohesionAIInsights, ArchitecturalPattern
-};
+pub mod confidence;
 
 use prism_common::span::Span;
 use serde::{Serialize, Deserialize};
@@ -149,6 +147,9 @@ pub struct CohesionConfig {
 
     /// Custom analysis rules
     pub custom_rules: Vec<String>,
+    
+    /// Performance optimization level
+    pub optimization_level: OptimizationLevel,
 }
 
 /// Analysis depth levels
@@ -188,6 +189,17 @@ pub struct ViolationThresholds {
     pub warning_threshold: f64,
     /// Minimum score before info violation (default: 80.0)
     pub info_threshold: f64,
+}
+
+/// Performance optimization levels
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OptimizationLevel {
+    /// Maximum speed, reduced accuracy (good for real-time IDE analysis)
+    Speed,
+    /// Balanced speed and accuracy (default)
+    Balanced,
+    /// Maximum accuracy, slower analysis (good for CI/CD)
+    Accuracy,
 }
 
 /// Complete cohesion analysis system
@@ -278,7 +290,20 @@ impl CohesionSystem {
 
         Ok(ProgramCohesionAnalysis {
             overall_score: detailed_metrics.overall_score,
-            module_analyses: analysis_result.module_analyses,
+            module_analyses: analysis_result.module_analyses.into_iter().map(|ma| ModuleCohesionAnalysis {
+                module_name: ma.module_name,
+                overall_score: ma.metrics.overall_score,
+                metrics: ma.metrics,
+                conceptual_boundaries: Vec::new(), // TODO: Extract from boundaries
+                violations: Vec::new(), // TODO: Extract module-specific violations
+                improvement_suggestions: Vec::new(), // TODO: Extract module-specific suggestions
+                section_analyses: ma.section_analyses.into_iter().map(|sa| SectionCohesionAnalysis {
+                    section_name: sa.section_name,
+                    cohesion_score: sa.cohesion_score,
+                    item_count: sa.item_count,
+                    section_metrics: sa.metrics,
+                }).collect(),
+            }).collect(),
             detailed_metrics,
             conceptual_boundaries: boundaries,
             violations,
@@ -296,12 +321,12 @@ impl CohesionSystem {
     /// Analyze cohesion for a single module
     pub fn analyze_module(&mut self, module: &prism_ast::AstNode<prism_ast::Item>) -> CohesionResult<ModuleCohesionAnalysis> {
         // Extract module if the item is a module
-        if let prism_ast::Item::Module(module_decl) = &module.inner {
-            let module_result = self.analyzer.analyze_module(module, module_decl)?;
-            let module_metrics = self.metrics_calculator.calculate_module_metrics(module, module_decl)?;
+        if let prism_ast::Item::Module(module_decl) = &module.kind {
+            let module_result = self.analyzer.analyze_module(module, &module_decl)?;
+            let module_metrics = self.metrics_calculator.calculate_module_metrics(module, &module_decl)?;
 
             let boundaries = if self.config.analysis_depth != AnalysisDepth::Quick {
-                self.boundary_detector.detect_module_boundaries(module, module_decl)?
+                self.boundary_detector.detect_module_boundaries(module, &module_decl)?
             } else {
                 Vec::new()
             };
@@ -325,7 +350,12 @@ impl CohesionSystem {
                 conceptual_boundaries: boundaries,
                 violations,
                 improvement_suggestions: suggestions,
-                section_analyses: module_result.section_analyses,
+                section_analyses: module_result.section_analyses.into_iter().map(|sa| SectionCohesionAnalysis {
+                    section_name: sa.section_name,
+                    cohesion_score: sa.cohesion_score,
+                    item_count: sa.item_count,
+                    section_metrics: sa.metrics,
+                }).collect(),
             })
         } else {
             Err(CohesionError::InvalidConfiguration {
@@ -456,6 +486,7 @@ impl Default for CohesionConfig {
             metric_weights: MetricWeights::default(),
             violation_thresholds: ViolationThresholds::default(),
             custom_rules: Vec::new(),
+            optimization_level: OptimizationLevel::Balanced,
         }
     }
 }
@@ -490,6 +521,7 @@ impl CohesionConfig {
             enable_ai_insights: false,
             enable_violation_detection: false,
             enable_suggestions: false,
+            optimization_level: OptimizationLevel::Speed,
             ..Default::default()
         }
     }
@@ -501,6 +533,7 @@ impl CohesionConfig {
             enable_ai_insights: true,
             enable_violation_detection: true,
             enable_suggestions: true,
+            optimization_level: OptimizationLevel::Balanced,
             ..Default::default()
         }
     }
@@ -513,6 +546,33 @@ impl CohesionConfig {
             enable_violation_detection: true,
             enable_suggestions: true,
             minimum_acceptable_score: 80.0,
+            optimization_level: OptimizationLevel::Accuracy,
+            ..Default::default()
+        }
+    }
+    
+    /// Create configuration optimized for real-time IDE analysis
+    pub fn real_time() -> Self {
+        Self {
+            analysis_depth: AnalysisDepth::Quick,
+            enable_ai_insights: false,
+            enable_violation_detection: true, // Keep violations for real-time feedback
+            enable_suggestions: false, // Skip expensive suggestion generation
+            optimization_level: OptimizationLevel::Speed,
+            minimum_acceptable_score: 60.0, // Lower threshold for real-time
+            ..Default::default()
+        }
+    }
+    
+    /// Create configuration optimized for CI/CD builds
+    pub fn ci_cd() -> Self {
+        Self {
+            analysis_depth: AnalysisDepth::Comprehensive,
+            enable_ai_insights: true,
+            enable_violation_detection: true,
+            enable_suggestions: true,
+            optimization_level: OptimizationLevel::Accuracy,
+            minimum_acceptable_score: 80.0, // Higher threshold for builds
             ..Default::default()
         }
     }

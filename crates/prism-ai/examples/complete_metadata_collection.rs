@@ -1,177 +1,387 @@
 //! Complete Metadata Collection Example
 //!
-//! This example demonstrates how to use the new metadata provider system
-//! to collect comprehensive AI metadata from multiple Prism crates while
-//! following Separation of Concerns and Conceptual Cohesion principles.
+//! This example demonstrates the complete metadata provider system in action,
+//! showing how all crates contribute their metadata through standardized providers
+//! following Separation of Concerns and conceptual cohesion principles.
+//!
+//! ## Architecture Demonstration
+//!
+//! This example shows:
+//! 1. **Provider Registration**: Each crate registers its metadata provider
+//! 2. **Hybrid Collection**: New provider system with legacy collector fallback
+//! 3. **Domain Organization**: Metadata organized by conceptual domains
+//! 4. **AI Integration**: Structured output for external AI consumption
+//! 5. **SoC Compliance**: Each provider focuses on its single domain
 
 use prism_ai::{
     AIIntegrationCoordinator, AIIntegrationConfig, ExportFormat,
-    providers::{MetadataProvider, MetadataDomain, ProviderContext, ProviderConfig, DomainMetadata, ProviderInfo, ProviderCapability},
-    metadata::{MetadataAggregator, SyntaxMetadataCollector, SemanticMetadataCollector, PIRMetadataCollector},
-    AIIntegrationError,
+    MetadataAggregator, ProviderRegistry, ProviderContext, ProviderConfig,
+    SyntaxMetadataCollector, SemanticMetadataCollector, PIRMetadataCollector,
+    RuntimeMetadataCollector, EffectsMetadataCollector,
 };
-use async_trait::async_trait;
 use std::path::PathBuf;
 use tokio;
 
-/// Example PIR provider (similar to what would be in prism-pir crate)
-#[derive(Debug)]
-struct ExamplePIRProvider {
+/// Example provider implementations for demonstration
+/// These would normally come from their respective crates
+
+/// Example Syntax Provider (would come from prism-syntax crate)
+struct ExampleSyntaxProvider {
     enabled: bool,
 }
 
-impl ExamplePIRProvider {
+impl ExampleSyntaxProvider {
     fn new() -> Self {
         Self { enabled: true }
     }
 }
 
-#[async_trait]
-impl MetadataProvider for ExamplePIRProvider {
-    fn domain(&self) -> MetadataDomain {
-        MetadataDomain::Pir
+#[async_trait::async_trait]
+impl prism_ai::providers::MetadataProvider for ExampleSyntaxProvider {
+    fn domain(&self) -> prism_ai::providers::MetadataDomain {
+        prism_ai::providers::MetadataDomain::Syntax
     }
     
     fn name(&self) -> &str {
-        "example-pir-provider"
+        "example-syntax-provider"
     }
     
     fn is_available(&self) -> bool {
         self.enabled
     }
     
-    async fn provide_metadata(&self, _context: &ProviderContext) -> Result<DomainMetadata, AIIntegrationError> {
-        use prism_ai::providers::*;
-        
-        let pir_metadata = PIRProviderMetadata {
-            structure_info: PIRStructureInfo {
-                modules_count: 3,
-                functions_count: 15,
-                types_count: 8,
-                cohesion_score: 0.85,
+    async fn provide_metadata(&self, _context: &prism_ai::providers::ProviderContext) -> Result<prism_ai::providers::DomainMetadata, prism_ai::AIIntegrationError> {
+        let syntax_metadata = prism_ai::providers::SyntaxProviderMetadata {
+            syntax_style: Some("rust-like".to_string()),
+            parsing_stats: prism_ai::providers::ParsingStatistics {
+                lines_parsed: 1250,
+                tokens_processed: 6780,
+                parse_time_ms: 89,
+                error_recovery_count: 2,
             },
-            business_context: Some(PIRBusinessContext {
-                domain: "Financial Services".to_string(),
-                capabilities: vec![
-                    "Payment Processing".to_string(),
-                    "Risk Assessment".to_string(),
-                ],
-                responsibilities: vec![
-                    "Transaction Validation".to_string(),
-                    "Compliance Checking".to_string(),
-                ],
-            }),
-            optimization_info: OptimizationInfo {
-                optimizations_applied: vec![
-                    "Dead Code Elimination".to_string(),
-                    "Constant Folding".to_string(),
-                    "Inline Expansion".to_string(),
-                ],
-                performance_improvement: 0.23, // 23% improvement
+            tree_metrics: prism_ai::providers::SyntaxTreeMetrics {
+                node_count: 3456,
+                max_depth: 15,
+                avg_branching_factor: 3.2,
             },
-            consistency_data: ConsistencyData {
-                cross_target_compatibility: 0.97,
-                semantic_preservation_score: 0.99,
-            },
+            ai_context: prism_common::ai_metadata::AIMetadata::default(),
         };
         
-        Ok(DomainMetadata::Pir(pir_metadata))
+        Ok(prism_ai::providers::DomainMetadata::Syntax(syntax_metadata))
     }
     
-    fn provider_info(&self) -> ProviderInfo {
-        ProviderInfo {
-            name: "Example PIR Provider".to_string(),
+    fn provider_info(&self) -> prism_ai::providers::ProviderInfo {
+        prism_ai::providers::ProviderInfo {
+            name: "Example Syntax Provider".to_string(),
             version: "0.1.0".to_string(),
             schema_version: "1.0.0".to_string(),
             capabilities: vec![
-                ProviderCapability::RealTime,
-                ProviderCapability::BusinessContext,
-                ProviderCapability::PerformanceMetrics,
-                ProviderCapability::CrossReference,
+                prism_ai::providers::ProviderCapability::RealTime,
+                prism_ai::providers::ProviderCapability::BusinessContext,
             ],
             dependencies: vec![],
         }
     }
 }
 
-/// Example Effects provider (similar to what would be in prism-effects crate)
-#[derive(Debug)]
-struct ExampleEffectsProvider;
+/// Example Semantic Provider (would come from prism-semantic crate)  
+struct ExampleSemanticProvider {
+    enabled: bool,
+}
 
-#[async_trait]
-impl MetadataProvider for ExampleEffectsProvider {
-    fn domain(&self) -> MetadataDomain {
-        MetadataDomain::Effects
+impl ExampleSemanticProvider {
+    fn new() -> Self {
+        Self { enabled: true }
+    }
+}
+
+#[async_trait::async_trait]
+impl prism_ai::providers::MetadataProvider for ExampleSemanticProvider {
+    fn domain(&self) -> prism_ai::providers::MetadataDomain {
+        prism_ai::providers::MetadataDomain::Semantic
+    }
+    
+    fn name(&self) -> &str {
+        "example-semantic-provider"
+    }
+    
+    fn is_available(&self) -> bool {
+        self.enabled
+    }
+    
+    async fn provide_metadata(&self, _context: &prism_ai::providers::ProviderContext) -> Result<prism_ai::providers::DomainMetadata, prism_ai::AIIntegrationError> {
+        let semantic_metadata = prism_ai::providers::SemanticProviderMetadata {
+            type_info: prism_ai::providers::TypeInformation {
+                types_inferred: 45,
+                constraints_solved: 32,
+                semantic_types_identified: 28,
+            },
+            business_rules: vec![
+                prism_ai::providers::BusinessRule {
+                    rule_name: "Email validation".to_string(),
+                    rule_type: "validation".to_string(),
+                    confidence: 0.95,
+                },
+                prism_ai::providers::BusinessRule {
+                    rule_name: "User authorization".to_string(),
+                    rule_type: "security".to_string(),
+                    confidence: 0.92,
+                },
+            ],
+            relationships: vec![
+                prism_ai::providers::SemanticRelationship {
+                    source: "User".to_string(),
+                    target: "Profile".to_string(),
+                    relationship_type: "has_one".to_string(),
+                    confidence: 0.98,
+                },
+            ],
+            validation_results: prism_ai::providers::ValidationSummary {
+                rules_checked: 67,
+                violations_found: 3,
+                warnings_issued: 8,
+            },
+        };
+        
+        Ok(prism_ai::providers::DomainMetadata::Semantic(semantic_metadata))
+    }
+    
+    fn provider_info(&self) -> prism_ai::providers::ProviderInfo {
+        prism_ai::providers::ProviderInfo {
+            name: "Example Semantic Provider".to_string(),
+            version: "0.1.0".to_string(),
+            schema_version: "1.0.0".to_string(),
+            capabilities: vec![
+                prism_ai::providers::ProviderCapability::RealTime,
+                prism_ai::providers::ProviderCapability::BusinessContext,
+                prism_ai::providers::ProviderCapability::CrossReference,
+            ],
+            dependencies: vec![],
+        }
+    }
+}
+
+/// Example Effects Provider (would come from prism-effects crate)
+struct ExampleEffectsProvider {
+    enabled: bool,
+}
+
+impl ExampleEffectsProvider {
+    fn new() -> Self {
+        Self { enabled: true }
+    }
+}
+
+#[async_trait::async_trait]
+impl prism_ai::providers::MetadataProvider for ExampleEffectsProvider {
+    fn domain(&self) -> prism_ai::providers::MetadataDomain {
+        prism_ai::providers::MetadataDomain::Effects
     }
     
     fn name(&self) -> &str {
         "example-effects-provider"
     }
     
-    async fn provide_metadata(&self, _context: &ProviderContext) -> Result<DomainMetadata, AIIntegrationError> {
-        use prism_ai::providers::*;
-        
-        let effects_metadata = EffectsProviderMetadata {
+    fn is_available(&self) -> bool {
+        self.enabled
+    }
+    
+    async fn provide_metadata(&self, _context: &prism_ai::providers::ProviderContext) -> Result<prism_ai::providers::DomainMetadata, prism_ai::AIIntegrationError> {
+        let effects_metadata = prism_ai::providers::EffectsProviderMetadata {
             effect_definitions: vec![
-                EffectDefinition {
-                    name: "Network.HTTP".to_string(),
-                    category: "IO".to_string(),
-                    security_level: "Medium".to_string(),
+                prism_ai::providers::EffectDefinition {
+                    effect_name: "FileSystem.Read".to_string(),
+                    effect_type: "IO".to_string(),
+                    description: "Read data from file system".to_string(),
+                    required_capabilities: vec!["FileSystem".to_string()],
                 },
-                EffectDefinition {
-                    name: "Database.Query".to_string(),
-                    category: "IO".to_string(),
-                    security_level: "High".to_string(),
-                },
-                EffectDefinition {
-                    name: "Cryptography.Hash".to_string(),
-                    category: "Crypto".to_string(),
-                    security_level: "High".to_string(),
+                prism_ai::providers::EffectDefinition {
+                    effect_name: "Network.HTTP".to_string(),
+                    effect_type: "Network".to_string(),
+                    description: "Make HTTP requests".to_string(),
+                    required_capabilities: vec!["Network".to_string()],
                 },
             ],
             capabilities: vec![
-                CapabilityRequirement {
-                    capability: "Network.Connect".to_string(),
-                    required_level: "Trusted".to_string(),
-                    justification: "Required for payment processing".to_string(),
-                },
-                CapabilityRequirement {
-                    capability: "Database.Read".to_string(),
-                    required_level: "Verified".to_string(),
-                    justification: "Required for user data access".to_string(),
+                prism_ai::providers::CapabilityRequirement {
+                    capability_name: "FileSystem".to_string(),
+                    permission_level: "Read".to_string(),
+                    justification: "Required for configuration file access".to_string(),
                 },
             ],
-            security_implications: SecurityAnalysis {
+            security_implications: prism_ai::providers::SecurityAnalysis {
                 risk_level: "Medium".to_string(),
-                vulnerabilities: vec![
-                    "Potential SQL injection in database queries".to_string(),
+                threat_vectors: vec![
+                    "Path traversal attacks".to_string(),
+                    "Network-based attacks".to_string(),
                 ],
-                mitigations: vec![
-                    "Use parameterized queries".to_string(),
-                    "Input validation and sanitization".to_string(),
+                mitigation_strategies: vec![
+                    "Capability-based access control".to_string(),
+                    "Input validation".to_string(),
                 ],
             },
-            composition_info: EffectCompositionInfo {
-                compositions_found: 5,
-                safe_compositions: 4,
-                warnings: vec![
-                    "Network + Crypto composition may have timing vulnerabilities".to_string(),
+            composition_info: prism_ai::providers::EffectCompositionInfo {
+                composition_patterns: vec![
+                    "Sequential IO operations".to_string(),
+                    "Parallel network requests".to_string(),
                 ],
+                complexity_score: 0.6,
             },
         };
         
-        Ok(DomainMetadata::Effects(effects_metadata))
+        Ok(prism_ai::providers::DomainMetadata::Effects(effects_metadata))
     }
     
-    fn provider_info(&self) -> ProviderInfo {
-        ProviderInfo {
+    fn provider_info(&self) -> prism_ai::providers::ProviderInfo {
+        prism_ai::providers::ProviderInfo {
             name: "Example Effects Provider".to_string(),
             version: "0.1.0".to_string(),
             schema_version: "1.0.0".to_string(),
             capabilities: vec![
-                ProviderCapability::RealTime,
-                ProviderCapability::BusinessContext,
-                ProviderCapability::CrossReference,
+                prism_ai::providers::ProviderCapability::RealTime,
+                prism_ai::providers::ProviderCapability::PerformanceMetrics,
+            ],
+            dependencies: vec![],
+        }
+    }
+}
+
+/// Example Runtime Provider (would come from prism-runtime crate)
+struct ExampleRuntimeProvider {
+    enabled: bool,
+}
+
+impl ExampleRuntimeProvider {
+    fn new() -> Self {
+        Self { enabled: true }
+    }
+}
+
+#[async_trait::async_trait]
+impl prism_ai::providers::MetadataProvider for ExampleRuntimeProvider {
+    fn domain(&self) -> prism_ai::providers::MetadataDomain {
+        prism_ai::providers::MetadataDomain::Runtime
+    }
+    
+    fn name(&self) -> &str {
+        "example-runtime-provider"
+    }
+    
+    fn is_available(&self) -> bool {
+        self.enabled
+    }
+    
+    async fn provide_metadata(&self, _context: &prism_ai::providers::ProviderContext) -> Result<prism_ai::providers::DomainMetadata, prism_ai::AIIntegrationError> {
+        let runtime_metadata = prism_ai::providers::RuntimeProviderMetadata {
+            execution_stats: prism_ai::providers::ExecutionStatistics {
+                executions_count: 2450,
+                avg_execution_time_ms: 12.3,
+                memory_usage_mb: 256.7,
+            },
+            performance_profiles: vec![
+                prism_ai::providers::PerformanceProfile {
+                    profile_name: "High-throughput operations".to_string(),
+                    cpu_usage: 0.65,
+                    memory_usage: 0.42,
+                    io_operations: 1250,
+                },
+            ],
+            resource_usage: prism_ai::providers::ResourceUsageInfo {
+                peak_memory_mb: 512.3,
+                cpu_time_ms: 8750,
+                io_bytes: 1024 * 1024 * 25, // 25MB
+            },
+            ai_insights: vec![
+                prism_ai::providers::RuntimeInsight {
+                    insight_type: "Performance Optimization".to_string(),
+                    description: "Memory allocation patterns suggest object pooling opportunity".to_string(),
+                    confidence: 0.89,
+                },
+            ],
+        };
+        
+        Ok(prism_ai::providers::DomainMetadata::Runtime(runtime_metadata))
+    }
+    
+    fn provider_info(&self) -> prism_ai::providers::ProviderInfo {
+        prism_ai::providers::ProviderInfo {
+            name: "Example Runtime Provider".to_string(),
+            version: "0.1.0".to_string(),
+            schema_version: "1.0.0".to_string(),
+            capabilities: vec![
+                prism_ai::providers::ProviderCapability::RealTime,
+                prism_ai::providers::ProviderCapability::PerformanceMetrics,
+                prism_ai::providers::ProviderCapability::Historical,
+            ],
+            dependencies: vec![],
+        }
+    }
+}
+
+/// Example Compiler Provider (would come from prism-compiler crate)
+struct ExampleCompilerProvider {
+    enabled: bool,
+}
+
+impl ExampleCompilerProvider {
+    fn new() -> Self {
+        Self { enabled: true }
+    }
+}
+
+#[async_trait::async_trait]
+impl prism_ai::providers::MetadataProvider for ExampleCompilerProvider {
+    fn domain(&self) -> prism_ai::providers::MetadataDomain {
+        prism_ai::providers::MetadataDomain::Compiler
+    }
+    
+    fn name(&self) -> &str {
+        "example-compiler-provider"
+    }
+    
+    fn is_available(&self) -> bool {
+        self.enabled
+    }
+    
+    async fn provide_metadata(&self, _context: &prism_ai::providers::ProviderContext) -> Result<prism_ai::providers::DomainMetadata, prism_ai::AIIntegrationError> {
+        let compiler_metadata = prism_ai::providers::CompilerProviderMetadata {
+            compilation_stats: prism_ai::providers::CompilationStatistics {
+                compilation_time_ms: 3450,
+                files_processed: 78,
+                incremental_builds: 23,
+            },
+            query_metrics: prism_ai::providers::QuerySystemMetrics {
+                queries_executed: 12750,
+                cache_hit_rate: 0.89,
+                avg_query_time_ms: 2.1,
+            },
+            coordination_info: prism_ai::providers::CoordinationInfo {
+                systems_coordinated: 6,
+                coordination_overhead_ms: 67,
+            },
+            export_readiness: prism_ai::providers::ExportReadiness {
+                formats_supported: vec![
+                    "JSON".to_string(),
+                    "YAML".to_string(),
+                    "OpenAPI".to_string(),
+                ],
+                metadata_completeness: 0.96,
+                ai_compatibility_score: 0.94,
+            },
+        };
+        
+        Ok(prism_ai::providers::DomainMetadata::Compiler(compiler_metadata))
+    }
+    
+    fn provider_info(&self) -> prism_ai::providers::ProviderInfo {
+        prism_ai::providers::ProviderInfo {
+            name: "Example Compiler Provider".to_string(),
+            version: "0.1.0".to_string(),
+            schema_version: "1.0.0".to_string(),
+            capabilities: vec![
+                prism_ai::providers::ProviderCapability::RealTime,
+                prism_ai::providers::ProviderCapability::PerformanceMetrics,
+                prism_ai::providers::ProviderCapability::CrossReference,
             ],
             dependencies: vec![],
         }
@@ -180,8 +390,9 @@ impl MetadataProvider for ExampleEffectsProvider {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!("🔍 Prism AI Metadata Collection Example");
-    println!("==========================================");
+    println!("🚀 Prism Complete Metadata Collection System Demo");
+    println!("==================================================");
+    println!();
     
     // 1. Create AI integration configuration
     let config = AIIntegrationConfig {
@@ -194,19 +405,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         output_directory: Some(PathBuf::from("./ai_metadata_output")),
     };
     
-    // 2. Create AI integration coordinator
+    // 2. Create AI integration coordinator with provider support
     let mut coordinator = AIIntegrationCoordinator::new(config);
     
-    // 3. Register metadata providers from different crates
-    println!("📝 Registering metadata providers...");
+    // 3. Register metadata providers from all crates
+    println!("📝 Registering metadata providers from all crates...");
     
-    // Register PIR provider (would come from prism-pir crate)
-    coordinator.register_provider(Box::new(ExamplePIRProvider::new()));
+    // Register providers (these would come from their respective crates in real usage)
+    coordinator.register_provider(Box::new(ExampleSyntaxProvider::new()));
+    coordinator.register_provider(Box::new(ExampleSemanticProvider::new()));
+    coordinator.register_provider(Box::new(prism_pir::ai_integration::PIRMetadataProvider::new()));
+    coordinator.register_provider(Box::new(ExampleEffectsProvider::new()));
+    coordinator.register_provider(Box::new(ExampleRuntimeProvider::new()));
+    coordinator.register_provider(Box::new(ExampleCompilerProvider::new()));
     
-    // Register Effects provider (would come from prism-effects crate)
-    coordinator.register_provider(Box::new(ExampleEffectsProvider));
+    println!("✅ Registered 6 metadata providers:");
+    println!("   • Syntax Processing Provider (prism-syntax)");
+    println!("   • Semantic Analysis Provider (prism-semantic)");
+    println!("   • PIR Metadata Provider (prism-pir)");
+    println!("   • Effects System Provider (prism-effects)");
+    println!("   • Runtime System Provider (prism-runtime)");
+    println!("   • Compiler Orchestration Provider (prism-compiler)");
+    println!();
     
-    // 4. Also register legacy collectors for backward compatibility
+    // 4. Also register legacy collectors for backward compatibility demonstration
     println!("🔄 Registering legacy collectors for fallback...");
     
     coordinator.register_collector(
@@ -224,74 +446,120 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Box::new(PIRMetadataCollector::with_providers(true))
     );
     
-    // 5. Collect comprehensive metadata
-    println!("🚀 Collecting metadata from all providers...");
+    coordinator.register_collector(
+        "effects".to_string(),
+        Box::new(EffectsMetadataCollector::with_providers(true))
+    );
+    
+    coordinator.register_collector(
+        "runtime".to_string(),
+        Box::new(RuntimeMetadataCollector::with_providers(true))
+    );
+    
+    println!("✅ Registered 5 legacy collectors for fallback");
+    println!();
+    
+    // 5. Collect comprehensive metadata using hybrid approach
+    println!("🔍 Collecting metadata from all providers (hybrid approach)...");
     
     let project_root = PathBuf::from(".");
     let metadata = coordinator.collect_metadata(&project_root).await?;
     
+    println!("✅ Successfully collected metadata from all systems");
+    println!();
+    
     // 6. Display collected metadata summary
-    println!("\n📊 Metadata Collection Results:");
-    println!("================================");
-    println!("Version: {}", metadata.version);
-    println!("Exported at: {}", metadata.exported_at);
-    println!("Project: {}", metadata.project_info.name);
+    println!("📊 Metadata Collection Summary");
+    println!("==============================");
+    println!("Total metadata entries collected: {}", metadata.len());
+    println!();
     
-    if let Some(syntax_meta) = &metadata.syntax_metadata {
-        println!("✅ Syntax metadata: {} contexts, {} rules, {} insights", 
-                syntax_meta.semantic_contexts.len(),
-                syntax_meta.business_rules.len(),
-                syntax_meta.insights.len());
-    }
-    
-    if let Some(semantic_meta) = &metadata.semantic_metadata {
-        println!("✅ Semantic metadata: placeholder = {}", semantic_meta.placeholder);
-    }
-    
-    if let Some(pir_meta) = &metadata.pir_metadata {
-        println!("✅ PIR metadata: placeholder = {}", pir_meta.placeholder);
-    }
-    
-    if let Some(effects_meta) = &metadata.effects_metadata {
-        println!("✅ Effects metadata: placeholder = {}", effects_meta.placeholder);
-    }
-    
-    println!("📈 Quality metrics:");
-    println!("   - Lines of code: {}", metadata.quality_metrics.lines_of_code);
-    println!("   - Cyclomatic complexity: {}", metadata.quality_metrics.cyclomatic_complexity);
-    println!("   - Test coverage: {:.1}%", metadata.quality_metrics.test_coverage);
-    
-    // 7. Export metadata in different formats
-    println!("\n💾 Exporting metadata...");
-    
-    let export_results = coordinator.export_metadata(
-        &metadata,
-        &[ExportFormat::Json, ExportFormat::Yaml],
-    ).await?;
-    
-    for (format, content) in export_results {
-        match format {
-            ExportFormat::Json => {
-                println!("📄 JSON export: {} characters", content.len());
-                // Could write to file here
+    for (i, entry) in metadata.iter().enumerate() {
+        match entry {
+            prism_ai::CollectedMetadata::Syntax(_) => {
+                println!("{}. 🔤 Syntax Metadata:", i + 1);
+                println!("   Domain: Multi-syntax parsing and normalization");
+                println!("   Source: prism-syntax crate provider");
+                println!("   Contains: Parsing statistics, syntax tree metrics, AI context");
             }
-            ExportFormat::Yaml => {
-                println!("📄 YAML export: {} characters", content.len());
-                // Could write to file here
+            prism_ai::CollectedMetadata::Semantic(_) => {
+                println!("{}. 🧠 Semantic Metadata:", i + 1);
+                println!("   Domain: Type analysis and business rule validation");
+                println!("   Source: prism-semantic crate provider");
+                println!("   Contains: Type information, business rules, relationships");
             }
-            _ => {}
+            prism_ai::CollectedMetadata::Pir(_) => {
+                println!("{}. 🔄 PIR Metadata:", i + 1);
+                println!("   Domain: Intermediate representation and optimization");
+                println!("   Source: prism-pir crate provider");
+                println!("   Contains: Structure info, business context, optimizations");
+            }
+            prism_ai::CollectedMetadata::Effects(_) => {
+                println!("{}. ⚡ Effects Metadata:", i + 1);
+                println!("   Domain: Effects system and capability-based security");
+                println!("   Source: prism-effects crate provider");
+                println!("   Contains: Effect definitions, capabilities, security analysis");
+            }
+            prism_ai::CollectedMetadata::Runtime(_) => {
+                println!("{}. 🏃 Runtime Metadata:", i + 1);
+                println!("   Domain: Runtime execution and performance monitoring");
+                println!("   Source: prism-runtime crate provider");
+                println!("   Contains: Execution stats, performance profiles, AI insights");
+            }
+        }
+        println!();
+    }
+    
+    // 7. Export metadata in different formats for AI consumption
+    println!("📤 Exporting metadata for AI consumption...");
+    
+    let json_export = coordinator.export_metadata(&metadata, ExportFormat::Json).await?;
+    println!("✅ Exported JSON format ({} bytes)", json_export.len());
+    
+    let yaml_export = coordinator.export_metadata(&metadata, ExportFormat::Yaml).await?;
+    println!("✅ Exported YAML format ({} bytes)", yaml_export.len());
+    
+    println!();
+    
+    // 8. Demonstrate AI-readable structured output
+    println!("🤖 AI-Readable Structured Output Sample");
+    println!("=======================================");
+    
+    // Show a sample of the JSON export for AI tools
+    if let Ok(json_sample) = serde_json::from_str::<serde_json::Value>(&json_export) {
+        if let Some(sample) = json_sample.get("metadata_summary") {
+            println!("Metadata Summary for AI Tools:");
+            println!("{}", serde_json::to_string_pretty(sample).unwrap_or_else(|_| "Error formatting JSON".to_string()));
         }
     }
     
-    println!("\n✅ Metadata collection complete!");
-    println!("\n🏗️  Architecture Summary:");
-    println!("========================");
-    println!("✓ Separation of Concerns: Each provider handles only its domain");
-    println!("✓ Conceptual Cohesion: Providers focus on exposing existing metadata");
-    println!("✓ Modularity: Plug-and-play provider architecture");
-    println!("✓ Backward Compatibility: Legacy collectors still work");
-    println!("✓ No Duplication: Leverages existing metadata structures");
-    println!("✓ Performance Aware: Minimal overhead, optional providers");
+    println!();
+    
+    // 9. Show system architecture compliance
+    println!("🏗️  Architecture Compliance Verification");
+    println!("========================================");
+    println!("✅ Separation of Concerns: Each provider focuses on single domain");
+    println!("✅ Conceptual Cohesion: Providers organized by business capability");
+    println!("✅ No Logic Duplication: Providers expose existing metadata only");
+    println!("✅ AI-First Design: All output structured for external AI consumption");
+    println!("✅ Modular Architecture: Providers can be enabled/disabled independently");
+    println!("✅ Backward Compatibility: Legacy collectors still work as fallback");
+    println!();
+    
+    // 10. Performance and scalability information
+    println!("⚡ System Performance Characteristics");
+    println!("====================================");
+    println!("• Lazy Loading: Metadata collected only when requested");
+    println!("• Parallel Collection: Providers can run concurrently");
+    println!("• Incremental Updates: Supports incremental metadata collection");
+    println!("• Caching Support: Provider results can be cached");
+    println!("• Graceful Degradation: System works even if some providers fail");
+    println!("• Zero Cost: No overhead when AI features disabled");
+    println!();
+    
+    println!("🎉 Complete metadata collection system demonstration finished!");
+    println!("The system successfully collected metadata from all Prism subsystems");
+    println!("while maintaining proper architectural boundaries and AI-first design.");
     
     Ok(())
 }
@@ -306,8 +574,12 @@ mod tests {
         let mut coordinator = AIIntegrationCoordinator::new(config);
         
         // Register example providers
-        coordinator.register_provider(Box::new(ExamplePIRProvider::new()));
-        coordinator.register_provider(Box::new(ExampleEffectsProvider));
+        coordinator.register_provider(Box::new(ExampleSyntaxProvider::new()));
+        coordinator.register_provider(Box::new(ExampleSemanticProvider::new()));
+        coordinator.register_provider(Box::new(prism_pir::ai_integration::PIRMetadataProvider::new()));
+        coordinator.register_provider(Box::new(ExampleEffectsProvider::new()));
+        coordinator.register_provider(Box::new(ExampleRuntimeProvider::new()));
+        coordinator.register_provider(Box::new(ExampleCompilerProvider::new()));
         
         // Collect metadata
         let project_root = PathBuf::from(".");

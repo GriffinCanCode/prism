@@ -181,6 +181,35 @@ impl Authority {
             _ => false,
         }
     }
+
+    /// Check if this authority covers another authority (for capability containment)
+    pub fn covers_authority(&self, other: &Authority) -> bool {
+        match (self, other) {
+            // Same authority types - check if self is broader or equal
+            (Authority::FileSystem(self_fs), Authority::FileSystem(other_fs)) => {
+                self_fs.covers_authority(other_fs)
+            }
+            (Authority::Network(self_net), Authority::Network(other_net)) => {
+                self_net.covers_authority(other_net)
+            }
+            (Authority::Database(self_db), Authority::Database(other_db)) => {
+                self_db.covers_authority(other_db)
+            }
+            (Authority::Memory(self_mem), Authority::Memory(other_mem)) => {
+                self_mem.covers_authority(other_mem)
+            }
+            (Authority::System(self_sys), Authority::System(other_sys)) => {
+                self_sys.covers_authority(other_sys)
+            }
+            (Authority::Composite(self_auths), other) => {
+                self_auths.iter().any(|auth| auth.covers(other))
+            }
+            (self_auth, Authority::Composite(other_auths)) => {
+                other_auths.iter().all(|auth| self_auth.covers(auth))
+            }
+            _ => false,
+        }
+    }
 }
 
 /// File system authority
@@ -197,6 +226,16 @@ impl FileSystemAuthority {
     pub fn covers(&self, operation: &FileSystemOperation) -> bool {
         self.operations.contains(&operation.operation_type()) &&
         self.allowed_paths.iter().any(|pattern| pattern.matches(&operation.path()))
+    }
+
+    /// Check if this authority covers another file system authority
+    pub fn covers_authority(&self, other: &FileSystemAuthority) -> bool {
+        // Check if all operations in other are covered by self
+        other.operations.iter().all(|op| self.operations.contains(op)) &&
+        // Check if all paths in other are covered by self
+        other.allowed_paths.iter().all(|other_path| {
+            self.allowed_paths.iter().any(|self_path| self_path.covers(other_path))
+        })
     }
 }
 
@@ -218,6 +257,20 @@ impl NetworkAuthority {
         self.allowed_hosts.iter().any(|pattern| pattern.matches(&operation.host())) &&
         self.allowed_ports.iter().any(|range| range.contains(operation.port()))
     }
+
+    /// Check if this authority covers another network authority
+    pub fn covers_authority(&self, other: &NetworkAuthority) -> bool {
+        // Check if all operations are covered
+        other.operations.iter().all(|op| self.operations.contains(op)) &&
+        // Check if all hosts are covered (simplified check)
+        other.allowed_hosts.iter().all(|other_host| {
+            self.allowed_hosts.iter().any(|self_host| self_host.covers(other_host))
+        }) &&
+        // Check if all ports are covered
+        other.allowed_ports.iter().all(|other_range| {
+            self.allowed_ports.iter().any(|self_range| self_range.covers(other_range))
+        })
+    }
 }
 
 /// Database authority
@@ -238,6 +291,17 @@ impl DatabaseAuthority {
         operation.tables().iter().all(|table| self.allowed_tables.contains(table)) &&
         self.max_rows.map_or(true, |max| operation.estimated_rows() <= max)
     }
+
+    /// Check if this authority covers another database authority
+    pub fn covers_authority(&self, other: &DatabaseAuthority) -> bool {
+        other.operations.iter().all(|op| self.operations.contains(op)) &&
+        other.allowed_tables.iter().all(|table| self.allowed_tables.contains(table)) &&
+        match (self.max_rows, other.max_rows) {
+            (Some(self_max), Some(other_max)) => self_max >= other_max,
+            (None, _) => true, // No limit covers any limit
+            (Some(_), None) => false, // A limit cannot cover no limit
+        }
+    }
 }
 
 /// Memory authority
@@ -255,6 +319,14 @@ impl MemoryAuthority {
         operation.size() <= self.max_allocation &&
         self.allowed_regions.iter().any(|region| region.allows(operation))
     }
+
+    /// Check if this authority covers another memory authority
+    pub fn covers_authority(&self, other: &MemoryAuthority) -> bool {
+        self.max_allocation >= other.max_allocation &&
+        other.allowed_regions.iter().all(|other_region| {
+            self.allowed_regions.iter().any(|self_region| self_region.covers(other_region))
+        })
+    }
 }
 
 /// System authority
@@ -271,6 +343,12 @@ impl SystemAuthority {
     pub fn covers(&self, operation: &SystemOperationStruct) -> bool {
         self.operations.contains(&operation.operation_type()) &&
         operation.env_vars().iter().all(|var| self.allowed_env_vars.contains(var))
+    }
+
+    /// Check if this authority covers another system authority
+    pub fn covers_authority(&self, other: &SystemAuthority) -> bool {
+        other.operations.iter().all(|op| self.operations.contains(op)) &&
+        other.allowed_env_vars.iter().all(|var| self.allowed_env_vars.contains(var))
     }
 }
 
@@ -363,6 +441,59 @@ impl CapabilitySet {
     /// Remove expired capabilities
     pub fn clean_expired(&mut self) {
         self.capabilities.retain(|_, cap| cap.is_valid());
+    }
+
+    /// Check if this set contains all capabilities from another set
+    pub fn contains_all(&self, other: &CapabilitySet) -> bool {
+        other.capabilities.values().all(|other_cap| {
+            self.capabilities.values().any(|cap| {
+                cap.id == other_cap.id && cap.authority.covers_authority(&other_cap.authority)
+            })
+        })
+    }
+
+    /// Check if this set contains a specific capability
+    pub fn contains(&self, capability: &Capability) -> bool {
+        self.capabilities.values().any(|cap| {
+            cap.id == capability.id && cap.authority.covers_authority(&capability.authority)
+        })
+    }
+
+    /// Get an iterator over all capabilities
+    pub fn iter(&self) -> impl Iterator<Item = &Capability> {
+        self.capabilities.values()
+    }
+
+    /// Attenuate capabilities by creating a restricted subset
+    pub fn attenuate(&self, requested: &CapabilitySet) -> Result<CapabilitySet, CapabilityError> {
+        let mut attenuated = CapabilitySet::new();
+        
+        for requested_cap in requested.capabilities.values() {
+            // Find a capability that can satisfy this request
+            if let Some(granting_cap) = self.capabilities.values().find(|cap| {
+                cap.authority.covers_authority(&requested_cap.authority) && cap.is_valid()
+            }) {
+                // Create an attenuated capability with more restrictive constraints
+                let mut attenuated_cap = requested_cap.clone();
+                attenuated_cap.constraints = granting_cap.constraints.intersect(&requested_cap.constraints);
+                attenuated_cap.issued_by = granting_cap.id; // Track delegation chain
+                attenuated.add(attenuated_cap);
+            } else {
+                return Err(CapabilityError::InsufficientCapability {
+                    required: requested.clone(),
+                    available: self.clone(),
+                });
+            }
+        }
+        
+        Ok(attenuated)
+    }
+
+    /// Get capability names for metadata
+    pub fn capability_names(&self) -> Vec<String> {
+        self.capabilities.keys()
+            .map(|id| format!("Capability_{}", id.0))
+            .collect()
     }
 }
 
@@ -571,6 +702,15 @@ pub enum CapabilityError {
     OperationNotAuthorized {
         /// Component ID
         component: ComponentId,
+    },
+
+    /// Insufficient capability for operation
+    #[error("Insufficient capability - required capabilities not available")]
+    InsufficientCapability {
+        /// Required capabilities
+        required: CapabilitySet,
+        /// Available capabilities
+        available: CapabilitySet,
     },
 
     /// Generic capability error

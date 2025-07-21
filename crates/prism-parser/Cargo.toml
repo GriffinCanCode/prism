@@ -17,8 +17,11 @@ prism-lexer.workspace = true
 prism-ast.workspace = true
 prism-semantic.workspace = true
 prism-syntax.workspace = true
+prism-cohesion.workspace = true
 nom.workspace = true
 thiserror.workspace = true
+chrono.workspace = true
+tracing.workspace = true
 serde = { workspace = true, features = ["derive"], optional = true }
 
 [features]

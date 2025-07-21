@@ -46,6 +46,14 @@ pub enum Expr {
     Await(AwaitExpr),
     /// Yield expressions
     Yield(YieldExpr),
+    /// Actor creation expressions
+    Actor(ActorExpr),
+    /// Spawn expressions (spawn async tasks/actors)
+    Spawn(SpawnExpr),
+    /// Channel expressions (channel creation and operations)
+    Channel(ChannelExpr),
+    /// Select expressions (select over channels)
+    Select(SelectExpr),
     /// Range expressions (1..10)
     Range(RangeExpr),
     /// Tuple expressions
@@ -427,6 +435,116 @@ pub struct YieldExpr {
     pub value: Option<Box<AstNode<Expr>>>,
 }
 
+/// Actor creation expression
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ActorExpr {
+    /// Actor implementation
+    pub actor_impl: Box<AstNode<Expr>>,
+    /// Initial capabilities for the actor
+    pub capabilities: Vec<AstNode<Expr>>,
+    /// Actor configuration
+    pub config: Option<Box<AstNode<Expr>>>,
+}
+
+/// Spawn expression for creating async tasks or actors
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct SpawnExpr {
+    /// Expression to spawn (async block, actor, etc.)
+    pub expression: Box<AstNode<Expr>>,
+    /// Spawn mode (task, actor, etc.)
+    pub spawn_mode: SpawnMode,
+    /// Capabilities for the spawned entity
+    pub capabilities: Vec<AstNode<Expr>>,
+    /// Optional priority
+    pub priority: Option<Box<AstNode<Expr>>>,
+}
+
+/// Spawn modes for different concurrency patterns
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum SpawnMode {
+    /// Spawn an async task
+    Task,
+    /// Spawn an actor
+    Actor,
+    /// Spawn in a structured scope
+    Scoped,
+}
+
+/// Channel expression for channel operations
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ChannelExpr {
+    /// Channel operation type
+    pub operation: ChannelOperation,
+    /// Channel reference (for send/receive)
+    pub channel: Option<Box<AstNode<Expr>>>,
+    /// Value (for send operations)
+    pub value: Option<Box<AstNode<Expr>>>,
+    /// Channel type (for creation)
+    pub channel_type: Option<Box<AstNode<crate::Type>>>,
+    /// Buffer size (for buffered channels)
+    pub buffer_size: Option<Box<AstNode<Expr>>>,
+}
+
+/// Channel operations
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum ChannelOperation {
+    /// Create a new channel
+    Create,
+    /// Send a value to a channel
+    Send,
+    /// Receive a value from a channel
+    Receive,
+    /// Try to send (non-blocking)
+    TrySend,
+    /// Try to receive (non-blocking)
+    TryReceive,
+    /// Close a channel
+    Close,
+}
+
+/// Select expression for selecting over multiple channels
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct SelectExpr {
+    /// Select arms
+    pub arms: Vec<SelectArm>,
+    /// Optional default arm (for non-blocking select)
+    pub default_arm: Option<SelectArm>,
+}
+
+/// Select arm for channel operations
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct SelectArm {
+    /// Channel operation pattern
+    pub pattern: ChannelPattern,
+    /// Guard condition (optional)
+    pub guard: Option<Box<AstNode<Expr>>>,
+    /// Body expression
+    pub body: Box<AstNode<Expr>>,
+}
+
+/// Channel pattern for select arms
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum ChannelPattern {
+    /// Receive pattern: channel => value
+    Receive {
+        channel: Box<AstNode<Expr>>,
+        binding: Option<Symbol>,
+    },
+    /// Send pattern: channel <= value
+    Send {
+        channel: Box<AstNode<Expr>>,
+        value: Box<AstNode<Expr>>,
+    },
+}
+
 /// Range expression
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -638,8 +756,12 @@ impl AstNodeKind for Expr {
             Self::Try(_) => "Try",
             Self::TypeAssertion(_) => "TypeAssertion",
             Self::Await(_) => "Await",
-            Self::Yield(_) => "Yield",
-            Self::Range(_) => "Range",
+            Self::Yield(_) => "YieldExpr",
+            Self::Actor(_) => "ActorExpr",
+            Self::Spawn(_) => "SpawnExpr", 
+            Self::Channel(_) => "ChannelExpr",
+            Self::Select(_) => "SelectExpr",
+            Self::Range(_) => "RangeExpr",
             Self::Tuple(_) => "Tuple",
             Self::Block(_) => "Block",
             Self::Return(_) => "Return",
@@ -683,6 +805,10 @@ impl AstNodeKind for Expr {
             Self::TypeAssertion(_) => Some("Type System"),
             Self::Await(_) => Some("Async"),
             Self::Yield(_) => Some("Generator"),
+            Self::Actor(_) => Some("Concurrency"),
+            Self::Spawn(_) => Some("Concurrency"),
+            Self::Channel(_) => Some("Concurrency"),
+            Self::Select(_) => Some("Concurrency"),
             Self::Range(_) => Some("Data Structure"),
             Self::Tuple(_) => Some("Data Structure"),
             Self::Block(_) => Some("Control Flow"),

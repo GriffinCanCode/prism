@@ -149,8 +149,8 @@ class Prism < Formula
     system "#{bin}/prism", "--help"
     
     # Test compilation (when implemented)
-    # (testpath/"hello.prism").write("// Hello World in Prism\\n")
-    # system "#{bin}/prism", "compile", "hello.prism"
+    # (testpath/"hello.prsm").write("// Hello World in Prism\\n")
+    # system "#{bin}/prism", "compile", "hello.prsm"
   end
 end
 EOF

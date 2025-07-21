@@ -146,6 +146,16 @@ impl<'source> Lexer<'source> {
             pending_dedents: Vec::new(),
         }
     }
+    
+    /// Get the source ID
+    pub fn source_id(&self) -> SourceId {
+        self.source_id
+    }
+    
+    /// Get a reference to the symbol table
+    pub fn symbol_table(&self) -> &SymbolTable {
+        self.symbol_table
+    }
 
     /// Tokenize the source code
     pub fn tokenize(mut self) -> LexerResult {
@@ -1108,6 +1118,10 @@ impl<'source> Lexer<'source> {
             "unsafe" => TokenKind::Unsafe,
             "async" => TokenKind::Async,
             "await" => TokenKind::Await,
+            "actor" => TokenKind::Actor,
+            "spawn" => TokenKind::Spawn,
+            "channel" => TokenKind::Channel,
+            "select" => TokenKind::Select,
             "try" => TokenKind::Try,
             "catch" => TokenKind::Catch,
             "finally" => TokenKind::Finally,
@@ -1137,6 +1151,19 @@ impl<'source> Lexer<'source> {
             "typeof" => TokenKind::Typeof,
             "sizeof" => TokenKind::Sizeof,
             "performance" => TokenKind::Performance,
+            // PLD-002 Section types
+            "config" => TokenKind::Config,
+            "types" => TokenKind::Types,
+            "errors" => TokenKind::Errors,
+            "events" => TokenKind::Events,
+            "lifecycle" => TokenKind::Lifecycle,
+            "tests" => TokenKind::Tests,
+            "examples" => TokenKind::Examples,
+            "operations" => TokenKind::Operations,
+            "validation" => TokenKind::Validation,
+            "migration" => TokenKind::Migration,
+            "documentation" => TokenKind::Documentation,
+            "statemachine" => TokenKind::StateMachine,
             // Everything else is an identifier
             _ => TokenKind::Identifier(value),
         };

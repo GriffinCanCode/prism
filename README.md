@@ -333,7 +333,7 @@ at your option.
 - [Language Guide](https://prism-lang.org/guide)
 - [API Documentation](https://docs.rs/prism)
 - [Examples Repository](https://github.com/prism-lang/examples)
-- [VS Code Extension](https://marketplace.visualstudio.com/items?itemName=prism-lang.prism)
+- [VS Code Extension](https://marketplace.visualstudio.com/items?itemName=prism-lang.prsm)
 
 ---
 

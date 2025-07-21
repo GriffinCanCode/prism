@@ -23,6 +23,7 @@ pub mod execution;
 pub mod security;
 pub mod validation;
 pub mod ai;
+pub mod ai_integration;  // NEW: AI integration and metadata provider
 
 // Legacy compatibility - re-export from capability.rs and security_trust.rs until fully migrated
 pub mod capability;
@@ -33,6 +34,7 @@ pub use effects::{Effect, EffectDefinition, EffectCategory, EffectRegistry, Effe
 pub use execution::{EffectHandler, EffectResult, ExecutionSystem, ExecutionPlan};
 pub use security::{SecuritySystem, Capability, SecurityLevel, InformationFlowControl};
 pub use validation::{EffectValidator, ValidationContext, ValidationViolation};
+pub use ai_integration::EffectsMetadataProvider;  // NEW: Export provider
 
 use prism_common::span::Span;
 use std::collections::HashMap;

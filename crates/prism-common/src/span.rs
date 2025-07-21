@@ -1,7 +1,29 @@
 //! Source location and span utilities
 
 use std::fmt;
-use crate::SourceId;
+
+/// A unique identifier for a source file or input
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct SourceId(pub u32);
+
+impl SourceId {
+    /// Create a new source ID
+    pub fn new(id: u32) -> Self {
+        Self(id)
+    }
+
+    /// Get the raw ID value
+    pub fn as_u32(self) -> u32 {
+        self.0
+    }
+}
+
+impl fmt::Display for SourceId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "source:{}", self.0)
+    }
+}
 
 /// A position in source code
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

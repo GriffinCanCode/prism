@@ -59,7 +59,7 @@ pub struct SyntaxDetector {
     confidence_scorer: ConfidenceScorer,
     
     /// Detection cache for performance
-    detection_cache: DetectionCache,
+    detection_cache: FxHashMap<u64, DetectionResult>,
     
     /// Configuration for detection behavior
     config: DetectionConfig,
@@ -293,154 +293,40 @@ impl DetectionCache {
 impl SyntaxDetector {
     /// Create a new syntax detector with default configuration
     pub fn new() -> Self {
-        Self::with_config(DetectionConfig::default())
-    }
-    
-    /// Create a syntax detector with custom configuration
-    pub fn with_config(config: DetectionConfig) -> Self {
         Self {
             pattern_matcher: PatternMatcher::new(),
             heuristic_engine: HeuristicEngine::new(),
             confidence_scorer: ConfidenceScorer::new(),
-            detection_cache: DetectionCache::new(config.max_cache_size),
-            config,
+            detection_cache: FxHashMap::default(),
         }
     }
     
-    /// Detects syntax style from source code with comprehensive analysis.
-    /// 
-    /// This method analyzes the source code using multiple techniques:
-    /// 1. Pattern matching for syntax-specific elements
-    /// 2. Heuristic analysis of code structure
-    /// 3. Confidence scoring for final determination
-    /// 4. Caching for performance optimization
-    /// 
-    /// # Arguments
-    /// 
-    /// * `source` - The source code to analyze
-    /// 
-    /// # Returns
-    /// 
-    /// A `DetectionResult` containing the detected style, confidence score,
-    /// supporting evidence, alternatives, and any warnings.
-    /// 
-    /// # Examples
-    /// 
-    /// ```rust
-    /// use prism_syntax::detection::SyntaxDetector;
-    /// 
-    /// let mut detector = SyntaxDetector::new();
-    /// 
-    /// let python_like_source = r#"
-    ///     module UserAuth:
-    ///         function authenticate(user: User) -> Result<Session, Error>:
-    ///             if user.isActive and user.hasPermission:
-    ///                 return Ok(createSession(user))
-    /// "#;
-    /// 
-    /// let result = detector.detect_syntax(python_like_source);
-    /// assert_eq!(result.detected_style, SyntaxStyle::PythonLike);
-    /// assert!(result.confidence > 0.8);
-    /// ```
-    pub fn detect_syntax(&mut self, source: &str) -> DetectionResult {
-        // Check cache first if enabled
-        if self.config.enable_caching {
-            let source_hash = self.calculate_source_hash(source);
-            if let Some(cached) = self.detection_cache.get(source_hash) {
-                return cached;
-            }
+    /// Detect the syntax style of source code
+    pub fn detect_syntax(&mut self, source: &str) -> Result<DetectionResult, DetectionError> {
+        // Check cache first
+        let source_hash = self.calculate_source_hash(source);
+        if let Some(cached_result) = self.detection_cache.get(&source_hash) {
+            return Ok(cached_result.clone());
         }
         
-        // Step 1: Analyze patterns for each syntax style
-        let pattern_evidence = self.pattern_matcher.analyze_patterns(source);
-        
-        // Step 2: Apply heuristic rules
+        // Gather evidence from multiple sources
+        let pattern_evidence = self.pattern_matcher.find_patterns(source)?;
         let heuristic_evidence = self.heuristic_engine.analyze_heuristics(source);
         
-        // Step 3: Combine all evidence
-        let combined_evidence = self.combine_evidence(pattern_evidence, heuristic_evidence);
+        // Combine all evidence
+        let mut all_evidence = pattern_evidence;
+        all_evidence.extend(heuristic_evidence);
         
-        // Step 4: Score confidence for each style
-        let style_scores = self.confidence_scorer.score_styles(&combined_evidence);
+        // Score the evidence and determine the most likely syntax style
+        let result = self.confidence_scorer.calculate_confidence(&all_evidence)?;
         
-        // Step 5: Determine primary style and alternatives
-        let (detected_style, confidence) = self.determine_primary_style(&style_scores);
-        let alternatives = self.generate_alternatives(&style_scores, detected_style);
+        // Cache the result
+        self.detection_cache.insert(source_hash, result.clone());
         
-        // Step 6: Generate warnings
-        let warnings = self.generate_warnings(source, &combined_evidence, confidence);
-        
-        let result = DetectionResult {
-            detected_style,
-            confidence,
-            evidence: combined_evidence,
-            alternatives,
-            warnings,
-        };
-        
-        // Cache result if enabled
-        if self.config.enable_caching {
-            let source_hash = self.calculate_source_hash(source);
-            self.detection_cache.insert(source_hash, result.clone());
-        }
-        
-        result
+        Ok(result)
     }
     
-    /// Detects mixed syntax styles within the same file.
-    /// 
-    /// This method analyzes each significant line to detect inconsistent syntax
-    /// styles within the same file, which can indicate copy-paste errors or
-    /// inconsistent coding practices.
-    /// 
-    /// # Arguments
-    /// 
-    /// * `source` - The source code to analyze
-    /// 
-    /// # Returns
-    /// 
-    /// A vector of warnings about mixed syntax styles found in the file.
-    pub fn detect_mixed_styles(&mut self, source: &str) -> Vec<MixedStyleWarning> {
-        if !self.config.detect_mixed_styles {
-            return Vec::new();
-        }
-        
-        let lines = source.lines().enumerate();
-        let mut warnings = Vec::new();
-        let mut line_styles = Vec::new();
-        
-        // Analyze each significant line
-        for (line_num, line) in lines {
-            if line.trim().is_empty() || line.trim_start().starts_with("//") {
-                continue;
-            }
-            
-            let line_detection = self.detect_syntax(line);
-            line_styles.push((line_num, line_detection.detected_style));
-        }
-        
-        // Find the dominant style
-        let dominant_style = self.find_dominant_style(&line_styles);
-        
-        // Find inconsistencies
-        for (line_num, style) in line_styles {
-            if style != dominant_style {
-                warnings.push(MixedStyleWarning {
-                    line: line_num + 1, // 1-indexed for user display
-                    expected_style: dominant_style,
-                    found_style: style,
-                    suggestion: format!(
-                        "Consider using {} style consistently throughout the file", 
-                        self.style_name(dominant_style)
-                    ),
-                });
-            }
-        }
-        
-        warnings
-    }
-    
-    /// Calculate a hash for source code for caching
+    /// Calculate a simple hash of the source for caching
     fn calculate_source_hash(&self, source: &str) -> u64 {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
@@ -450,130 +336,13 @@ impl SyntaxDetector {
         hasher.finish()
     }
     
-    /// Combine evidence from patterns and heuristics
-    fn combine_evidence(
-        &self,
-        pattern_evidence: Vec<SyntaxEvidence>,
-        heuristic_evidence: Vec<SyntaxEvidence>
-    ) -> Vec<SyntaxEvidence> {
-        let mut combined = pattern_evidence;
-        combined.extend(heuristic_evidence);
-        
-        // Apply custom weights if configured
-        for evidence in &mut combined {
-            if let Some(&weight) = self.config.custom_pattern_weights.get(&evidence.pattern) {
-                evidence.weight *= weight;
-            }
-        }
-        
-        combined
+    /// Clear the detection cache
+    pub fn clear_cache(&mut self) {
+        self.detection_cache.clear();
     }
     
-    /// Determine the primary style from confidence scores
-    fn determine_primary_style(
-        &self,
-        style_scores: &HashMap<SyntaxStyle, f64>
-    ) -> (SyntaxStyle, f64) {
-        style_scores
-            .iter()
-            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-            .map(|(&style, &confidence)| (style, confidence))
-            .unwrap_or((SyntaxStyle::Canonical, 0.0))
-    }
-    
-    /// Generate alternative style suggestions
-    fn generate_alternatives(
-        &self,
-        style_scores: &HashMap<SyntaxStyle, f64>,
-        primary_style: SyntaxStyle
-    ) -> Vec<AlternativeStyle> {
-        let mut alternatives = Vec::new();
-        
-        for (&style, &confidence) in style_scores {
-            if style != primary_style && confidence > 0.3 {
-                alternatives.push(AlternativeStyle {
-                    style,
-                    confidence,
-                    rejection_reason: format!(
-                        "Lower confidence ({:.2}) than primary style", 
-                        confidence
-                    ),
-                });
-            }
-        }
-        
-        // Sort by confidence descending
-        alternatives.sort_by(|a, b| b.confidence.partial_cmp(&a.confidence).unwrap());
-        
-        alternatives
-    }
-    
-    /// Generate warnings about detection issues
-    fn generate_warnings(
-        &mut self,
-        source: &str,
-        evidence: &[SyntaxEvidence],
-        confidence: f64
-    ) -> Vec<DetectionWarning> {
-        let mut warnings = Vec::new();
-        
-        // Low confidence warning
-        if confidence < self.config.min_confidence_threshold {
-            warnings.push(DetectionWarning {
-                warning_type: WarningType::LowConfidence,
-                message: format!(
-                    "Low confidence ({:.2}) in syntax detection. Consider using explicit style annotation.",
-                    confidence
-                ),
-                location: None,
-                suggestion: Some("Add explicit syntax style annotation to clarify intent".to_string()),
-            });
-        }
-        
-        // Check for mixed styles if enabled
-        if self.config.detect_mixed_styles {
-            let mixed_warnings = self.detect_mixed_styles(source);
-            if !mixed_warnings.is_empty() {
-                warnings.push(DetectionWarning {
-                    warning_type: WarningType::MixedStyles,
-                    message: format!("Found {} mixed style issues in file", mixed_warnings.len()),
-                    location: None,
-                    suggestion: Some("Use consistent syntax style throughout the file".to_string()),
-                });
-            }
-        }
-        
-        warnings
-    }
-    
-    /// Find the dominant style from line-by-line analysis
-    fn find_dominant_style(&self, line_styles: &[(usize, SyntaxStyle)]) -> SyntaxStyle {
-        let mut style_counts = HashMap::new();
-        
-        for (_, style) in line_styles {
-            *style_counts.entry(*style).or_insert(0) += 1;
-        }
-        
-        style_counts
-            .into_iter()
-            .max_by_key(|(_, count)| *count)
-            .map(|(style, _)| style)
-            .unwrap_or(SyntaxStyle::Canonical)
-    }
-    
-    /// Get human-readable name for a syntax style
-    fn style_name(&self, style: SyntaxStyle) -> &'static str {
-        match style {
-            SyntaxStyle::CLike => "C-like",
-            SyntaxStyle::PythonLike => "Python-like",
-            SyntaxStyle::RustLike => "Rust-like",
-            SyntaxStyle::Canonical => "Canonical",
-        }
-    }
-}
-
-impl Default for SyntaxDetector {
-    fn default() -> Self {
-        Self::new()
+    /// Get cache statistics
+    pub fn cache_stats(&self) -> (usize, usize) {
+        (self.detection_cache.len(), self.detection_cache.capacity())
     }
 } 

@@ -1,20 +1,22 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/prism-lexer",
+    "crates/prism-parser", 
     "crates/prism-ast",
-    "crates/prism-lexer", 
-    "crates/prism-parser",
-    "crates/prism-semantic",
-    "crates/prism-effects",
     "crates/prism-common",
-    "crates/prism-pir",
-    "crates/prism-runtime",
     "crates/prism-compiler",
-    "crates/prism-codegen",
+    "crates/prism-runtime",
+    "crates/prism-semantic",
     "crates/prism-syntax",
+    "crates/prism-effects",
     "crates/prism-constraints",
-    # "crates/prism-ai",       # Temporarily disabled due to candle dependency issues
-    # "crates/prism-cli",      # Temporarily disabled due to AI dependency issues
+    "crates/prism-codegen",
+    "crates/prism-documentation",
+    "crates/prism-pir",
+    "crates/prism-cohesion",
+    "crates/prism-cli",
+    "crates/prism-ai",
 ]
 
 [workspace.package]
@@ -95,6 +97,7 @@ prism-ai = { path = "crates/prism-ai" }
 prism-runtime = { path = "crates/prism-runtime" }
 prism-pir = { path = "crates/prism-pir" }
 prism-compiler = { path = "crates/prism-compiler" }
+prism-cohesion = { path = "crates/prism-cohesion" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

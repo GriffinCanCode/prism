@@ -310,7 +310,7 @@ impl Token {
 }
 
 /// Syntax style detection (PSG-001 integration)
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum SyntaxStyle {
     /// C/C++/Java/JavaScript: braces, semicolons, parentheses
@@ -548,6 +548,18 @@ pub enum TokenKind {
     Examples,
     #[token("performance")]
     Performance,
+    #[token("internal")]
+    Internal,
+    #[token("operations")]
+    Operations,
+    #[token("validation")]
+    Validation,
+    #[token("migration")]
+    Migration,
+    #[token("documentation")]
+    Documentation,
+    #[token("statemachine")]
+    StateMachine,
     
     /// Capability keyword
     #[token("capability")]
@@ -654,6 +666,14 @@ pub enum TokenKind {
     Await,
     #[token("sync")]  // PLT-002 requirement
     Sync,
+    #[token("actor")]
+    Actor,
+    #[token("spawn")]
+    Spawn,
+    #[token("channel")]
+    Channel,
+    #[token("select")]
+    Select,
     
     // === ERROR HANDLING ===
     
@@ -689,8 +709,6 @@ pub enum TokenKind {
     Pub,
     #[token("private")]
     Private,
-    #[token("internal")]
-    Internal,
     #[token("protected")]  // PLT-002 requirement
     Protected,
     
@@ -924,6 +942,36 @@ pub enum TokenKind {
     
     /// End of file
     Eof,
+
+    // === SMART MODULE SYSTEM TOKENS ===
+    
+
+    
+    /// Implements keyword for trait implementation
+    #[token("implements")]
+    Implements,
+    
+
+    
+    /// Optional keyword for optional requirements
+    #[token("optional")]
+    Optional,
+    
+    /// Must keyword for strict requirements
+    #[token("must")]
+    Must,
+    
+    /// Should keyword for recommended requirements
+    #[token("should")]
+    Should,
+    
+    /// May keyword for optional requirements
+    #[token("may")]
+    May,
+    
+    /// Version keyword for version specifications
+    #[token("version")]
+    Version,
 }
 
 impl fmt::Display for TokenKind {
@@ -939,6 +987,12 @@ impl fmt::Display for TokenKind {
             Self::Tests => write!(f, "tests"),
             Self::Examples => write!(f, "examples"),
             Self::Performance => write!(f, "performance"),
+            Self::Internal => write!(f, "internal"),
+            Self::Operations => write!(f, "operations"),
+            Self::Validation => write!(f, "validation"),
+            Self::Migration => write!(f, "migration"),
+            Self::Documentation => write!(f, "documentation"),
+            Self::StateMachine => write!(f, "statemachine"),
             Self::Capability => write!(f, "capability"),
             Self::Function => write!(f, "function"),
             Self::Fn => write!(f, "fn"),
@@ -980,6 +1034,10 @@ impl fmt::Display for TokenKind {
             Self::Async => write!(f, "async"),
             Self::Await => write!(f, "await"),
             Self::Sync => write!(f, "sync"),
+            Self::Actor => write!(f, "actor"),
+            Self::Spawn => write!(f, "spawn"),
+            Self::Channel => write!(f, "channel"),
+            Self::Select => write!(f, "select"),
             Self::Try => write!(f, "try"),
             Self::Catch => write!(f, "catch"),
             Self::Finally => write!(f, "finally"),
@@ -1080,6 +1138,15 @@ impl fmt::Display for TokenKind {
             Self::Comment(content) => write!(f, "// {}", content),
             Self::LexError(msg) => write!(f, "ERROR: {}", msg),
             Self::Eof => write!(f, "EOF"),
+            Self::At => write!(f, "@"),
+            Self::Implements => write!(f, "implements"),
+            Self::Requires => write!(f, "requires"),
+            Self::Capability => write!(f, "capability"),
+            Self::Optional => write!(f, "optional"),
+            Self::Must => write!(f, "must"),
+            Self::Should => write!(f, "should"),
+            Self::May => write!(f, "may"),
+            Self::Version => write!(f, "version"),
         }
     }
 } 

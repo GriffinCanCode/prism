@@ -103,9 +103,9 @@ WORKDIR /workspace
 RUN chown prism:prism /workspace
 
 # Create example project structure
-RUN mkdir -p /home/prism/.prism/examples
-COPY examples/ /home/prism/.prism/examples/ || true
-RUN chown -R prism:prism /home/prism/.prism
+RUN mkdir -p /home/prism/.prsm/examples
+COPY examples/ /home/prism/.prsm/examples/ || true
+RUN chown -R prism:prism /home/prism/.prsm
 
 USER prism
 

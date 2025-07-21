@@ -423,7 +423,7 @@ impl ArenaSerializer {
         if self.config.enable_caching {
             if let Ok(mut cache) = self.cache.write() {
                 // Create a simple node reference using the node ID and a default source
-                let node_ref = AstNodeRef::new(node.node.id.as_u32(), SourceId::new(0));
+                let node_ref = AstNodeRef::new(node.node.id.raw(), SourceId::new(0));
                 if let Some(cached) = cache.get(&node_ref) {
                     return Ok(cached);
                 }
@@ -448,7 +448,7 @@ impl ArenaSerializer {
         // Cache the result if enabled
         if self.config.enable_caching {
             if let Ok(mut cache) = self.cache.write() {
-                let node_ref = AstNodeRef::new(node.node.id.as_u32(), SourceId::new(0));
+                let node_ref = AstNodeRef::new(node.node.id.raw(), SourceId::new(0));
                 cache.insert(node_ref, result.clone());
             }
         }

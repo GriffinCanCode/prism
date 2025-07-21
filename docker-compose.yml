@@ -23,8 +23,8 @@ services:
     image: prism-lang/dev:latest
     volumes:
       - .:/workspace:cached
-      - prism-cache:/home/prism/.prism/cache
-      - prism-config:/home/prism/.prism/config
+      - prism-cache:/home/prism/.prsm/cache
+      - prism-config:/home/prism/.prsm/config
     ports:
       - "9257:9257"  # Language Server Protocol
     working_dir: /workspace
@@ -32,7 +32,7 @@ services:
     tty: true
     environment:
       - PRISM_LOG_LEVEL=debug
-      - PRISM_CACHE_DIR=/home/prism/.prism/cache
+      - PRISM_CACHE_DIR=/home/prism/.prsm/cache
 
   # Prism Language Server
   prism-lsp:
@@ -63,7 +63,7 @@ services:
     image: prism-lang/ci:latest
     volumes:
       - .:/ci:ro
-      - prism-ci-cache:/home/prism/.prism/cache
+      - prism-ci-cache:/home/prism/.prsm/cache
     environment:
       - CI=true
       - PRISM_PARALLEL_JOBS=4

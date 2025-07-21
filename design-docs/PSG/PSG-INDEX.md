@@ -330,10 +330,10 @@ where {
 ## Quick Reference
 
 ### File Extensions
-- `.prism` - Prism source files
-- `.prism.md` - Literate Prism files
-- `.prism.test` - Test files
-- `.prism.bench` - Benchmark files
+- `.prsm` - Prism source files
+- `.prsm.md` - Literate Prism files
+- `.prsm.test` - Test files
+- `.prsm.bench` - Benchmark files
 
 ### Naming Conventions
 - **Modules**: `PascalCase` (e.g., `UserManagement`)
@@ -385,7 +385,7 @@ type PositiveInteger = Integer where { min_value: 1 };
 - [Style Guide Checker](./tools/style-checker.md)
 - [Formatter Configuration](./tools/formatter.md)
 - [Linting Rules](./tools/linter.md)
-- [Community Style Forum](https://discuss.prism-lang.org/c/style)
+- [Community Style Forum](https://discuss.prsm-lang.org/c/style)
 
 ## Index Maintenance
 

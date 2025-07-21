@@ -7,11 +7,13 @@
 use prism_compiler::{
     CompilerResult, CompilerError,
     SymbolSystem, SymbolSystemBuilder, SymbolSystemConfig,
-    SymbolTable, SymbolData, SymbolKind, SymbolVisibility, TypeCategory,
+    SymbolTable, SymbolData, SymbolKind, SymbolBuilder,
     ScopeTree, ScopeKind, SectionType,
     SymbolResolver, ResolutionContext, ResolutionKind,
     SemanticDatabase, CompilationCache,
 };
+use prism_compiler::symbols::data::SymbolVisibility;
+use prism_compiler::symbols::kinds::TypeCategory;
 use prism_common::{span::Span, symbol::Symbol};
 use prism_effects::effects::EffectRegistry;
 use std::sync::Arc;
@@ -41,25 +43,11 @@ async fn test_symbol_system_integration() -> CompilerResult<()> {
 
 /// Test symbol registration and storage
 async fn test_symbol_registration(symbol_system: &SymbolSystem) -> CompilerResult<()> {
-    // Create a test symbol following PLT-004 specification
-    let test_symbol = SymbolData {
-        symbol: Symbol::intern("testFunction"),
-        name: "testFunction".to_string(),
-        kind: SymbolKind::Function {
-            parameters: vec!["param1".to_string()],
-            return_type: Some("String".to_string()),
-            is_async: false,
-        },
-        location: Span::new(0, 10),
-        visibility: SymbolVisibility::Public,
-        ast_node: None,
-        semantic_type: Some("function_type".to_string()),
-        effects: Vec::new(),
-        required_capabilities: Vec::new(),
-        documentation: Some("Test function for integration testing".to_string()),
-        responsibility: Some("Testing symbol registration".to_string()),
-        ai_context: Some("This is a test function for validating symbol table integration".to_string()),
-    };
+    // Create a test symbol following PLT-004 specification using the builder API
+    let test_symbol = SymbolBuilder::function("testFunction", Span::dummy())
+        .public()
+        .with_responsibility("Testing symbol registration")
+        .build()?;
 
     // Register symbol (would need a scope ID in real implementation)
     // For now, we test the individual components
@@ -136,10 +124,10 @@ async fn test_symbol_table_component() -> CompilerResult<()> {
     let symbol_table = SymbolTable::new(semantic_db)?;
 
     // Test symbol registration
-    let symbol_data = create_test_symbol("isolationTest", SymbolKind::Variable {
-        is_mutable: true,
-        type_hint: Some("i32".to_string()),
-    });
+    let symbol_data = SymbolBuilder::variable("isolationTest", Span::dummy(), true)
+        .public()
+        .with_responsibility("Testing isolation")
+        .build()?;
 
     symbol_table.register_symbol(symbol_data.clone())?;
 
@@ -325,18 +313,12 @@ async fn create_test_symbol_system() -> CompilerResult<SymbolSystem> {
 }
 
 fn create_test_symbol(name: &str, kind: SymbolKind) -> SymbolData {
-    SymbolData {
-        symbol: Symbol::intern(name),
-        name: name.to_string(),
-        kind,
-        location: Span::new(0, name.len()),
-        visibility: SymbolVisibility::Public,
-        ast_node: None,
-        semantic_type: None,
-        effects: Vec::new(),
-        required_capabilities: Vec::new(),
-        documentation: Some(format!("Test symbol: {}", name)),
-        responsibility: Some(format!("Testing {}", name)),
-        ai_context: Some(format!("AI context for {}", name)),
-    }
+    SymbolBuilder::new()
+        .with_name(name)
+        .with_kind(kind)
+        .with_location(Span::dummy())
+        .public()
+        .with_responsibility(format!("Testing {}", name))
+        .build()
+        .expect("Failed to build test symbol")
 } 

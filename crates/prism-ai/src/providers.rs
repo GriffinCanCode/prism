@@ -430,7 +430,7 @@ pub struct ExportReadiness {
 }
 
 /// Provider registry for managing metadata providers
-#[derive(Debug, Default)]
+#[derive(Default)]
 pub struct ProviderRegistry {
     providers: std::collections::HashMap<MetadataDomain, Vec<Box<dyn MetadataProvider>>>,
 }

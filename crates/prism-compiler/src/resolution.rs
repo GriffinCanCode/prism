@@ -10,7 +10,8 @@
 //! **What it doesn't do**: symbol storage, scope management, semantic analysis (delegates to specialized modules)
 
 use crate::error::{CompilerError, CompilerResult};
-use crate::symbol_table::{SymbolTable, SymbolData, SymbolKind, SymbolVisibility};
+use crate::symbols::{SymbolTable, SymbolData, SymbolKind};
+use crate::symbols::data::SymbolVisibility;
 use crate::scope::{ScopeTree, ScopeId, ScopeData, ScopeKind};
 use crate::cache::CompilationCache;
 use crate::semantic::SemanticDatabase;
@@ -289,7 +290,7 @@ impl SymbolResolver {
 
         // Phase 6: Generate AI metadata for resolution
         let ai_metadata = if context.preferences.enable_ai_metadata {
-            Some(self.generate_ai_metadata(&resolved, context)?)
+            Some(self.generate_ai_metadata(&resolved)?)
         } else {
             None
         };
@@ -309,7 +310,7 @@ impl SymbolResolver {
 
         // Phase 8: Cache result
         if self.config.enable_caching {
-            self.cache_resolution_result(name, context, &final_result).await?;
+            self.cache_resolution_result(&self.generate_cache_key(name, context), &final_result).await?;
         }
 
         Ok(final_result)
@@ -475,6 +476,262 @@ impl SymbolResolver {
         Ok(candidates)
     }
 
+    /// Phase 2e: Cohesion-aware module resolution (NEW - integrates with Smart Module Registry)
+    pub async fn resolve_modules_with_cohesion(
+        &self,
+        name: &str,
+        context: &ResolutionContext,
+        cohesion_threshold: f64,
+    ) -> CompilerResult<Vec<CohesionAwareModuleCandidate>> {
+        let mut candidates = Vec::new();
+
+        // This would integrate with the Smart Module Registry from the compiler
+        // For now, we'll provide a placeholder implementation that shows the structure
+        
+        // Query modules by name pattern
+        let module_candidates = self.find_modules_by_name_pattern(name)?;
+        
+        for module_candidate in module_candidates {
+            // Calculate cohesion-based confidence score
+            let cohesion_score = self.calculate_module_cohesion_score(&module_candidate, context).await?;
+            
+            // Only include modules that meet the cohesion threshold
+            if cohesion_score >= cohesion_threshold {
+                let confidence = self.calculate_cohesion_confidence(cohesion_score, context);
+                
+                candidates.push(CohesionAwareModuleCandidate {
+                    module_name: module_candidate.name,
+                    cohesion_score,
+                    confidence,
+                    business_context: module_candidate.business_context,
+                    capability_match_score: self.calculate_capability_match(&module_candidate, context)?,
+                    resolution_path: ResolutionPath::Section {
+                        section_scope: module_candidate.scope_id,
+                        section_type: "module".to_string(),
+                    },
+                });
+            }
+        }
+
+        // Sort by combined score (cohesion + capability match + business context alignment)
+        candidates.sort_by(|a, b| {
+            let score_a = self.calculate_combined_module_score(a);
+            let score_b = self.calculate_combined_module_score(b);
+            score_b.partial_cmp(&score_a).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        Ok(candidates)
+    }
+
+    /// Find modules matching a name pattern
+    fn find_modules_by_name_pattern(&self, pattern: &str) -> CompilerResult<Vec<ModuleCandidate>> {
+        // This would query the symbol table for module symbols
+        let module_symbols = self.symbol_table.find_symbols(|symbol_data| {
+            matches!(symbol_data.kind, crate::symbols::SymbolKind::Module { .. }) &&
+            (symbol_data.name.contains(pattern) || 
+             self.matches_business_context(&symbol_data.name, pattern))
+        });
+
+        let mut candidates = Vec::new();
+        for symbol_data in module_symbols {
+            if let crate::symbols::SymbolKind::Module { 
+                sections, 
+                capabilities, 
+                effects, 
+                cohesion_info 
+            } = &symbol_data.kind {
+                candidates.push(ModuleCandidate {
+                    name: symbol_data.name.clone(),
+                    scope_id: symbol_data.scope_id.unwrap_or(crate::scope::ScopeId::new(0)),
+                    sections: sections.clone(),
+                    capabilities: capabilities.clone(),
+                    effects: effects.clone(),
+                    cohesion_info: cohesion_info.clone(),
+                    business_context: self.extract_business_context_from_symbol(&symbol_data)?,
+                });
+            }
+        }
+
+        Ok(candidates)
+    }
+
+    /// Calculate cohesion score for a module candidate
+    async fn calculate_module_cohesion_score(
+        &self,
+        candidate: &ModuleCandidate,
+        _context: &ResolutionContext,
+    ) -> CompilerResult<f64> {
+        // Use existing cohesion information if available
+        if let Some(cohesion_info) = &candidate.cohesion_info {
+            return Ok(cohesion_info.overall_score);
+        }
+
+        // Fallback: calculate basic cohesion score
+        let mut score = 0.5; // Base score
+
+        // Boost score for well-defined capabilities
+        if !candidate.capabilities.is_empty() {
+            score += 0.2;
+        }
+
+        // Boost score for clear section organization
+        if candidate.sections.len() > 1 {
+            score += 0.1;
+        }
+
+        // Boost score for business context alignment
+        if !candidate.business_context.entities.is_empty() {
+            score += 0.15;
+        }
+
+        Ok(score.min(1.0))
+    }
+
+    /// Calculate confidence based on cohesion score
+    fn calculate_cohesion_confidence(&self, cohesion_score: f64, context: &ResolutionContext) -> f64 {
+        let mut confidence = cohesion_score;
+
+        // Boost confidence for business context alignment
+        if let Some(current_module) = &context.current_module {
+            // Would check business context similarity
+            confidence += 0.05;
+        }
+
+        // Boost confidence for capability alignment
+        if !context.available_capabilities.is_empty() {
+            confidence += 0.05;
+        }
+
+        confidence.min(1.0)
+    }
+
+    /// Calculate capability match score
+    fn calculate_capability_match(&self, candidate: &ModuleCandidate, context: &ResolutionContext) -> CompilerResult<f64> {
+        if context.available_capabilities.is_empty() {
+            return Ok(0.5); // Neutral score when no context
+        }
+
+        let matching_capabilities = candidate.capabilities.iter()
+            .filter(|cap| context.available_capabilities.contains(cap))
+            .count();
+
+        let total_context_capabilities = context.available_capabilities.len();
+        
+        if total_context_capabilities == 0 {
+            Ok(0.5)
+        } else {
+            Ok(matching_capabilities as f64 / total_context_capabilities as f64)
+        }
+    }
+
+    /// Calculate combined module score for ranking
+    fn calculate_combined_module_score(&self, candidate: &CohesionAwareModuleCandidate) -> f64 {
+        // Weighted combination of different factors
+        let cohesion_weight = 0.4;
+        let capability_weight = 0.3;
+        let confidence_weight = 0.3;
+
+        (candidate.cohesion_score * cohesion_weight) +
+        (candidate.capability_match_score * capability_weight) +
+        (candidate.confidence * confidence_weight)
+    }
+
+    /// Check if a module name matches business context
+    fn matches_business_context(&self, module_name: &str, pattern: &str) -> bool {
+        // Simple business context matching - could be enhanced with NLP
+        let business_keywords = vec![
+            "management", "service", "processor", "handler", "validator",
+            "analyzer", "generator", "transformer", "controller", "repository"
+        ];
+
+        let name_lower = module_name.to_lowercase();
+        let pattern_lower = pattern.to_lowercase();
+
+        // Check for business keyword matches
+        for keyword in business_keywords {
+            if name_lower.contains(keyword) && pattern_lower.contains(keyword) {
+                return true;
+            }
+        }
+
+        // Check for domain-specific matches
+        self.matches_domain_context(&name_lower, &pattern_lower)
+    }
+
+    /// Check domain context matching
+    fn matches_domain_context(&self, module_name: &str, pattern: &str) -> bool {
+        let domain_patterns = vec![
+            ("user", vec!["auth", "account", "profile", "identity"]),
+            ("payment", vec!["billing", "transaction", "financial", "money"]),
+            ("order", vec!["purchase", "cart", "checkout", "fulfillment"]),
+            ("inventory", vec!["stock", "product", "catalog", "warehouse"]),
+        ];
+
+        for (domain, related_terms) in domain_patterns {
+            if (module_name.contains(domain) && related_terms.iter().any(|term| pattern.contains(term))) ||
+               (pattern.contains(domain) && related_terms.iter().any(|term| module_name.contains(term))) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    /// Extract business context from symbol data
+    fn extract_business_context_from_symbol(&self, symbol_data: &crate::symbols::SymbolData) -> CompilerResult<BusinessContextInfo> {
+        // This would extract business context from symbol metadata
+        // For now, return a basic implementation
+        Ok(BusinessContextInfo {
+            primary_domain: self.infer_domain_from_name(&symbol_data.name),
+            entities: self.extract_entities_from_symbol(symbol_data),
+            processes: self.extract_processes_from_symbol(symbol_data),
+        })
+    }
+
+    /// Infer domain from symbol name
+    fn infer_domain_from_name(&self, name: &str) -> String {
+        let name_lower = name.to_lowercase();
+        
+        if name_lower.contains("user") || name_lower.contains("auth") {
+            "UserManagement".to_string()
+        } else if name_lower.contains("payment") || name_lower.contains("billing") {
+            "PaymentProcessing".to_string()
+        } else if name_lower.contains("order") || name_lower.contains("purchase") {
+            "OrderManagement".to_string()
+        } else if name_lower.contains("inventory") || name_lower.contains("product") {
+            "InventoryManagement".to_string()
+        } else {
+            "GeneralDomain".to_string()
+        }
+    }
+
+    /// Extract entities from symbol data
+    fn extract_entities_from_symbol(&self, symbol_data: &crate::symbols::SymbolData) -> Vec<String> {
+        // Simple entity extraction based on symbol name and type
+        let mut entities = Vec::new();
+        
+        // Extract from symbol name
+        let name = &symbol_data.name;
+        if name.ends_with("Entity") || name.ends_with("Model") || name.ends_with("Data") {
+            entities.push(name.clone());
+        }
+
+        entities
+    }
+
+    /// Extract processes from symbol data
+    fn extract_processes_from_symbol(&self, symbol_data: &crate::symbols::SymbolData) -> Vec<String> {
+        let mut processes = Vec::new();
+        
+        // Extract from symbol name patterns
+        let name = &symbol_data.name;
+        if name.contains("Process") || name.contains("Handler") || name.contains("Service") {
+            processes.push(name.clone());
+        }
+
+        processes
+    }
+
     /// Phase 3: Filter and rank candidates
     fn filter_and_rank_candidates(
         &self,
@@ -558,41 +815,37 @@ impl SymbolResolver {
     }
 
     /// Phase 6: Generate AI metadata for resolution
-    fn generate_ai_metadata(&self, resolved: &ResolutionCandidate, context: &ResolutionContext) -> CompilerResult<String> {
+    fn generate_ai_metadata(&self, resolved: &ResolutionCandidate) -> CompilerResult<Option<String>> {
+        // Generate structured AI metadata about the resolution
         let metadata = format!(
-            "Resolved '{}' via {} with confidence {:.2} in {} context",
+            "Resolution: {} via {} with confidence {:.2}",
             resolved.symbol_data.name,
-            match resolved.resolution_kind {
-                ResolutionKind::Direct => "direct scope lookup",
-                ResolutionKind::Import => "import resolution",
-                ResolutionKind::ModuleExport => "module export",
-                ResolutionKind::Section => "section lookup",
-                ResolutionKind::Semantic => "semantic type matching",
-                ResolutionKind::Effect => "effect system",
-                ResolutionKind::Fallback => "fallback resolution",
-            },
-            resolved.confidence,
-            context.syntax_style
+            format!("{:?}", resolved.resolution_kind),
+            resolved.confidence
         );
         
-        Ok(metadata)
+        Ok(Some(metadata))
     }
 
-    /// Check resolution cache
-    async fn check_resolution_cache(&self, _name: &str, _context: &ResolutionContext) -> CompilerResult<Option<ResolvedSymbol>> {
-        // Would implement cache lookup based on name and context hash
-        Ok(None) // Simplified for now
+    /// Phase 1: Check resolution cache
+    async fn check_resolution_cache(&self, name: &str, context: &ResolutionContext) -> CompilerResult<Option<ResolvedSymbol>> {
+        // Check if we have a cached resolution for this symbol in this context
+        // This would integrate with the compilation cache
+        // For now, return None (no cache hit)
+        Ok(None)
     }
 
-    /// Cache resolution result
-    async fn cache_resolution_result(&self, _name: &str, _context: &ResolutionContext, _result: &ResolvedSymbol) -> CompilerResult<()> {
-        // Would implement cache storage
-        Ok(()) // Simplified for now
+    /// Phase 6: Cache the resolution result
+    fn cache_resolution_result(&self, cache_key: &str, resolved: &ResolvedSymbol) -> CompilerResult<()> {
+        // Cache the resolution result for future use
+        // This would integrate with the compilation cache
+        // For now, this is a no-op
+        Ok(())
     }
 
-    /// Get resolver configuration
-    pub fn config(&self) -> &ResolverConfig {
-        &self.config
+    /// Generate cache key for resolution
+    fn generate_cache_key(&self, name: &str, context: &ResolutionContext) -> String {
+        format!("resolve_{}_{:?}", name, context.current_scope)
     }
 }
 
@@ -609,4 +862,66 @@ pub struct ResolverStats {
     pub average_resolution_time_ms: f64,
     /// Resolutions by kind
     pub resolution_by_kind: HashMap<String, u64>,
+} 
+
+/// Candidate found during resolution
+#[derive(Debug, Clone)]
+struct ResolutionCandidate {
+    /// The symbol that was found
+    symbol: Symbol,
+    /// Full symbol data
+    symbol_data: crate::symbols::SymbolData,
+    /// How this symbol was resolved
+    resolution_path: ResolutionPath,
+    /// Confidence in this resolution (0.0 to 1.0)
+    confidence: f64,
+    /// Kind of resolution
+    resolution_kind: ResolutionKind,
+}
+
+/// Module candidate for cohesion-aware resolution
+#[derive(Debug, Clone)]
+pub struct ModuleCandidate {
+    /// Module name
+    pub name: String,
+    /// Module scope ID
+    pub scope_id: crate::scope::ScopeId,
+    /// Module sections
+    pub sections: Vec<crate::symbols::ModuleSection>,
+    /// Module capabilities
+    pub capabilities: Vec<String>,
+    /// Module effects
+    pub effects: Vec<String>,
+    /// Cohesion information if available
+    pub cohesion_info: Option<crate::symbols::CohesionInfo>,
+    /// Business context information
+    pub business_context: BusinessContextInfo,
+}
+
+/// Cohesion-aware module candidate with scoring
+#[derive(Debug, Clone)]
+pub struct CohesionAwareModuleCandidate {
+    /// Module name
+    pub module_name: String,
+    /// Cohesion score (0.0 to 1.0)
+    pub cohesion_score: f64,
+    /// Overall confidence in this candidate
+    pub confidence: f64,
+    /// Business context information
+    pub business_context: BusinessContextInfo,
+    /// Capability match score
+    pub capability_match_score: f64,
+    /// Resolution path taken
+    pub resolution_path: ResolutionPath,
+}
+
+/// Business context information for resolution
+#[derive(Debug, Clone)]
+pub struct BusinessContextInfo {
+    /// Primary business domain
+    pub primary_domain: String,
+    /// Business entities handled
+    pub entities: Vec<String>,
+    /// Business processes supported
+    pub processes: Vec<String>,
 } 

@@ -1,7 +1,17 @@
-//! AI Metadata Collection and Export Framework
+//! AI Metadata Collection and Export Framework for External AI Tools
 //!
 //! This module implements comprehensive AI metadata collection that captures
-//! structured runtime information for AI analysis, debugging, and optimization.
+//! structured runtime information for external AI tool consumption (like Claude, GPT, etc.).
+//! It does NOT perform AI processing internally - it only extracts and formats 
+//! existing runtime data for external AI analysis.
+//!
+//! ## External AI Integration Model
+//!
+//! This system is designed for **external AI tool consumption**, not internal AI processing:
+//! - **Metadata Extraction**: Pulls existing data from runtime systems
+//! - **Structured Formatting**: Converts data to AI-readable formats (JSON, YAML, etc.)
+//! - **Business Context**: Preserves semantic meaning for AI understanding
+//! - **No AI Processing**: This module contains no machine learning or AI algorithms
 //!
 //! ## Design Principles
 //!
@@ -1038,14 +1048,110 @@ impl BusinessContextAnalyzer {
         Self
     }
 
-    fn analyze_execution_context(&self, _context: &execution::ExecutionContext) -> BusinessContext {
+    /// Analyze business context of execution
+    fn analyze_execution_context(&self, context: &execution::ExecutionContext) -> BusinessContext {
         BusinessContext {
-            domain: "User Management".to_string(),
-            subdomain: "Authentication".to_string(),
-            business_capability: "User Login".to_string(),
-            stakeholders: vec!["End Users".to_string(), "Security Team".to_string()],
-            business_rules: vec!["Must validate credentials".to_string()],
+            domain: self.analyze_business_context(context).unwrap_or_else(|| "Unknown Domain".to_string()),
+            subdomain: "Unknown Subdomain".to_string(),
+            business_capability: "Unknown Capability".to_string(),
+            stakeholders: vec!["Unknown Stakeholder".to_string()],
+            business_rules: vec!["Unknown Rule".to_string()],
         }
+    }
+
+    /// Analyze business context of execution
+    fn analyze_business_context(&self, context: &execution::ExecutionContext) -> Option<String> {
+        // Extract business context from execution metadata
+        if let Some(business_domain) = &context.ai_context.business_domain {
+            return Some(business_domain.clone());
+        }
+        
+        // Try to infer from component ID or execution target
+        match context.target {
+            execution::ExecutionTarget::TypeScript => Some("Web Application".to_string()),
+            execution::ExecutionTarget::WebAssembly => Some("Performance-Critical Module".to_string()),
+            execution::ExecutionTarget::Native => Some("System-Level Processing".to_string()),
+        }
+    }
+
+    /// Extract domain concepts from execution context
+    fn extract_domain_concepts(&self, context: &execution::ExecutionContext) -> Vec<String> {
+        let mut concepts = Vec::new();
+        
+        // Add concepts based on execution target
+        match context.target {
+            execution::ExecutionTarget::TypeScript => {
+                concepts.extend_from_slice(&[
+                    "Frontend".to_string(),
+                    "User Interface".to_string(),
+                    "Client-Side Processing".to_string(),
+                ]);
+            }
+            execution::ExecutionTarget::WebAssembly => {
+                concepts.extend_from_slice(&[
+                    "High Performance".to_string(),
+                    "Cross-Platform".to_string(),
+                    "Sandboxed Execution".to_string(),
+                ]);
+            }
+            execution::ExecutionTarget::Native => {
+                concepts.extend_from_slice(&[
+                    "System Integration".to_string(),
+                    "Platform Specific".to_string(),
+                    "Direct Hardware Access".to_string(),
+                ]);
+            }
+        }
+        
+        // Add concepts based on capabilities
+        for capability_name in &context.capabilities.capability_names() {
+            if capability_name.contains("File") {
+                concepts.push("File System Operations".to_string());
+            }
+            if capability_name.contains("Network") {
+                concepts.push("Network Communication".to_string());
+            }
+            if capability_name.contains("Database") {
+                concepts.push("Data Persistence".to_string());
+            }
+        }
+        
+        concepts
+    }
+
+    /// Identify architectural patterns in execution
+    fn identify_patterns(&self, context: &execution::ExecutionContext) -> Vec<String> {
+        let mut patterns = Vec::new();
+        
+        // Analyze capability patterns
+        let capability_names = context.capabilities.capability_names();
+        
+        if capability_names.iter().any(|name| name.contains("Database")) &&
+           capability_names.iter().any(|name| name.contains("File")) {
+            patterns.push("Repository Pattern".to_string());
+        }
+        
+        if capability_names.iter().any(|name| name.contains("Network")) {
+            patterns.push("Service Communication Pattern".to_string());
+        }
+        
+        // Analyze by execution target
+        match context.target {
+            execution::ExecutionTarget::TypeScript => {
+                patterns.push("MVC Architecture".to_string());
+                patterns.push("Event-Driven Design".to_string());
+            }
+            execution::ExecutionTarget::WebAssembly => {
+                patterns.push("Module Pattern".to_string());
+                patterns.push("Performance Optimization".to_string());
+            }
+            execution::ExecutionTarget::Native => {
+                patterns.push("System Architecture".to_string());
+                patterns.push("Resource Management".to_string());
+            }
+        }
+        
+        patterns
     }
 
     fn analyze_capability_impact(&self, _capability: &capability::Capability, _operation: &capability::Operation) -> BusinessImpact {

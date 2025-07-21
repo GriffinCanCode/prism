@@ -70,7 +70,7 @@ impl<'de> serde::Deserialize<'de> for Symbol {
 }
 
 /// A symbol table for interning strings and managing identifiers
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct SymbolTable {
     interner: StringInterner<StringBackend<DefaultSymbol>>,
     keywords: FxHashMap<Symbol, Keyword>,

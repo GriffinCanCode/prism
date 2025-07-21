@@ -316,6 +316,18 @@ impl TokenStreamManager {
         &self.peek().kind
     }
     
+    /// Check if current token is an identifier with specific value
+    pub fn check_identifier_with_value(&self, value: &str) -> bool {
+        match &self.peek().kind {
+            TokenKind::Identifier(id) => id == value,
+            _ => false,
+        }
+    }
+    
+    /// Set position in the stream (for backtracking)
+    pub fn set_position(&mut self, position: usize) {
+        self.current = position.min(self.tokens.len());
+    }
 
 }
 

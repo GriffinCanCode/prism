@@ -1,20 +1,31 @@
-//! Semantic analysis and context extraction for tokens
+//! Basic token-level semantic analysis and context extraction
 //!
-//! This module provides semantic enrichment of tokens with AI-comprehensible
-//! metadata and context information.
+//! ## Clear Separation of Concerns
+//!
+//! **✅ What this module DOES:**
+//! - Basic semantic context for individual tokens
+//! - Simple identifier usage tracking
+//! - Token-level pattern detection
+//! - AI-comprehensible metadata for single tokens
+//!
+//! **❌ What this module does NOT do (moved to appropriate modules):**
+//! - ❌ Cross-token relationship analysis (→ prism-semantic)
+//! - ❌ Multi-token semantic patterns (→ prism-parser)
+//! - ❌ Complex semantic analysis (→ prism-semantic)
+//! - ❌ Type inference (→ prism-semantic)
 
 use crate::token::{SemanticContext, Token, TokenKind};
 use std::collections::HashMap;
 
-/// Semantic analyzer that enriches tokens with context
+/// Basic token-level semantic analyzer (complex analysis moved to prism-semantic)
 pub struct SemanticAnalyzer {
-    /// Current module context
+    /// Current module context (basic tracking only)
     current_module: Option<String>,
-    /// Current function context
+    /// Current function context (basic tracking only)
     current_function: Option<String>,
-    /// Identifier usage tracking
+    /// Simple identifier usage tracking
     identifier_usage: HashMap<String, IdentifierUsage>,
-    /// Semantic patterns detected
+    /// Basic token-level semantic patterns
     patterns: Vec<SemanticPattern>,
 }
 
@@ -127,7 +138,7 @@ impl SemanticAnalyzer {
                 context.add_ai_comprehension_hint("Each module should have high conceptual cohesion");
                 
                 if let Some(module_name) = &self.current_module {
-                    context.add_ai_comprehension_hint(format!("Module '{}' groups related functionality", module_name));
+                    context.add_ai_comprehension_hint(&format!("Module '{}' groups related functionality", module_name));
                 }
                 
                 Some(context)
@@ -151,12 +162,12 @@ impl SemanticAnalyzer {
                 context.add_ai_comprehension_hint("All public functions require documentation");
                 
                 if let Some(function_name) = &self.current_function {
-                    context.add_ai_comprehension_hint(format!("Function '{}' should have clear purpose", function_name));
+                    context.add_ai_comprehension_hint(&format!("Function '{}' should have clear purpose", function_name));
                     
                     // Analyze function name for semantic hints
                     if let Some(hints) = self.analyze_function_name(function_name) {
                         for hint in hints {
-                            context.add_ai_comprehension_hint(hint);
+                            context.add_ai_comprehension_hint(&hint);
                         }
                     }
                 }
@@ -372,27 +383,27 @@ impl SemanticAnalyzer {
             _ => {
                 // Existing naming convention analysis
                 if self.is_snake_case(name) {
-                    context.add_ai_comprehension_hint("Uses snake_case naming convention".to_string());
+                    context.add_ai_comprehension_hint("Uses snake_case naming convention");
                 } else if self.is_camel_case(name) {
-                    context.add_ai_comprehension_hint("Uses camelCase naming convention".to_string());
+                    context.add_ai_comprehension_hint("Uses camelCase naming convention");
                 } else if self.is_pascal_case(name) {
-                    context.add_ai_comprehension_hint("Uses PascalCase naming convention".to_string());
+                    context.add_ai_comprehension_hint("Uses PascalCase naming convention");
                 }
                 
                 // Check for descriptive naming
                 if name.len() < 3 {
-                    context.add_ai_comprehension_hint("Very short identifier - consider more descriptive name".to_string());
+                    context.add_ai_comprehension_hint("Very short identifier - consider more descriptive name");
                 } else if name.len() > 30 {
-                    context.add_ai_comprehension_hint("Very long identifier - consider if it can be shortened".to_string());
+                    context.add_ai_comprehension_hint("Very long identifier - consider if it can be shortened");
                 }
                 
                 // Check for common abbreviations
                 if name.contains("mgr") {
-                    context.add_ai_comprehension_hint("'mgr' abbreviation - consider 'manager' for clarity".to_string());
+                    context.add_ai_comprehension_hint("'mgr' abbreviation - consider 'manager' for clarity");
                 } else if name.contains("cfg") {
-                    context.add_ai_comprehension_hint("'cfg' abbreviation - consider 'config' for clarity".to_string());
+                    context.add_ai_comprehension_hint("'cfg' abbreviation - consider 'config' for clarity");
                 } else if name.contains("svc") {
-                    context.add_ai_comprehension_hint("'svc' abbreviation - consider 'service' for clarity".to_string());
+                    context.add_ai_comprehension_hint("'svc' abbreviation - consider 'service' for clarity");
                 }
                 
                 return Some(context);
@@ -404,11 +415,13 @@ impl SemanticAnalyzer {
 
     /// Track identifier usage
     fn track_identifier_usage(&mut self, name: String) {
+        let follows_conventions = self.follows_naming_conventions(&name);
+        
         let usage = self.identifier_usage.entry(name.clone()).or_insert_with(|| {
             IdentifierUsage {
                 usage_count: 0,
                 contexts: Vec::new(),
-                follows_conventions: self.follows_naming_conventions(&name),
+                follows_conventions,
                 suggestions: Vec::new(),
             }
         });
