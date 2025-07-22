@@ -12,9 +12,8 @@
 //! 4. **Performance Optimized**: Target-specific optimizations where beneficial
 //! 5. **AI-Comprehensible**: Structured execution metadata for AI analysis
 
-use crate::{capability, effects, RuntimeError};
-use prism_common::{span::Span, symbol::Symbol};
-use prism_effects::Effect;
+use crate::{authority::capability, resources::effects, RuntimeError};
+use crate::resources::effects::Effect;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Mutex};
 use std::time::{SystemTime, Duration};

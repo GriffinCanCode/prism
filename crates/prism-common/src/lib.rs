@@ -15,6 +15,8 @@ pub mod diagnostics;
 pub mod suggestion;
 pub mod ai_metadata;
 pub mod parsing_traits;  // NEW: Trait interfaces for parsing
+pub mod optimization_traits;  // NEW: Unified optimization interfaces
+pub mod source_maps;  // NEW: Unified source map generation
 
 pub use span::{Span, SourceId, Position};
 pub use symbol::{Symbol, SymbolTable};
@@ -26,6 +28,16 @@ pub use parsing_traits::{
     ProgramParser, EnhancedParser, SyntaxAwareParser, PIRConstructor, ParserFactory,
     ParsingConfig, PIRConstructionConfig, ParsingMetrics, ParsingDiagnostic,
     DiagnosticLevel as ParsingDiagnosticLevel,
+};
+// NEW: Export optimization trait interfaces
+pub use optimization_traits::{
+    CodeOptimizer, BundleAnalyzer, PerformanceHintGenerator,
+    OptimizationConfig, OptimizationStats, OptimizationResult, OptimizationWarning,
+    OptimizerCapabilities, BundleAnalysis, PerformanceHint,
+};
+// NEW: Export source map interfaces
+pub use source_maps::{
+    SourceMapGenerator, SourceMapConfig, Mapping as SourceMapMapping, SourceMap,
 };
 
 use std::fmt;

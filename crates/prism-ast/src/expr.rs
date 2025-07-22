@@ -157,15 +157,27 @@ pub enum BinaryOperator {
     LessEqual,
     Greater,
     GreaterEqual,
+    // Aliases for compatibility
+    LessThan,
+    LessThanOrEqual,
+    GreaterThan,
+    GreaterThanOrEqual,
     
     // Logical
     And,
     Or,
+    // Aliases for compatibility
+    LogicalAnd,
+    LogicalOr,
     
     // Bitwise
     BitAnd,
     BitOr,
     BitXor,
+    // Aliases for compatibility
+    BitwiseAnd,
+    BitwiseOr,
+    BitwiseXor,
     LeftShift,
     RightShift,
     
@@ -203,14 +215,26 @@ pub struct UnaryExpr {
 pub enum UnaryOperator {
     /// Logical not
     Not,
+    /// Logical not (alias)
+    LogicalNot,
     /// Arithmetic negation
     Negate,
     /// Bitwise not
     BitNot,
+    /// Bitwise not (alias)
+    BitwiseNot,
     /// Reference/address-of
     Reference,
     /// Dereference
     Dereference,
+    /// Pre-increment
+    PreIncrement,
+    /// Post-increment
+    PostIncrement,
+    /// Pre-decrement
+    PreDecrement,
+    /// Post-decrement
+    PostDecrement,
 }
 
 /// Function call expression

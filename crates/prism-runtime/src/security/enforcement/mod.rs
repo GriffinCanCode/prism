@@ -12,8 +12,7 @@
 //! 4. **Policy-Driven**: Configurable security policies with fine-grained control
 //! 5. **AI-Enhanced**: AI-powered threat detection and analysis
 
-use crate::{capability, execution, effects, isolation};
-use prism_common::{span::Span, symbol::Symbol};
+use crate::{authority::capability, platform::execution, resources::effects, security::isolation};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, RwLock, Mutex};
 use std::time::{SystemTime, Duration};

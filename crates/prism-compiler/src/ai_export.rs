@@ -493,63 +493,451 @@ impl DefaultAIExporter {
         })
     }
 
-    /// Build modules context
+    /// Extract AI context from semantic database with actual data
     async fn build_modules_context(
         &self,
         semantic_db: &SemanticDatabase,
         config: &ExportConfig,
     ) -> CompilerResult<Vec<ModuleContext>> {
         let mut modules = Vec::new();
-        
+
         // Get all modules from semantic database
-        for symbol in semantic_db.get_all_symbols().await {
-            if symbol.symbol_type == "module" {
-                modules.push(ModuleContext {
-                    name: symbol.name.clone(),
-                    path: PathBuf::from(&symbol.name), // Simplified
-                    exports: Vec::new(),
-                    imports: Vec::new(),
-                    functions: Vec::new(),
-                    types: Vec::new(),
-                    constants: Vec::new(),
-                    ai_metadata: semantic_db.get_ai_metadata(&symbol.id).await,
-                });
-            }
+        let module_infos = semantic_db.get_all_modules().await?;
+        
+        for module_info in module_infos {
+            let module_context = self.build_single_module_context(&module_info, semantic_db, config).await?;
+            modules.push(module_context);
         }
 
         Ok(modules)
     }
 
-    /// Build type system context
+    /// Build context for a single module with comprehensive metadata
+    async fn build_single_module_context(
+        &self,
+        module_info: &crate::semantic::ModuleInfo,
+        semantic_db: &SemanticDatabase,
+        config: &ExportConfig,
+    ) -> CompilerResult<ModuleContext> {
+        // Extract basic module information
+        let mut module_context = ModuleContext {
+            name: module_info.name.clone(),
+            path: module_info.file_path.clone(),
+            exports: Vec::new(),
+            imports: Vec::new(),
+            functions: Vec::new(),
+            types: Vec::new(),
+            constants: Vec::new(),
+            ai_metadata: None,
+        };
+
+        // Extract symbols from semantic database
+        let symbols = semantic_db.get_symbols_for_module(&module_info.name).await?;
+        
+        for symbol in symbols {
+            match symbol.kind {
+                crate::semantic::SymbolKind::Function => {
+                    let function_info = self.extract_function_info(&symbol, semantic_db).await?;
+                    module_context.functions.push(function_info);
+                }
+                crate::semantic::SymbolKind::Type => {
+                    let type_info = self.extract_type_info(&symbol, semantic_db).await?;
+                    module_context.types.push(type_info);
+                }
+                crate::semantic::SymbolKind::Constant => {
+                    let constant_info = self.extract_constant_info(&symbol, semantic_db).await?;
+                    module_context.constants.push(constant_info);
+                }
+                _ => {} // Handle other symbol types as needed
+            }
+        }
+
+        // Extract exports and imports
+        module_context.exports = self.extract_module_exports(module_info, semantic_db).await?;
+        module_context.imports = self.extract_module_imports(module_info, semantic_db).await?;
+
+        // Generate AI metadata if enabled
+        if config.include_ai_metadata {
+            module_context.ai_metadata = Some(self.generate_module_ai_metadata(module_info, semantic_db).await?);
+        }
+
+        Ok(module_context)
+    }
+
+    /// Extract function information with semantic context
+    async fn extract_function_info(
+        &self,
+        symbol: &crate::semantic::SymbolInfo,
+        semantic_db: &SemanticDatabase,
+    ) -> CompilerResult<FunctionInfo> {
+        // Get function details from semantic database
+        let function_details = semantic_db.get_function_details(&symbol.name).await?;
+
+        let mut function_info = FunctionInfo {
+            name: symbol.name.clone(),
+            parameters: Vec::new(),
+            return_type: function_details.return_type.clone(),
+            signature: function_details.signature.clone(),
+            documentation: function_details.documentation.clone(),
+            complexity: None,
+            location: LocationInfo {
+                file: symbol.location.file.clone(),
+                start_line: symbol.location.start.line,
+                start_column: symbol.location.start.column,
+                end_line: symbol.location.end.line,
+                end_column: symbol.location.end.column,
+            },
+            ai_metadata: None,
+        };
+
+        // Extract parameter information
+        for param in &function_details.parameters {
+            function_info.parameters.push(ParameterInfo {
+                name: param.name.clone(),
+                param_type: param.type_annotation.clone(),
+                default_value: param.default_value.clone(),
+                documentation: param.documentation.clone(),
+            });
+        }
+
+        // Calculate complexity metrics if available
+        if let Some(complexity_data) = semantic_db.get_complexity_metrics(&symbol.name).await? {
+            function_info.complexity = Some(ComplexityMetrics {
+                cyclomatic: complexity_data.cyclomatic,
+                cognitive: complexity_data.cognitive,
+                lines_of_code: complexity_data.lines_of_code,
+                parameter_count: function_info.parameters.len() as u32,
+                nesting_depth: complexity_data.nesting_depth,
+            });
+        }
+
+        // Generate AI metadata
+        function_info.ai_metadata = Some(self.generate_function_ai_metadata(&function_details).await?);
+
+        Ok(function_info)
+    }
+
+    /// Extract type information with semantic context
+    async fn extract_type_info(
+        &self,
+        symbol: &crate::semantic::SymbolInfo,
+        semantic_db: &SemanticDatabase,
+    ) -> CompilerResult<TypeInfo> {
+        // Get type details from semantic database
+        let type_details = semantic_db.get_type_details(&symbol.name).await?;
+
+        let mut type_info = TypeInfo {
+            name: symbol.name.clone(),
+            kind: type_details.kind.clone(),
+            fields: Vec::new(),
+            methods: Vec::new(),
+            constraints: type_details.constraints.clone(),
+            location: LocationInfo {
+                file: symbol.location.file.clone(),
+                start_line: symbol.location.start.line,
+                start_column: symbol.location.start.column,
+                end_line: symbol.location.end.line,
+                end_column: symbol.location.end.column,
+            },
+            ai_metadata: None,
+        };
+
+        // Extract field information
+        for field in &type_details.fields {
+            type_info.fields.push(FieldInfo {
+                name: field.name.clone(),
+                field_type: field.type_annotation.clone(),
+                visibility: field.visibility.clone(),
+                documentation: field.documentation.clone(),
+            });
+        }
+
+        // Extract method information
+        for method in &type_details.methods {
+            let method_info = self.extract_function_info(method, semantic_db).await?;
+            type_info.methods.push(method_info);
+        }
+
+        // Generate AI metadata
+        type_info.ai_metadata = Some(self.generate_type_ai_metadata(&type_details).await?);
+
+        Ok(type_info)
+    }
+
+    /// Extract constant information
+    async fn extract_constant_info(
+        &self,
+        symbol: &crate::semantic::SymbolInfo,
+        semantic_db: &SemanticDatabase,
+    ) -> CompilerResult<ConstantInfo> {
+        let constant_details = semantic_db.get_constant_details(&symbol.name).await?;
+
+        Ok(ConstantInfo {
+            name: symbol.name.clone(),
+            const_type: constant_details.type_annotation.clone(),
+            value: constant_details.value.clone(),
+            location: LocationInfo {
+                file: symbol.location.file.clone(),
+                start_line: symbol.location.start.line,
+                start_column: symbol.location.start.column,
+                end_line: symbol.location.end.line,
+                end_column: symbol.location.end.column,
+            },
+        })
+    }
+
+    /// Extract module exports with semantic information
+    async fn extract_module_exports(
+        &self,
+        module_info: &crate::semantic::ModuleInfo,
+        semantic_db: &SemanticDatabase,
+    ) -> CompilerResult<Vec<SymbolInfo>> {
+        let exports = semantic_db.get_module_exports(&module_info.name).await?;
+        let mut export_infos = Vec::new();
+
+        for export in exports {
+            export_infos.push(SymbolInfo {
+                name: export.name.clone(),
+                symbol_type: export.kind.to_string(),
+                visibility: export.visibility.to_string(),
+                location: LocationInfo {
+                    file: export.location.file.clone(),
+                    start_line: export.location.start.line,
+                    start_column: export.location.start.column,
+                    end_line: export.location.end.line,
+                    end_column: export.location.end.column,
+                },
+                ai_metadata: Some(self.generate_symbol_ai_metadata(&export).await?),
+            });
+        }
+
+        Ok(export_infos)
+    }
+
+    /// Extract module imports with semantic information
+    async fn extract_module_imports(
+        &self,
+        module_info: &crate::semantic::ModuleInfo,
+        semantic_db: &SemanticDatabase,
+    ) -> CompilerResult<Vec<ImportInfo>> {
+        let imports = semantic_db.get_module_imports(&module_info.name).await?;
+        let mut import_infos = Vec::new();
+
+        for import in imports {
+            import_infos.push(ImportInfo {
+                module: import.module_name.clone(),
+                symbols: import.imported_symbols,
+                alias: import.alias,
+                location: LocationInfo {
+                    file: import.location.file.clone(),
+                    start_line: import.location.start.line,
+                    start_column: import.location.start.column,
+                    end_line: import.location.end.line,
+                    end_column: import.location.end.column,
+                },
+            });
+        }
+
+        Ok(import_infos)
+    }
+
+    /// Build type system context with actual semantic data
     async fn build_type_system_context(
         &self,
         semantic_db: &SemanticDatabase,
     ) -> CompilerResult<TypeSystemContext> {
+        let builtin_types = semantic_db.get_builtin_types().await?;
+        let user_types = semantic_db.get_user_defined_types().await?;
+        let type_aliases = semantic_db.get_type_aliases().await?;
+        let generic_parameters = semantic_db.get_generic_parameters().await?;
+        let constraints = semantic_db.get_type_constraints().await?;
+
+        let mut user_type_infos = Vec::new();
+        for user_type in user_types {
+            let type_info = self.extract_type_info(&user_type, semantic_db).await?;
+            user_type_infos.push(type_info);
+        }
+
         Ok(TypeSystemContext {
-            builtin_types: vec![
-                "Int".to_string(),
-                "Float".to_string(),
-                "String".to_string(),
-                "Bool".to_string(),
-                "Void".to_string(),
-            ],
-            user_types: Vec::new(), // Would be populated from semantic database
-            type_aliases: HashMap::new(),
-            generic_parameters: HashMap::new(),
-            constraints: HashMap::new(),
+            builtin_types: builtin_types.into_iter().map(|t| t.name).collect(),
+            user_types: user_type_infos,
+            type_aliases,
+            generic_parameters,
+            constraints,
         })
     }
 
-    /// Build relationship graph
+    /// Build relationship graph with actual semantic relationships
     async fn build_relationship_graph(
         &self,
         semantic_db: &SemanticDatabase,
     ) -> CompilerResult<RelationshipGraph> {
+        // Extract call relationships
+        let call_relations = semantic_db.get_call_relationships().await?
+            .into_iter()
+            .map(|rel| CallRelation {
+                caller: rel.caller,
+                callee: rel.callee,
+                location: LocationInfo {
+                    file: rel.location.file,
+                    start_line: rel.location.start.line,
+                    start_column: rel.location.start.column,
+                    end_line: rel.location.end.line,
+                    end_column: rel.location.end.column,
+                },
+                frequency: rel.frequency,
+            })
+            .collect();
+
+        // Extract dependency relationships
+        let dependency_relations = semantic_db.get_dependency_relationships().await?
+            .into_iter()
+            .map(|rel| DependencyRelation {
+                dependent: rel.dependent,
+                dependency: rel.dependency,
+                relation_type: rel.relation_type,
+            })
+            .collect();
+
+        // Extract inheritance relationships
+        let inheritance_relations = semantic_db.get_inheritance_relationships().await?
+            .into_iter()
+            .map(|rel| InheritanceRelation {
+                child: rel.child,
+                parent: rel.parent,
+                relation_type: rel.relation_type,
+            })
+            .collect();
+
+        // Extract usage relationships
+        let usage_relations = semantic_db.get_usage_relationships().await?
+            .into_iter()
+            .map(|rel| UsageRelation {
+                user: rel.user,
+                used: rel.used,
+                usage_type: rel.usage_type,
+                location: LocationInfo {
+                    file: rel.location.file,
+                    start_line: rel.location.start.line,
+                    start_column: rel.location.start.column,
+                    end_line: rel.location.end.line,
+                    end_column: rel.location.end.column,
+                },
+            })
+            .collect();
+
         Ok(RelationshipGraph {
-            call_graph: Vec::new(), // Would be populated from call graph analysis
-            dependency_graph: Vec::new(),
-            inheritance: Vec::new(),
-            usage: Vec::new(),
+            call_graph: call_relations,
+            dependency_graph: dependency_relations,
+            inheritance: inheritance_relations,
+            usage: usage_relations,
+        })
+    }
+
+    /// Generate AI metadata for a module
+    async fn generate_module_ai_metadata(
+        &self,
+        module_info: &crate::semantic::ModuleInfo,
+        semantic_db: &SemanticDatabase,
+    ) -> CompilerResult<AIMetadata> {
+        // Extract business context
+        let business_context = semantic_db.get_module_business_context(&module_info.name).await?;
+        
+        // Extract architectural patterns
+        let architectural_patterns = semantic_db.get_module_patterns(&module_info.name).await?;
+        
+        // Extract complexity metrics
+        let complexity_metrics = semantic_db.get_module_complexity(&module_info.name).await?;
+
+        // Generate AI-readable summary
+        let summary = format!(
+            "Module '{}' provides {} with {} functions, {} types, and {} constants. Primary business capability: {}. Architectural style: {}.",
+            module_info.name,
+            business_context.primary_capability,
+            module_info.function_count,
+            module_info.type_count,
+            module_info.constant_count,
+            business_context.domain.unwrap_or_else(|| "general".to_string()),
+            architectural_patterns.first().unwrap_or(&"unknown".to_string())
+        );
+
+        Ok(AIMetadata {
+            summary,
+            business_context: Some(business_context),
+            architectural_patterns,
+            complexity_metrics: Some(complexity_metrics),
+            generated_at: chrono::Utc::now().to_rfc3339(),
+            confidence: 0.85, // High confidence for semantic database data
+        })
+    }
+
+    /// Generate AI metadata for a function
+    async fn generate_function_ai_metadata(
+        &self,
+        function_details: &crate::semantic::FunctionDetails,
+    ) -> CompilerResult<AIMetadata> {
+        let summary = format!(
+            "Function '{}' takes {} parameters and returns {}. {}",
+            function_details.name,
+            function_details.parameters.len(),
+            function_details.return_type,
+            function_details.documentation.clone().unwrap_or_else(|| "No documentation available.".to_string())
+        );
+
+        Ok(AIMetadata {
+            summary,
+            business_context: function_details.business_context.clone(),
+            architectural_patterns: function_details.patterns.clone(),
+            complexity_metrics: function_details.complexity.clone(),
+            generated_at: chrono::Utc::now().to_rfc3339(),
+            confidence: 0.80,
+        })
+    }
+
+    /// Generate AI metadata for a type
+    async fn generate_type_ai_metadata(
+        &self,
+        type_details: &crate::semantic::TypeDetails,
+    ) -> CompilerResult<AIMetadata> {
+        let summary = format!(
+            "{} '{}' with {} fields and {} methods. {}",
+            type_details.kind,
+            type_details.name,
+            type_details.fields.len(),
+            type_details.methods.len(),
+            type_details.documentation.clone().unwrap_or_else(|| "No documentation available.".to_string())
+        );
+
+        Ok(AIMetadata {
+            summary,
+            business_context: type_details.business_context.clone(),
+            architectural_patterns: type_details.patterns.clone(),
+            complexity_metrics: None, // Types don't have complexity metrics
+            generated_at: chrono::Utc::now().to_rfc3339(),
+            confidence: 0.75,
+        })
+    }
+
+    /// Generate AI metadata for a symbol
+    async fn generate_symbol_ai_metadata(
+        &self,
+        symbol: &crate::semantic::SymbolInfo,
+    ) -> CompilerResult<AIMetadata> {
+        let summary = format!(
+            "{} symbol '{}' of type {} with {} visibility",
+            symbol.kind.to_string(),
+            symbol.name,
+            symbol.type_info.clone().unwrap_or_else(|| "unknown".to_string()),
+            symbol.visibility.to_string()
+        );
+
+        Ok(AIMetadata {
+            summary,
+            business_context: symbol.business_context.clone(),
+            architectural_patterns: Vec::new(),
+            complexity_metrics: None,
+            generated_at: chrono::Utc::now().to_rfc3339(),
+            confidence: 0.70,
         })
     }
 

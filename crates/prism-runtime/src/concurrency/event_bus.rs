@@ -7,7 +7,7 @@
 //! - **AI metadata**: Rich metadata for AI comprehension of event patterns
 //! - **Metrics tracking**: Comprehensive metrics for monitoring and analysis
 
-use crate::concurrency::ActorError;
+use crate::concurrency::actor_system::ActorError;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Mutex};
 use std::time::SystemTime;

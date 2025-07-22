@@ -11,8 +11,7 @@
 //! 4. **Isolation Boundaries**: Components are isolated by default with explicit interfaces
 //! 5. **AI-Comprehensible**: Communication patterns are structured for AI analysis
 
-use crate::{capability, execution, RuntimeError};
-use prism_common::{span::Span, symbol::Symbol};
+use crate::{authority::capability, platform::execution, RuntimeError};
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Mutex};
 use std::time::{SystemTime, Duration};

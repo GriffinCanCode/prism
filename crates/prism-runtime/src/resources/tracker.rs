@@ -342,6 +342,14 @@ pub enum ResourceError {
     /// Parsing error for system data
     #[error("Parse error: {message}")]
     ParseError { message: String },
+    
+    /// Insufficient resources available
+    #[error("Insufficient resources for allocation: requested {requested}, available {available} for {:?}", resource_type)]
+    InsufficientResources { resource_type: ResourceType, requested: f64, available: u64 },
+    
+    /// NUMA node is unavailable for allocation
+    #[error("NUMA node {node} is unavailable for allocation of {:?} with amount {amount}", resource_type)]
+    NumaNodeUnavailable { node: u32, resource_type: ResourceType, amount: u64 },
 }
 
 impl Default for ResourceTrackerConfig {
@@ -429,25 +437,198 @@ impl ResourceTracker {
     
     /// Allocate resources according to a request
     pub fn allocate_resource(&self, request: ResourceRequest) -> Result<ResourceAllocation, ResourceError> {
-        // TODO: Implement actual resource allocation logic
-        // For now, this is a placeholder that creates a mock allocation
+        let mut allocations = self.allocations.write().unwrap();
         
-        let allocation_id = format!("alloc_{}", uuid::Uuid::new_v4().simple());
-        let release_handle = Arc::new(MockReleaseHandle::new());
+        // Check current resource availability
+        let current_snapshot = self.current_snapshot.read().unwrap();
+        let available_amount = self.calculate_available_resource(&current_snapshot, &request.resource_type)?;
         
+        // Validate that we have enough resources
+        if available_amount < request.amount {
+            return Err(ResourceError::InsufficientResources {
+                resource_type: request.resource_type.clone(),
+                requested: request.amount,
+                available: available_amount,
+            });
+        }
+        
+        // Check NUMA preference if specified
+        if let Some(numa_node) = request.numa_preference {
+            if !self.is_numa_node_available(numa_node, &request.resource_type, request.amount)? {
+                return Err(ResourceError::NumaNodeUnavailable {
+                    node: numa_node,
+                    resource_type: request.resource_type.clone(),
+                });
+            }
+        }
+        
+        // Generate unique allocation ID
+        let allocation_id = format!("alloc_{}_{}", 
+            request.resource_type.name(),
+            uuid::Uuid::new_v4().simple()
+        );
+        
+        // Create the allocation
         let allocation = ResourceAllocation {
             id: allocation_id.clone(),
             resource_type: request.resource_type.clone(),
             allocated_amount: request.amount,
             numa_node: request.numa_preference,
             allocated_at: Instant::now(),
-            release_handle,
+            release_handle: Arc::new(RealReleaseHandle::new(
+                allocation_id.clone(),
+                Arc::downgrade(&self.allocations),
+            )),
         };
         
-        // Store allocation for tracking
-        self.allocations.write().unwrap().insert(allocation_id.clone(), allocation.clone());
+        // Record the allocation
+        allocations.insert(allocation_id.clone(), allocation.clone());
+        
+        // Update resource tracking
+        self.record_allocation(&request.resource_type, request.amount);
+        
+        // Log allocation for debugging
+        tracing::debug!(
+            "Allocated {} units of {:?} with ID {}",
+            request.amount,
+            request.resource_type,
+            allocation_id
+        );
         
         Ok(allocation)
+    }
+    
+    /// Calculate available resources of a specific type
+    fn calculate_available_resource(
+        &self,
+        snapshot: &ResourceSnapshot,
+        resource_type: &ResourceType,
+    ) -> Result<u64, ResourceError> {
+        match resource_type {
+            ResourceType::Memory => {
+                let total_memory = snapshot.memory.total_bytes;
+                let used_memory = snapshot.memory.used_bytes;
+                Ok(total_memory.saturating_sub(used_memory))
+            }
+            ResourceType::Cpu => {
+                // CPU is measured as percentage, so available is 100 - used
+                let used_cpu = snapshot.cpu.utilization_percent;
+                let available_cpu = (100.0 - used_cpu).max(0.0) as u64;
+                Ok(available_cpu)
+            }
+            ResourceType::Network => {
+                // Estimate available network connections
+                let used_connections = snapshot.network.active_connections;
+                let max_connections = 65535; // Common limit
+                Ok(max_connections - used_connections as u64)
+            }
+            ResourceType::Disk => {
+                let total_disk = snapshot.disk.total_bytes;
+                let used_disk = snapshot.disk.used_bytes;
+                Ok(total_disk.saturating_sub(used_disk))
+            }
+            ResourceType::Custom(name) => {
+                // For custom resources, we need to track them separately
+                // For now, assume unlimited availability
+                tracing::warn!("Custom resource type '{}' - assuming unlimited availability", name);
+                Ok(u64::MAX)
+            }
+        }
+    }
+    
+    /// Check if a NUMA node is available for the requested resource allocation
+    fn is_numa_node_available(
+        &self,
+        numa_node: u32,
+        resource_type: &ResourceType,
+        amount: u64,
+    ) -> Result<bool, ResourceError> {
+        // This is a simplified NUMA check - in a real implementation,
+        // we'd query the actual NUMA topology and resource distribution
+        match resource_type {
+            ResourceType::Memory => {
+                // Check if the NUMA node has enough memory
+                // This would require platform-specific NUMA queries
+                if numa_node >= self.get_numa_node_count()? {
+                    return Ok(false);
+                }
+                
+                // For now, assume each NUMA node has equal memory distribution
+                let total_numa_memory = self.get_total_numa_memory(numa_node)?;
+                let used_numa_memory = self.get_used_numa_memory(numa_node)?;
+                let available = total_numa_memory.saturating_sub(used_numa_memory);
+                
+                Ok(available >= amount)
+            }
+            ResourceType::Cpu => {
+                // Check CPU availability on specific NUMA node
+                if numa_node >= self.get_numa_node_count()? {
+                    return Ok(false);
+                }
+                
+                let available_cpu = self.get_numa_cpu_availability(numa_node)?;
+                Ok(available_cpu >= amount)
+            }
+            _ => {
+                // Other resource types don't typically have NUMA affinity
+                Ok(true)
+            }
+        }
+    }
+    
+    /// Record an allocation for tracking purposes
+    fn record_allocation(&self, resource_type: &ResourceType, amount: u64) {
+        // Update internal tracking structures
+        // This would integrate with the monitoring system
+        tracing::trace!(
+            "Recording allocation of {} units of {:?}",
+            amount,
+            resource_type
+        );
+        
+        // In a full implementation, this would update:
+        // - Current resource usage counters
+        // - Allocation history for trend analysis
+        // - Resource pressure indicators
+        // - NUMA node specific tracking
+    }
+    
+    /// Get the number of NUMA nodes in the system
+    fn get_numa_node_count(&self) -> Result<u32, ResourceError> {
+        // Platform-specific NUMA detection
+        // For now, return a reasonable default
+        Ok(2) // Most systems have 1-2 NUMA nodes
+    }
+    
+    /// Get total memory available on a specific NUMA node
+    fn get_total_numa_memory(&self, _numa_node: u32) -> Result<u64, ResourceError> {
+        // This would query the actual NUMA memory topology
+        // For now, assume even distribution
+        let current_snapshot = self.current_snapshot.read().unwrap();
+        let total_memory = current_snapshot.memory.total_bytes;
+        let numa_nodes = self.get_numa_node_count()?;
+        Ok(total_memory / numa_nodes as u64)
+    }
+    
+    /// Get used memory on a specific NUMA node
+    fn get_used_numa_memory(&self, _numa_node: u32) -> Result<u64, ResourceError> {
+        // This would query actual NUMA memory usage
+        // For now, assume even distribution
+        let current_snapshot = self.current_snapshot.read().unwrap();
+        let used_memory = current_snapshot.memory.used_bytes;
+        let numa_nodes = self.get_numa_node_count()?;
+        Ok(used_memory / numa_nodes as u64)
+    }
+    
+    /// Get CPU availability on a specific NUMA node
+    fn get_numa_cpu_availability(&self, _numa_node: u32) -> Result<u64, ResourceError> {
+        // This would query actual NUMA CPU topology and usage
+        // For now, assume even distribution
+        let current_snapshot = self.current_snapshot.read().unwrap();
+        let used_cpu = current_snapshot.cpu.utilization_percent;
+        let available_cpu = (100.0 - used_cpu).max(0.0) as u64;
+        let numa_nodes = self.get_numa_node_count()?;
+        Ok(available_cpu / numa_nodes)
     }
     
     /// Release a resource allocation
@@ -951,6 +1132,34 @@ impl ResourceReleaseHandle for MockReleaseHandle {
     
     fn is_allocated(&self) -> bool {
         self.is_allocated.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+/// Real implementation of ResourceReleaseHandle for actual resource management
+struct RealReleaseHandle {
+    allocation_id: String,
+    allocations: Arc<RwLock<HashMap<String, ResourceAllocation>>>,
+}
+
+impl RealReleaseHandle {
+    fn new(allocation_id: String, allocations: Arc<RwLock<HashMap<String, ResourceAllocation>>>) -> Self {
+        Self {
+            allocation_id,
+            allocations,
+        }
+    }
+}
+
+impl ResourceReleaseHandle for RealReleaseHandle {
+    fn release(&self) {
+        let mut allocations = self.allocations.write().unwrap();
+        allocations.remove(&self.allocation_id);
+        tracing::debug!("Released allocation with ID: {}", self.allocation_id);
+    }
+    
+    fn is_allocated(&self) -> bool {
+        let allocations = self.allocations.read().unwrap();
+        allocations.contains_key(&self.allocation_id)
     }
 }
 

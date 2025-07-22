@@ -31,7 +31,7 @@
 //! - **Intelligence System**: AI metadata generated for concurrent patterns
 
 use crate::{authority, resources, security, intelligence};
-use prism_effects::Effect;
+use crate::resources::effects::Effect;
 use std::sync::Arc;
 use thiserror::Error;
 
@@ -52,8 +52,8 @@ pub mod test_runner;
 pub mod simple_tests;
 
 // Re-exports for public API
-pub use actor_system::{Actor, ActorRef, ActorSystem, Message};
-pub use async_runtime::{AsyncRuntime, AsyncHandle, AsyncResult};
+pub use actor_system::{Actor, ActorRef, ActorSystem, Message, ActorId, ActorError};
+pub use async_runtime::{AsyncRuntime, AsyncHandle, AsyncResult, TaskPriority};
 pub use structured::{StructuredScope, CancellationToken, ScopeHandle};
 pub use event_bus::{EventBus, EventSubscription, EventPriority, EventFilter, EventBusAIMetadata};
 pub use supervision::{Supervisor, SupervisionStrategy, RestartPolicy, SupervisionDecision, ChildMetadata};

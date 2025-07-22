@@ -67,6 +67,40 @@ use crate::semantic::SemanticDatabase;
 use prism_common::{span::Span, symbol::Symbol};
 use std::sync::Arc;
 
+/// Symbol management trait for basic operations
+pub trait SymbolManager {
+    /// Register a new symbol
+    fn register_symbol(&mut self, symbol_data: SymbolData) -> CompilerResult<()>;
+    
+    /// Get a symbol by reference (returns owned data due to Arc<RwLock> design)
+    fn get_symbol(&self, symbol: &Symbol) -> Option<SymbolData>;
+    
+    /// Update a symbol using a closure
+    fn update_symbol<F>(&mut self, symbol: &Symbol, updater: F) -> CompilerResult<()>
+    where
+        F: FnOnce(&mut SymbolData);
+    
+    /// Find symbols matching a predicate
+    fn find_symbols<F>(&self, predicate: F) -> Vec<SymbolData>
+    where
+        F: Fn(&SymbolData) -> bool;
+}
+
+/// Symbol query trait for advanced queries
+pub trait SymbolQuery {
+    /// Find symbols by kind
+    fn find_by_kind(&self, kind_filter: impl Fn(&SymbolKind) -> bool) -> Vec<SymbolData>;
+    
+    /// Find symbols by visibility
+    fn find_by_visibility(&self, visibility: SymbolVisibility) -> Vec<SymbolData>;
+    
+    /// Find symbols with specific effects
+    fn find_with_effects(&self, effects: &[String]) -> Vec<SymbolData>;
+    
+    /// Find symbols with AI metadata
+    fn find_with_ai_metadata(&self) -> Vec<SymbolData>;
+}
+
 /// Verify the symbols subsystem is properly integrated and functional
 pub fn verify_symbols_integration() -> CompilerResult<()> {
     // Create semantic database

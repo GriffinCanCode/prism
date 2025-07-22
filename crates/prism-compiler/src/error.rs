@@ -30,6 +30,18 @@ pub enum CompilerError {
     #[error("Project file not found: {path}")]
     ProjectFileNotFound { path: PathBuf },
 
+    // Documentation errors
+    #[error("Documentation error: {0}")]
+    DocumentationError(String),
+
+    // Serialization errors
+    #[error("Serialization error: {0}")]
+    SerializationError(String),
+
+    // I/O error
+    #[error("I/O error: {0}")]
+    IoError(String),
+
     // Lexing errors
     #[error("Lexical error at {location}: {message}")]
     LexError { message: String, location: Span },

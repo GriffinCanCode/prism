@@ -14,7 +14,7 @@ pub mod backends;
 pub use backends::{
     CodeGenBackend, MultiTargetCodeGen, CodeArtifact, CodeGenConfig, CodeGenStats,
     BackendCapabilities, AIMetadataLevel,
-    TypeScriptBackend, LLVMBackend, WasmBackend, JavaScriptBackend
+    TypeScriptBackend, LLVMBackend, WebAssemblyBackend, JavaScriptBackend
 };
 
 use prism_common::span::Span;
@@ -22,12 +22,12 @@ use prism_ast::Program;
 
 // Import PIR types that codegen needs to consume
 // This maintains proper separation: codegen consumes PIR, doesn't produce it
-use prism_pir::{
+pub use prism_pir::{
     PrismIR, PIRModule, PIRFunction, PIRSemanticType, PIRExpression, PIRStatement,
     PIRTypeInfo, PIRPrimitiveType, PIRCompositeType, PIRCompositeKind, PIRParameter,
     PIRBinaryOp, PIRUnaryOp, PIRLiteral, PIRTypeConstraint, PIRPerformanceContract,
     PIRComplexityAnalysis, SemanticTypeRegistry, BusinessRule, ValidationPredicate,
-    PIRTypeAIContext, SecurityClassification, PIRBuilder, PIRBuilderConfig,
+    PIRTypeAIContext, SecurityClassification, PIRConstructionBuilder, ConstructionConfig,
     PIRSection, TypeSection, FunctionSection, ConstantSection, InterfaceSection,
     ImplementationSection, PIRConstant, PIRInterface, PIRImplementationItem,
     PIRTypeImplementation, PIRMethod, PIRField, PIRVisibility, PIRCondition,
@@ -46,27 +46,45 @@ pub type CodeGenResult<T> = Result<T, CodeGenError>;
 pub enum CodeGenError {
     /// Code generation failed
     #[error("Code generation failed for target {target}: {message}")]
-    CodeGenerationError { target: String, message: String },
+    CodeGenerationError { 
+        /// Target platform
+        target: String, 
+        /// Error message
+        message: String 
+    },
 
     /// Unsupported target
     #[error("Unsupported compilation target: {target}")]
-    UnsupportedTarget { target: String },
+    UnsupportedTarget { 
+        /// Target name
+        target: String 
+    },
 
     /// Invalid configuration
     #[error("Invalid code generation configuration: {message}")]
-    InvalidConfig { message: String },
+    InvalidConfig { 
+        /// Configuration error message
+        message: String 
+    },
 
     /// Optimization failed
     #[error("Optimization failed: {message}")]
-    OptimizationError { message: String },
+    OptimizationError { 
+        /// Optimization error message
+        message: String 
+    },
 
     /// Validation failed
     #[error("Generated code validation failed: {errors:?}")]
-    ValidationError { errors: Vec<String> },
+    ValidationError { 
+        /// Validation errors
+        errors: Vec<String> 
+    },
 
     /// PIR builder error during AST to PIR conversion
     #[error("PIR builder error: {source}")]
     PIRBuilderError {
+        /// Source PIR error
         #[from]
         source: prism_pir::PIRError,
     },
@@ -74,6 +92,7 @@ pub enum CodeGenError {
     /// I/O error during code generation
     #[error("I/O error: {source}")]
     IoError {
+        /// Source I/O error
         #[from]
         source: std::io::Error,
     },
@@ -81,13 +100,17 @@ pub enum CodeGenError {
     /// Serialization error
     #[error("Serialization error: {source}")]
     SerializationError {
+        /// Source serialization error
         #[from]
         source: serde_json::Error,
     },
 
     /// Internal error
     #[error("Internal code generation error: {message}")]
-    InternalError { message: String },
+    InternalError { 
+        /// Internal error message
+        message: String 
+    },
 }
 
 impl From<CodeGenError> for prism_common::diagnostics::Diagnostic {

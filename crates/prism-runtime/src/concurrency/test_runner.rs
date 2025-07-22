@@ -394,13 +394,18 @@ impl ConcurrencyTestSuite {
                 let ops = config.operations_per_thread * 10; // More operations for benchmarking
 
                 let start = Instant::now();
+                let mut latencies = Vec::new();
 
                 for i in 0..ops {
+                    let op_start = Instant::now();
                     queue.enqueue(i);
+                    latencies.push(op_start.elapsed().as_secs_f64() * 1000.0);
                 }
 
                 for _ in 0..ops {
+                    let op_start = Instant::now();
                     queue.dequeue();
+                    latencies.push(op_start.elapsed().as_secs_f64() * 1000.0);
                 }
 
                 let elapsed = start.elapsed();
@@ -409,10 +414,10 @@ impl ConcurrencyTestSuite {
                 PerformanceMetrics {
                     ops_per_second,
                     avg_latency_ms: elapsed.as_secs_f64() * 1000.0 / (ops * 2) as f64,
-                    p95_latency_ms: 0.0, // TODO: Implement percentile tracking
-                    p99_latency_ms: 0.0,
-                    memory_usage_bytes: 0, // TODO: Implement memory tracking
-                    cpu_utilization: 0.0, // TODO: Implement CPU tracking
+                    p95_latency_ms: self.calculate_percentile(&latencies, 95.0),
+                    p99_latency_ms: self.calculate_percentile(&latencies, 99.0),
+                    memory_usage_bytes: self.get_memory_usage(),
+                    cpu_utilization: self.get_cpu_utilization()
                 }
             })
         }).await;
@@ -769,6 +774,126 @@ impl ConcurrencyTestSuite {
                          result.error.as_ref().unwrap_or(&"Unknown error".to_string()));
             }
         }
+    }
+    
+    /// Calculate percentile from latency measurements
+    fn calculate_percentile(&self, latencies: &[f64], percentile: f64) -> f64 {
+        if latencies.is_empty() {
+            return 0.0;
+        }
+        
+        let mut sorted_latencies = latencies.to_vec();
+        sorted_latencies.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        
+        let index = (percentile / 100.0 * (sorted_latencies.len() - 1) as f64) as usize;
+        sorted_latencies[index.min(sorted_latencies.len() - 1)]
+    }
+    
+    /// Get current memory usage in bytes
+    fn get_memory_usage(&self) -> u64 {
+        #[cfg(target_os = "linux")]
+        {
+            use std::fs;
+            if let Ok(status) = fs::read_to_string("/proc/self/status") {
+                for line in status.lines() {
+                    if line.starts_with("VmRSS:") {
+                        if let Some(kb_str) = line.split_whitespace().nth(1) {
+                            if let Ok(kb) = kb_str.parse::<u64>() {
+                                return kb * 1024; // Convert KB to bytes
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        #[cfg(target_os = "macos")]
+        {
+            use std::process::Command;
+            if let Ok(output) = Command::new("ps")
+                .args(&["-o", "rss=", "-p", &std::process::id().to_string()])
+                .output()
+            {
+                if let Ok(rss_str) = String::from_utf8(output.stdout) {
+                    if let Ok(rss_kb) = rss_str.trim().parse::<u64>() {
+                        return rss_kb * 1024; // Convert KB to bytes
+                    }
+                }
+            }
+        }
+        
+        #[cfg(target_os = "windows")]
+        {
+            // Windows memory tracking would require additional dependencies
+            // For now, return 0 as a placeholder
+        }
+        
+        0 // Fallback if memory tracking is not available
+    }
+    
+    /// Get current CPU utilization percentage
+    fn get_cpu_utilization(&self) -> f64 {
+        #[cfg(target_os = "linux")]
+        {
+            use std::fs;
+            use std::thread;
+            use std::time::Duration;
+            
+            // Read CPU stats twice with a small interval
+            let get_cpu_time = || -> Option<(u64, u64)> {
+                let stat = fs::read_to_string("/proc/stat").ok()?;
+                let line = stat.lines().next()?;
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 5 && parts[0] == "cpu" {
+                    let user: u64 = parts[1].parse().ok()?;
+                    let nice: u64 = parts[2].parse().ok()?;
+                    let system: u64 = parts[3].parse().ok()?;
+                    let idle: u64 = parts[4].parse().ok()?;
+                    let total = user + nice + system + idle;
+                    let active = user + nice + system;
+                    Some((active, total))
+                } else {
+                    None
+                }
+            };
+            
+            if let (Some((active1, total1)), Some((active2, total2))) = (
+                get_cpu_time(),
+                {
+                    thread::sleep(Duration::from_millis(100));
+                    get_cpu_time()
+                }
+            ) {
+                let active_diff = active2.saturating_sub(active1);
+                let total_diff = total2.saturating_sub(total1);
+                if total_diff > 0 {
+                    return (active_diff as f64 / total_diff as f64) * 100.0;
+                }
+            }
+        }
+        
+        #[cfg(target_os = "macos")]
+        {
+            use std::process::Command;
+            if let Ok(output) = Command::new("ps")
+                .args(&["-o", "pcpu=", "-p", &std::process::id().to_string()])
+                .output()
+            {
+                if let Ok(cpu_str) = String::from_utf8(output.stdout) {
+                    if let Ok(cpu_percent) = cpu_str.trim().parse::<f64>() {
+                        return cpu_percent;
+                    }
+                }
+            }
+        }
+        
+        #[cfg(target_os = "windows")]
+        {
+            // Windows CPU tracking would require additional dependencies
+            // For now, return 0 as a placeholder
+        }
+        
+        0.0 // Fallback if CPU tracking is not available
     }
 }
 

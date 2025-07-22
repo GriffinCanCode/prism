@@ -286,48 +286,107 @@ Feature PEPs require a champion from the core team:
 - ❌ Forget about teaching/documentation
 - ❌ Rush the process
 
-## Example PEPs
+## Current PEPs
 
-### PEP-001: PEP Process (This Document)
-**Status**: Accepted  
-**Type**: Process
+### Language Compilation Targets
 
-### PEP-002: Pattern Matching
+#### PEP-001: Rust Compilation Target
 **Status**: Draft  
 **Type**: Feature
 ```prism
-match value {
-    Some(x) if x > 0 => x * 2,
-    Some(0) => 0,
-    None => default
+// Systems programming with memory safety
+function process_sensor_data(readings: Array<SensorReading>) -> Result<ProcessedData, SystemError>
+    requires SystemAccess, MemoryManagement
+{
+    // High-performance, memory-safe systems code
 }
 ```
 
-### PEP-003: Async/Await
+#### PEP-002: Go Compilation Target  
+**Status**: Draft
+**Type**: Feature
+```prism
+// Cloud-native microservices and concurrent systems
+function handle_concurrent_requests(requests: Channel<HttpRequest>) -> Result<Void, ServiceError>
+    requires NetworkAccess, ConcurrencyManagement
+{
+    // Efficient goroutine-based concurrent processing
+}
+```
+
+#### PEP-003: C# Compilation Target
+**Status**: Draft  
+**Type**: Feature
+```prism
+// Enterprise .NET applications with rich domain modeling
+function process_customer_transaction(customer: Customer, amount: MoneyAmount) -> Result<TransactionResult, BusinessError>
+    requires DatabaseAccess, AuditLogging, ComplianceValidation
+{
+    // Enterprise-grade business logic with type safety
+}
+```
+
+#### PEP-004: Java Compilation Target
+**Status**: Draft  
+**Type**: Feature
+```prism
+// Enterprise JVM applications with Spring Framework integration
+function process_payment_batch(payments: Array<PaymentInstruction>) -> Result<BatchResult, PaymentError>
+    requires DatabaseTransaction, FraudDetection, RegulatoryReporting
+{
+    // High-volume enterprise transaction processing
+}
+```
+
+### Implemented Targets
+
+The following compilation targets are already implemented and stable:
+
+- **TypeScript**: Rapid prototyping and web development
+- **JavaScript**: Web deployment and ecosystem access  
+- **Python**: AI/ML and data science integration
+- **LLVM**: Native performance and systems programming
+- **WebAssembly**: Portable, secure execution
+
+### Process PEPs
+
+#### PEP-100: PEP Process (This Document)
 **Status**: Accepted  
-**Type**: Feature
-```prism
-async function fetchUser(id: UserId) -> Result<User, Error> {
-    let response = await http.get(`/users/${id}`);
-    return User.parse(response.body);
-}
-```
+**Type**: Process
 
-### PEP-004: Const Generics
-**Status**: Discussion  
-**Type**: Feature
-```prism
-type Matrix<T, const Rows: Integer, const Cols: Integer> = {
-    data: Array<T, Rows * Cols>
-}
-```
+## Future Considerations
+
+The following compilation targets may be considered in future PEPs based on community demand and strategic value:
+
+### Enterprise Integration
+- **C#/.NET**: Enterprise .NET ecosystem integration
+- **Java/JVM**: Enterprise Java ecosystem integration
+
+### Functional Programming  
+- **OCaml**: Functional programming and formal verification
+- **F#**: Functional programming on .NET platform
+- **Haskell**: Pure functional programming and research
+
+### Systems Programming
+- **C**: Embedded systems and bare-metal programming
+- **Zig**: Modern systems programming alternative
+
+### Mobile Platforms
+- **Swift**: iOS and Apple ecosystem integration
+- **Kotlin**: Android and JVM ecosystem integration
+
+### Specialized Targets
+- **SQL Compilation**: Direct business logic to database compilation (PostgreSQL, SQLite, etc.)
+- **GPU Targets**: CUDA, OpenCL, and WebGPU compilation
+- **Embedded Targets**: ARM, RISC-V, and microcontroller platforms
 
 ## PEP Hall of Fame
 
 Exceptional PEPs that set the standard:
-- PEP-XXX: [Title] - Exceptionally thorough analysis
-- PEP-YYY: [Title] - Great community engagement
-- PEP-ZZZ: [Title] - Excellent teaching section
+- PEP-001: [Rust Target] - Comprehensive systems programming analysis
+- PEP-002: [Go Target] - Excellent cloud-native use case coverage
+- PEP-003: [C# Target] - Thorough enterprise .NET ecosystem integration
+- PEP-004: [Java Target] - Extensive enterprise JVM framework coverage
 
 ---
 

@@ -21,10 +21,8 @@
 //! 4. **Performance Optimized**: Minimal overhead through efficient data structures
 //! 5. **Export Ready**: Metadata can be exported in AI-readable formats
 
-use crate::{capability, effects, execution, memory};
-use crate::resources::memory::AccessFrequency;
-use prism_common::{span::Span, symbol::Symbol};
-use prism_effects::Effect;
+use crate::{authority::capability, resources::effects, platform::execution, resources::memory};
+use crate::resources::effects::Effect;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Mutex};
 use std::time::{SystemTime, Duration};
@@ -691,6 +689,15 @@ pub struct UsagePattern {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub enum UsageFrequency {
+    VeryLow,
+    Low,
+    Medium,
+    High,
+    VeryHigh,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum AccessFrequency {
     VeryLow,
     Low,
     Medium,

@@ -167,4 +167,31 @@ pub enum SecurityError {
     /// Generic security error
     #[error("Security error: {message}")]
     Generic { message: String },
+}
+
+/// Security management system that coordinates policy enforcement and isolation
+#[derive(Debug)]
+pub struct SecuritySystem {
+    policy_enforcer: enforcement::SecurityPolicyEnforcer,
+    isolation_manager: isolation::ComponentIsolationManager,
+}
+
+impl SecuritySystem {
+    /// Create a new security system
+    pub fn new() -> Result<Self, SecurityError> {
+        Ok(Self {
+            policy_enforcer: enforcement::SecurityPolicyEnforcer::new()?,
+            isolation_manager: isolation::ComponentIsolationManager::new()?,
+        })
+    }
+
+    /// Get the policy enforcer
+    pub fn policy_enforcer(&self) -> &enforcement::SecurityPolicyEnforcer {
+        &self.policy_enforcer
+    }
+
+    /// Get the isolation manager
+    pub fn isolation_manager(&self) -> &isolation::ComponentIsolationManager {
+        &self.isolation_manager
+    }
 } 

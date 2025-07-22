@@ -9,7 +9,7 @@
 
 use crate::{authority, resources, intelligence};
 use crate::concurrency::async_runtime::{AsyncHandle, AsyncResult, CancellationToken, TaskPriority};
-use prism_effects::Effect;
+use crate::resources::effects::Effect;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Mutex};
 use std::time::{Duration, SystemTime, Instant};

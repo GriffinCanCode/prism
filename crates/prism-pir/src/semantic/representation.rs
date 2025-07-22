@@ -1534,18 +1534,29 @@ pub struct Capability {
     pub permissions: Vec<String>,
 }
 
-/// Effect signature
+/// Validation predicate for semantic types
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ValidationPredicate {
+    /// Predicate name
+    pub name: String,
+    /// Predicate expression
+    pub expression: String,
+    /// Description of what this predicate validates
+    pub description: Option<String>,
+}
+
+/// Effect signature for functions
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EffectSignature {
-    /// Input effects
+    /// Input effects (effects consumed)
     pub input_effects: Vec<Effect>,
-    /// Output effects
+    /// Output effects (effects produced)
     pub output_effects: Vec<Effect>,
     /// Effect dependencies
     pub effect_dependencies: Vec<EffectDependency>,
 }
 
-/// Effect dependency
+/// Effect dependency relationship
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EffectDependency {
     /// Source effect
@@ -1556,77 +1567,86 @@ pub struct EffectDependency {
     pub dependency_type: EffectDependencyType,
 }
 
-/// Effect dependency type
+/// Effect dependency types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum EffectDependencyType {
-    /// Requires the other effect
-    Requires,
-    /// Provides the other effect
-    Provides,
-    /// Conflicts with the other effect
-    Conflicts,
-    /// Enhances the other effect
-    Enhances,
+    /// Sequential dependency
+    Sequential,
+    /// Parallel dependency
+    Parallel,
+    /// Conditional dependency
+    Conditional,
 }
 
-/// Validation predicate
+/// Smart module metadata
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ValidationPredicate {
-    /// Predicate name
-    pub name: String,
-    /// Predicate expression
-    pub expression: String,
-    /// Error message if validation fails
-    pub error_message: String,
+pub struct SmartModuleMetadata {
+    /// Module conceptual purpose
+    pub purpose: String,
+    /// Architectural patterns used
+    pub patterns: Vec<String>,
+    /// Quality metrics
+    pub quality_score: f64,
+    /// Dependencies analysis
+    pub dependency_analysis: DependencyAnalysis,
+}
+
+/// Dependency analysis
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DependencyAnalysis {
+    /// Incoming dependencies
+    pub incoming: Vec<String>,
+    /// Outgoing dependencies  
+    pub outgoing: Vec<String>,
+    /// Circular dependencies
+    pub circular: Vec<Vec<String>>,
 }
 
 /// Semantic type registry
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SemanticTypeRegistry {
-    /// Registered types
+    /// Types in the registry
     pub types: HashMap<String, PIRSemanticType>,
     /// Type relationships
     pub relationships: HashMap<String, Vec<TypeRelationship>>,
-    /// Global type constraints
+    /// Global constraints
     pub global_constraints: Vec<PIRTypeConstraint>,
 }
 
 /// Type relationship
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypeRelationship {
-    /// Type of relationship
+    /// Relationship type
     pub relationship_type: RelationshipType,
-    /// Related type name
+    /// Related type
     pub related_type: String,
-    /// Relationship strength (0.0 to 1.0)
+    /// Relationship strength
     pub strength: f64,
 }
 
-/// Relationship type
+/// Relationship types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum RelationshipType {
     /// Inheritance relationship
-    Inherits,
-    /// Implementation relationship
-    Implements,
-    /// Containment relationship
-    Contains,
-    /// Usage relationship
-    Uses,
-    /// Similarity relationship
-    Similar,
+    Inheritance,
+    /// Composition relationship
+    Composition,
+    /// Association relationship
+    Association,
+    /// Dependency relationship
+    Dependency,
 }
 
 /// Effect graph
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EffectGraph {
-    /// Effect nodes
+    /// Graph nodes (effects)
     pub nodes: HashMap<String, EffectNode>,
-    /// Effect edges
+    /// Graph edges (relationships)
     pub edges: Vec<EffectEdge>,
 }
 
-/// Effect node
+/// Effect graph node
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EffectNode {
     /// Effect name
@@ -1639,28 +1659,26 @@ pub struct EffectNode {
     pub side_effects: Vec<String>,
 }
 
-/// Effect edge
+/// Effect graph edge
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EffectEdge {
-    /// Source effect
+    /// Source node
     pub source: String,
-    /// Target effect
+    /// Target node
     pub target: String,
     /// Edge type
     pub edge_type: EffectEdgeType,
 }
 
-/// Effect edge type
+/// Effect edge types
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum EffectEdgeType {
-    /// Requires relationship
-    Requires,
-    /// Provides relationship
-    Provides,
-    /// Conflicts relationship
-    Conflicts,
-    /// Enhances relationship
-    Enhances,
+    /// Dependency edge
+    Dependency,
+    /// Composition edge
+    Composition,
+    /// Conflict edge
+    Conflict,
 }
 
 /// Cohesion metrics
@@ -1668,7 +1686,7 @@ pub enum EffectEdgeType {
 pub struct CohesionMetrics {
     /// Overall cohesion score
     pub overall_score: f64,
-    /// Module cohesion scores
+    /// Per-module scores
     pub module_scores: HashMap<String, f64>,
     /// Coupling metrics
     pub coupling_metrics: CouplingMetrics,
@@ -1698,6 +1716,45 @@ pub struct PIRMetadata {
     pub optimization_level: u8,
     /// Target platforms
     pub target_platforms: Vec<String>,
+}
+
+/// Resource limits for runtime integration
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResourceLimits {
+    /// Maximum memory in MB
+    pub max_memory_mb: Option<u64>,
+    /// Maximum CPU time in milliseconds
+    pub max_cpu_time_ms: Option<u64>,
+    /// Maximum network connections
+    pub max_network_connections: Option<u32>,
+}
+
+/// Resource usage delta for performance tracking
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResourceUsageDelta {
+    /// Memory delta in bytes
+    pub memory_delta: i64,
+    /// CPU time delta in microseconds
+    pub cpu_time_delta: i64,
+}
+
+impl Default for ResourceLimits {
+    fn default() -> Self {
+        Self {
+            max_memory_mb: Some(1024), // 1GB default
+            max_cpu_time_ms: Some(30000), // 30 seconds default
+            max_network_connections: Some(100),
+        }
+    }
+}
+
+impl Default for ResourceUsageDelta {
+    fn default() -> Self {
+        Self {
+            memory_delta: 0,
+            cpu_time_delta: 0,
+        }
+    }
 }
 
 impl PrismIR {

@@ -56,6 +56,12 @@ pub enum PrimitiveType {
     Unit,
     /// Never type
     Never,
+    /// 32-bit integer
+    Int32,
+    /// 64-bit integer
+    Int64,
+    /// 64-bit float
+    Float64,
 }
 
 /// Integer type variants
@@ -926,6 +932,18 @@ pub enum PermissionLevel {
     Admin,
     /// Custom permission level
     Custom(String),
+}
+
+/// Safety level for effects and operations
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum SafetyLevel {
+    /// Safe operation
+    Safe,
+    /// Requires validation
+    RequiresValidation,
+    /// Unsafe operation
+    Unsafe,
 }
 
 /// Capability constraint

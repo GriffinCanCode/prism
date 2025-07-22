@@ -51,4 +51,24 @@
 // Re-export the capability system with the same API
 mod capability;
 
-pub use capability::*; 
+pub use capability::*;
+
+/// Authority management system that coordinates all capability operations
+#[derive(Debug)]
+pub struct AuthoritySystem {
+    capability_manager: CapabilityManager,
+}
+
+impl AuthoritySystem {
+    /// Create a new authority system
+    pub fn new() -> Result<Self, CapabilityError> {
+        Ok(Self {
+            capability_manager: CapabilityManager::new()?,
+        })
+    }
+
+    /// Get the capability manager
+    pub fn capability_manager(&self) -> &CapabilityManager {
+        &self.capability_manager
+    }
+} 

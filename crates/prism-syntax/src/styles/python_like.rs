@@ -1238,19 +1238,369 @@ impl PythonLikeParser {
         }
     }
     
-    fn parse_string_literal(&self) -> Result<String, PythonParseError> {
-        // TODO: Implement string literal parsing with proper escape handling
-        Ok(String::new())
+    fn parse_string_literal(&self, content: &str) -> Result<String, PythonParseError> {
+        // Implement proper string literal parsing with escape handling
+        let mut result = String::new();
+        let mut chars = content.chars().peekable();
+        
+        while let Some(ch) = chars.next() {
+            match ch {
+                '\\' => {
+                    // Handle escape sequences
+                    match chars.next() {
+                        Some('n') => result.push('\n'),
+                        Some('t') => result.push('\t'),
+                        Some('r') => result.push('\r'),
+                        Some('\\') => result.push('\\'),
+                        Some('\'') => result.push('\''),
+                        Some('"') => result.push('"'),
+                        Some('0') => result.push('\0'),
+                        Some('x') => {
+                            // Hexadecimal escape sequence \xHH
+                            let hex1 = chars.next().ok_or(PythonParseError::InvalidEscapeSequence)?;
+                            let hex2 = chars.next().ok_or(PythonParseError::InvalidEscapeSequence)?;
+                            let hex_str = format!("{}{}", hex1, hex2);
+                            let hex_value = u8::from_str_radix(&hex_str, 16)
+                                .map_err(|_| PythonParseError::InvalidEscapeSequence)?;
+                            result.push(hex_value as char);
+                        }
+                        Some('u') => {
+                            // Unicode escape sequence \uHHHH
+                            let mut hex_str = String::new();
+                            for _ in 0..4 {
+                                let hex_digit = chars.next().ok_or(PythonParseError::InvalidEscapeSequence)?;
+                                hex_str.push(hex_digit);
+                            }
+                            let hex_value = u32::from_str_radix(&hex_str, 16)
+                                .map_err(|_| PythonParseError::InvalidEscapeSequence)?;
+                            if let Some(unicode_char) = std::char::from_u32(hex_value) {
+                                result.push(unicode_char);
+                            } else {
+                                return Err(PythonParseError::InvalidEscapeSequence);
+                            }
+                        }
+                        Some('U') => {
+                            // Extended unicode escape sequence \UHHHHHHHH
+                            let mut hex_str = String::new();
+                            for _ in 0..8 {
+                                let hex_digit = chars.next().ok_or(PythonParseError::InvalidEscapeSequence)?;
+                                hex_str.push(hex_digit);
+                            }
+                            let hex_value = u32::from_str_radix(&hex_str, 16)
+                                .map_err(|_| PythonParseError::InvalidEscapeSequence)?;
+                            if let Some(unicode_char) = std::char::from_u32(hex_value) {
+                                result.push(unicode_char);
+                            } else {
+                                return Err(PythonParseError::InvalidEscapeSequence);
+                            }
+                        }
+                        Some(other) => {
+                            // Unknown escape sequence, treat as literal
+                            result.push('\\');
+                            result.push(other);
+                        }
+                        None => return Err(PythonParseError::InvalidEscapeSequence),
+                    }
+                }
+                _ => result.push(ch),
+            }
+        }
+        
+        Ok(result)
     }
     
-    fn get_expression_span(&self, _expr: &Expression) -> Span {
-        // TODO: Implement proper span calculation
-        Span::default()
+    fn get_expression_span(&self, expr: &Expression) -> Span {
+        // Implement proper span calculation based on expression type
+        match expr {
+            Expression::Literal { span, .. } => *span,
+            Expression::Identifier { span, .. } => *span,
+            Expression::BinaryOperation { left, right, .. } => {
+                let left_span = self.get_expression_span(left);
+                let right_span = self.get_expression_span(right);
+                Span::new(
+                    left_span.start(),
+                    right_span.end(),
+                    left_span.source_id(),
+                )
+            }
+            Expression::UnaryOperation { operand, span, .. } => {
+                let operand_span = self.get_expression_span(operand);
+                Span::new(
+                    span.start().min(operand_span.start()),
+                    span.end().max(operand_span.end()),
+                    span.source_id(),
+                )
+            }
+            Expression::FunctionCall { function, arguments, .. } => {
+                let func_span = self.get_expression_span(function);
+                let mut end_pos = func_span.end();
+                
+                // Extend span to include all arguments
+                for arg in arguments {
+                    let arg_span = self.get_expression_span(arg);
+                    end_pos = end_pos.max(arg_span.end());
+                }
+                
+                Span::new(func_span.start(), end_pos, func_span.source_id())
+            }
+            Expression::ListLiteral { elements, span, .. } => {
+                if elements.is_empty() {
+                    *span
+                } else {
+                    let first_span = self.get_expression_span(&elements[0]);
+                    let last_span = self.get_expression_span(elements.last().unwrap());
+                    Span::new(
+                        span.start().min(first_span.start()),
+                        span.end().max(last_span.end()),
+                        span.source_id(),
+                    )
+                }
+            }
+            Expression::DictLiteral { pairs, span, .. } => {
+                if pairs.is_empty() {
+                    *span
+                } else {
+                    let first_key_span = self.get_expression_span(&pairs[0].0);
+                    let last_value_span = self.get_expression_span(&pairs.last().unwrap().1);
+                    Span::new(
+                        span.start().min(first_key_span.start()),
+                        span.end().max(last_value_span.end()),
+                        span.source_id(),
+                    )
+                }
+            }
+            Expression::AttributeAccess { object, span, .. } => {
+                let object_span = self.get_expression_span(object);
+                Span::new(
+                    object_span.start(),
+                    span.end(),
+                    span.source_id(),
+                )
+            }
+            Expression::IndexAccess { object, index, .. } => {
+                let object_span = self.get_expression_span(object);
+                let index_span = self.get_expression_span(index);
+                Span::new(
+                    object_span.start(),
+                    index_span.end(),
+                    object_span.source_id(),
+                )
+            }
+            Expression::SliceAccess { object, start, end, step, .. } => {
+                let object_span = self.get_expression_span(object);
+                let mut end_pos = object_span.end();
+                
+                if let Some(start_expr) = start {
+                    end_pos = end_pos.max(self.get_expression_span(start_expr).end());
+                }
+                if let Some(end_expr) = end {
+                    end_pos = end_pos.max(self.get_expression_span(end_expr).end());
+                }
+                if let Some(step_expr) = step {
+                    end_pos = end_pos.max(self.get_expression_span(step_expr).end());
+                }
+                
+                Span::new(object_span.start(), end_pos, object_span.source_id())
+            }
+        }
     }
     
-    fn generate_ai_hints(&self, _statements: &[Statement]) -> Vec<AIHint> {
-        // TODO: Implement AI hint generation
-        Vec::new()
+    fn generate_ai_hints(&self, statements: &[Statement]) -> Vec<AIHint> {
+        // Implement AI hint generation for better code understanding
+        let mut hints = Vec::new();
+        
+        for statement in statements {
+            match statement {
+                Statement::FunctionDef { name, args, body, decorators, .. } => {
+                    // Generate hints for function complexity and purpose
+                    let complexity_score = self.calculate_function_complexity(body);
+                    
+                    if complexity_score > 10 {
+                        hints.push(AIHint {
+                            hint_type: AIHintType::Complexity,
+                            message: format!("Function '{}' has high complexity ({}). Consider breaking it down.", name, complexity_score),
+                            confidence: 0.8,
+                            location: None, // TODO: Add proper location
+                            suggestions: vec![
+                                "Extract helper functions".to_string(),
+                                "Reduce nested conditions".to_string(),
+                                "Use early returns to reduce nesting".to_string(),
+                            ],
+                        });
+                    }
+                    
+                    // Check for missing docstring
+                    if !self.has_docstring(body) {
+                        hints.push(AIHint {
+                            hint_type: AIHintType::Documentation,
+                            message: format!("Function '{}' is missing documentation", name),
+                            confidence: 0.9,
+                            location: None,
+                            suggestions: vec![
+                                "Add a docstring describing the function's purpose".to_string(),
+                                "Document parameters and return values".to_string(),
+                            ],
+                        });
+                    }
+                    
+                    // Check for too many parameters
+                    if args.len() > 5 {
+                        hints.push(AIHint {
+                            hint_type: AIHintType::Design,
+                            message: format!("Function '{}' has {} parameters. Consider using a configuration object.", name, args.len()),
+                            confidence: 0.7,
+                            location: None,
+                            suggestions: vec![
+                                "Group related parameters into a data class".to_string(),
+                                "Use keyword-only arguments".to_string(),
+                            ],
+                        });
+                    }
+                    
+                    // Check for decorators suggesting patterns
+                    if !decorators.is_empty() {
+                        hints.push(AIHint {
+                            hint_type: AIHintType::Pattern,
+                            message: format!("Function '{}' uses decorators, suggesting aspect-oriented programming patterns", name),
+                            confidence: 0.6,
+                            location: None,
+                            suggestions: vec!["Consider documenting the decorator's effects".to_string()],
+                        });
+                    }
+                }
+                
+                Statement::ClassDef { name, bases, body, .. } => {
+                    // Generate hints for class design
+                    let method_count = self.count_methods(body);
+                    
+                    if method_count > 15 {
+                        hints.push(AIHint {
+                            hint_type: AIHintType::Design,
+                            message: format!("Class '{}' has {} methods. Consider splitting responsibilities.", name, method_count),
+                            confidence: 0.8,
+                            location: None,
+                            suggestions: vec![
+                                "Apply Single Responsibility Principle".to_string(),
+                                "Extract related methods into separate classes".to_string(),
+                            ],
+                        });
+                    }
+                    
+                    // Check for inheritance depth
+                    if bases.len() > 2 {
+                        hints.push(AIHint {
+                            hint_type: AIHintType::Design,
+                            message: format!("Class '{}' inherits from {} bases. Consider composition over inheritance.", name, bases.len()),
+                            confidence: 0.7,
+                            location: None,
+                            suggestions: vec!["Use composition instead of multiple inheritance".to_string()],
+                        });
+                    }
+                }
+                
+                Statement::ImportFrom { module, names, .. } => {
+                    // Check for wildcard imports
+                    if names.iter().any(|alias| alias.name == "*") {
+                        hints.push(AIHint {
+                            hint_type: AIHintType::Style,
+                            message: format!("Wildcard import from '{}' can pollute namespace", module.as_deref().unwrap_or("unknown")),
+                            confidence: 0.9,
+                            location: None,
+                            suggestions: vec!["Import specific names instead of using wildcard".to_string()],
+                        });
+                    }
+                }
+                
+                Statement::TryExcept { body, handlers, orelse, finalbody, .. } => {
+                    // Check for bare except clauses
+                    if handlers.iter().any(|handler| handler.exception_type.is_none()) {
+                        hints.push(AIHint {
+                            hint_type: AIHintType::ErrorHandling,
+                            message: "Bare except clause can hide bugs. Specify exception types.".to_string(),
+                            confidence: 0.9,
+                            location: None,
+                            suggestions: vec![
+                                "Catch specific exception types".to_string(),
+                                "Use 'except Exception:' if you must catch all".to_string(),
+                            ],
+                        });
+                    }
+                    
+                    // Check for complex try blocks
+                    if body.len() > 10 {
+                        hints.push(AIHint {
+                            hint_type: AIHintType::ErrorHandling,
+                            message: "Try block is very large. Consider narrowing the scope.".to_string(),
+                            confidence: 0.7,
+                            location: None,
+                            suggestions: vec!["Keep try blocks focused on specific operations".to_string()],
+                        });
+                    }
+                }
+                
+                _ => {
+                    // Other statement types can have specific hints added here
+                }
+            }
+        }
+        
+        hints
+    }
+    
+    /// Calculate function complexity score
+    fn calculate_function_complexity(&self, body: &[Statement]) -> u32 {
+        let mut complexity = 1; // Base complexity
+        
+        for stmt in body {
+            complexity += match stmt {
+                Statement::If { .. } => 1,
+                Statement::While { .. } => 1,
+                Statement::For { .. } => 1,
+                Statement::TryExcept { handlers, .. } => handlers.len() as u32,
+                Statement::With { .. } => 1,
+                _ => 0,
+            };
+            
+            // Add complexity for nested structures
+            if let Some(nested_body) = self.get_statement_body(stmt) {
+                complexity += self.calculate_function_complexity(nested_body);
+            }
+        }
+        
+        complexity
+    }
+    
+    /// Check if function has a docstring
+    fn has_docstring(&self, body: &[Statement]) -> bool {
+        if let Some(first_stmt) = body.first() {
+            if let Statement::Expression { value, .. } = first_stmt {
+                if let Expression::Literal { value: LiteralValue::String(_), .. } = value.as_ref() {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+    
+    /// Count methods in a class body
+    fn count_methods(&self, body: &[Statement]) -> usize {
+        body.iter()
+            .filter(|stmt| matches!(stmt, Statement::FunctionDef { .. }))
+            .count()
+    }
+    
+    /// Get the body of a statement if it has one
+    fn get_statement_body(&self, stmt: &Statement) -> Option<&[Statement]> {
+        match stmt {
+            Statement::If { body, .. } => Some(body),
+            Statement::While { body, .. } => Some(body),
+            Statement::For { body, .. } => Some(body),
+            Statement::With { body, .. } => Some(body),
+            Statement::FunctionDef { body, .. } => Some(body),
+            Statement::ClassDef { body, .. } => Some(body),
+            Statement::TryExcept { body, .. } => Some(body),
+            _ => None,
+        }
     }
     
     // Helper methods for parsing
@@ -1740,75 +2090,688 @@ impl PythonLikeParser {
     }
     
     fn parse_class_def(&mut self) -> Result<Statement, PythonParseError> {
-        todo!("Implement class definition parsing")
+        // Expect 'class' keyword
+        self.expect_token(TokenKind::Keyword("class".to_string()))?;
+        
+        // Parse class name
+        let name = if let Some(token) = self.peek() {
+            if let TokenKind::Identifier(ref name) = token.kind {
+                let name = name.clone();
+                self.advance();
+                name
+            } else {
+                return Err(PythonParseError::UnexpectedToken {
+                    expected: "identifier".to_string(),
+                    found: format!("{:?}", token.kind),
+                });
+            }
+        } else {
+            return Err(PythonParseError::UnexpectedEof);
+        };
+        
+        // Parse optional base classes
+        let mut base_classes = Vec::new();
+        if self.match_token(TokenKind::LeftParen) {
+            self.advance(); // consume '('
+            
+            while !self.check_token(TokenKind::RightParen) {
+                let base = self.parse_expression()?;
+                base_classes.push(base);
+                
+                if self.match_token(TokenKind::Comma) {
+                    self.advance(); // consume ','
+                } else {
+                    break;
+                }
+            }
+            
+            self.expect_token(TokenKind::RightParen)?;
+        }
+        
+        // Expect ':'
+        self.expect_token(TokenKind::Colon)?;
+        
+        // Parse class body
+        let body = self.parse_block()?;
+        
+        Ok(Statement::ClassDef {
+            name,
+            base_classes,
+            body,
+            decorators: Vec::new(), // TODO: Parse decorators
+            type_params: Vec::new(), // TODO: Parse type parameters
+        })
     }
     
     fn parse_if_statement(&mut self) -> Result<Statement, PythonParseError> {
-        todo!("Implement if statement parsing")
+        // Expect 'if' keyword
+        self.expect_token(TokenKind::Keyword("if".to_string()))?;
+        
+        // Parse condition
+        let condition = self.parse_expression()?;
+        
+        // Expect ':'
+        self.expect_token(TokenKind::Colon)?;
+        
+        // Parse then block
+        let then_block = self.parse_block()?;
+        
+        // Parse optional elif/else clauses
+        let mut elif_clauses = Vec::new();
+        let mut else_block = None;
+        
+        while self.check_keyword("elif") {
+            self.advance(); // consume 'elif'
+            let elif_condition = self.parse_expression()?;
+            self.expect_token(TokenKind::Colon)?;
+            let elif_body = self.parse_block()?;
+            elif_clauses.push((elif_condition, elif_body));
+        }
+        
+        if self.check_keyword("else") {
+            self.advance(); // consume 'else'
+            self.expect_token(TokenKind::Colon)?;
+            else_block = Some(self.parse_block()?);
+        }
+        
+        Ok(Statement::If {
+            test: condition,
+            body: then_block,
+            orelse: elif_clauses.into_iter().chain(else_block.into_iter()).collect(),
+            span: self.get_current_span(),
+        })
     }
     
     fn parse_while_statement(&mut self) -> Result<Statement, PythonParseError> {
-        todo!("Implement while statement parsing")
+        // Expect 'while' keyword
+        self.expect_token(TokenKind::Keyword("while".to_string()))?;
+        
+        // Parse condition
+        let condition = self.parse_expression()?;
+        
+        // Expect ':'
+        self.expect_token(TokenKind::Colon)?;
+        
+        // Parse body
+        let body = self.parse_block()?;
+        
+        // Parse optional else clause
+        let else_block = if self.check_keyword("else") {
+            self.advance(); // consume 'else'
+            self.expect_token(TokenKind::Colon)?;
+            Some(self.parse_block()?)
+        } else {
+            None
+        };
+        
+        Ok(Statement::While {
+            test: condition,
+            body,
+            orelse: else_block.into_iter().collect(),
+            span: self.get_current_span(),
+        })
     }
     
-    fn parse_for_statement(&mut self, _is_async: bool) -> Result<Statement, PythonParseError> {
-        todo!("Implement for statement parsing")
+    fn parse_for_statement(&mut self, is_async: bool) -> Result<Statement, PythonParseError> {
+        // Expect 'for' keyword
+        self.expect_token(TokenKind::Keyword("for".to_string()))?;
+        
+        // Parse target(s)
+        let target = self.parse_assignment_target()?;
+        
+        // Expect 'in' keyword
+        self.expect_token(TokenKind::Keyword("in".to_string()))?;
+        
+        // Parse iterable
+        let iterable = self.parse_expression()?;
+        
+        // Expect ':'
+        self.expect_token(TokenKind::Colon)?;
+        
+        // Parse body
+        let body = self.parse_block()?;
+        
+        // Parse optional else clause
+        let else_block = if self.check_keyword("else") {
+            self.advance(); // consume 'else'
+            self.expect_token(TokenKind::Colon)?;
+            Some(self.parse_block()?)
+        } else {
+            None
+        };
+        
+        Ok(Statement::For {
+            target,
+            iter: iterable,
+            body,
+            orelse: else_block.into_iter().collect(),
+            is_async,
+            span: self.get_current_span(),
+        })
     }
     
     fn parse_try_statement(&mut self) -> Result<Statement, PythonParseError> {
-        todo!("Implement try statement parsing")
+        // Expect 'try' keyword
+        self.expect_token(TokenKind::Keyword("try".to_string()))?;
+        
+        // Expect ':'
+        self.expect_token(TokenKind::Colon)?;
+        
+        // Parse try body
+        let try_body = self.parse_block()?;
+        
+        // Parse except clauses
+        let mut except_clauses = Vec::new();
+        while self.check_keyword("except") {
+            self.advance(); // consume 'except'
+            
+            // Parse optional exception type and name
+            let exception_type = if !self.check_token(TokenKind::Colon) {
+                Some(self.parse_expression()?)
+            } else {
+                None
+            };
+            
+            let exception_name = if self.check_keyword("as") {
+                self.advance(); // consume 'as'
+                Some(self.expect_identifier()?)
+            } else {
+                None
+            };
+            
+            self.expect_token(TokenKind::Colon)?;
+            let except_body = self.parse_block()?;
+            
+            except_clauses.push(ExceptionHandler {
+                exception_type,
+                name: exception_name,
+                body: except_body,
+                span: self.get_current_span(),
+            });
+        }
+        
+        // Parse optional else clause
+        let else_block = if self.check_keyword("else") {
+            self.advance(); // consume 'else'
+            self.expect_token(TokenKind::Colon)?;
+            Some(self.parse_block()?)
+        } else {
+            None
+        };
+        
+        // Parse optional finally clause
+        let finally_block = if self.check_keyword("finally") {
+            self.advance(); // consume 'finally'
+            self.expect_token(TokenKind::Colon)?;
+            Some(self.parse_block()?)
+        } else {
+            None
+        };
+        
+        Ok(Statement::Try {
+            body: try_body,
+            handlers: except_clauses,
+            orelse: else_block.into_iter().collect(),
+            finalbody: finally_block.into_iter().collect(),
+            span: self.get_current_span(),
+        })
     }
     
-    fn parse_with_statement(&mut self, _is_async: bool) -> Result<Statement, PythonParseError> {
-        todo!("Implement with statement parsing")
+    fn parse_with_statement(&mut self, is_async: bool) -> Result<Statement, PythonParseError> {
+        // Expect 'with' keyword
+        self.expect_token(TokenKind::Keyword("with".to_string()))?;
+        
+        // Parse context managers
+        let mut context_managers = Vec::new();
+        loop {
+            let context_expr = self.parse_expression()?;
+            let optional_vars = if self.check_keyword("as") {
+                self.advance(); // consume 'as'
+                Some(self.parse_assignment_target()?)
+            } else {
+                None
+            };
+            
+            context_managers.push(WithItem {
+                context_expr,
+                optional_vars,
+                span: self.get_current_span(),
+            });
+            
+            if self.match_token(TokenKind::Comma) {
+                self.advance(); // consume ','
+            } else {
+                break;
+            }
+        }
+        
+        // Expect ':'
+        self.expect_token(TokenKind::Colon)?;
+        
+        // Parse body
+        let body = self.parse_block()?;
+        
+        Ok(Statement::With {
+            items: context_managers,
+            body,
+            is_async,
+            span: self.get_current_span(),
+        })
     }
     
     fn parse_match_statement(&mut self) -> Result<Statement, PythonParseError> {
-        todo!("Implement match statement parsing")
+        // Expect 'match' keyword
+        self.expect_token(TokenKind::Keyword("match".to_string()))?;
+        
+        // Parse subject expression
+        let subject = self.parse_expression()?;
+        
+        // Expect ':'
+        self.expect_token(TokenKind::Colon)?;
+        
+        // Parse match cases
+        let mut cases = Vec::new();
+        while self.check_keyword("case") {
+            self.advance(); // consume 'case'
+            
+            // Parse pattern
+            let pattern = self.parse_pattern()?;
+            
+            // Parse optional guard
+            let guard = if self.check_keyword("if") {
+                self.advance(); // consume 'if'
+                Some(self.parse_expression()?)
+            } else {
+                None
+            };
+            
+            self.expect_token(TokenKind::Colon)?;
+            let body = self.parse_block()?;
+            
+            cases.push(MatchCase {
+                pattern,
+                guard,
+                body,
+                span: self.get_current_span(),
+            });
+        }
+        
+        Ok(Statement::Match {
+            subject,
+            cases,
+            span: self.get_current_span(),
+        })
     }
     
     fn parse_type_alias(&mut self) -> Result<TypeAlias, PythonParseError> {
-        todo!("Implement type alias parsing")
+        // Expect 'type' keyword
+        self.expect_token(TokenKind::Keyword("type".to_string()))?;
+        
+        // Parse alias name
+        let name = if let Some(token) = self.peek() {
+            if let TokenKind::Identifier(ref name) = token.kind {
+                let name = name.clone();
+                self.advance();
+                name
+            } else {
+                return Err(PythonParseError::UnexpectedToken {
+                    expected: "identifier".to_string(),
+                    found: format!("{:?}", token.kind),
+                });
+            }
+        } else {
+            return Err(PythonParseError::UnexpectedEof);
+        };
+        
+        // Parse optional type parameters
+        let type_params = if self.match_token(TokenKind::LeftBracket) {
+            self.advance(); // consume '['
+            let mut params = Vec::new();
+            
+            while !self.check_token(TokenKind::RightBracket) {
+                let param = self.parse_type_parameter()?;
+                params.push(param);
+                
+                if self.match_token(TokenKind::Comma) {
+                    self.advance(); // consume ','
+                } else {
+                    break;
+                }
+            }
+            
+            self.expect_token(TokenKind::RightBracket)?;
+            params
+        } else {
+            Vec::new()
+        };
+        
+        // Expect '='
+        self.expect_token(TokenKind::Assign)?;
+        
+        // Parse type expression
+        let type_expr = self.parse_type_expression()?;
+        
+        Ok(TypeAlias {
+            name,
+            type_parameters: type_params,
+            value: type_expr,
+            span: self.get_current_span(),
+        })
     }
     
     fn parse_expression_or_assignment(&mut self) -> Result<Statement, PythonParseError> {
-        todo!("Implement expression/assignment parsing")
+        // Parse the left side as an expression first
+        let expr = self.parse_expression()?;
+        
+        // Check if this is an assignment
+        if self.check_token(TokenKind::Assign) {
+            self.advance(); // consume '='
+            
+            // Convert expression to assignment target
+            let target = self.expression_to_assignment_target(expr)?;
+            
+            // Parse the right side
+            let value = self.parse_expression()?;
+            
+            Ok(Statement::Assignment {
+                targets: vec![target],
+                value,
+                type_annotation: None, // TODO: Parse type comments
+                span: self.get_current_span(),
+            })
+        } else if self.check_token(TokenKind::PlusAssign) ||
+                  self.check_token(TokenKind::MinusAssign) ||
+                  self.check_token(TokenKind::MultAssign) ||
+                  self.check_token(TokenKind::DivAssign) {
+            // Handle augmented assignment
+            let op_token = self.advance().unwrap();
+            let op = match &op_token.kind {
+                TokenKind::PlusAssign => AugmentedAssignmentOperator::Add,
+                TokenKind::MinusAssign => AugmentedAssignmentOperator::Sub,
+                TokenKind::MultAssign => AugmentedAssignmentOperator::Mult,
+                TokenKind::DivAssign => AugmentedAssignmentOperator::Div,
+                _ => unreachable!(),
+            };
+            
+            let target = self.expression_to_assignment_target(expr)?;
+            let value = self.parse_expression()?;
+            
+            Ok(Statement::AugmentedAssignment {
+                target,
+                operator: op,
+                value,
+                span: self.get_current_span(),
+            })
+        } else {
+            // This is just an expression statement
+            Ok(Statement::Expression {
+                expression: expr,
+                span: self.get_expression_span(&expr),
+            })
+        }
     }
     
     fn parse_return_statement(&mut self) -> Result<Statement, PythonParseError> {
-        todo!("Implement return statement parsing")
+        // Expect 'return' keyword
+        self.expect_token(TokenKind::Keyword("return".to_string()))?;
+        
+        // Parse optional return value
+        let value = if self.is_at_statement_end() {
+            None
+        } else {
+            Some(self.parse_expression()?)
+        };
+        
+        Ok(Statement::Return {
+            value,
+            span: self.get_current_span(),
+        })
     }
     
     fn parse_yield_statement(&mut self) -> Result<Statement, PythonParseError> {
-        todo!("Implement yield statement parsing")
+        // Expect 'yield' keyword
+        self.expect_token(TokenKind::Keyword("yield".to_string()))?;
+        
+        // Parse optional yield value or yield from
+        let value = if self.check_keyword("from") {
+            self.advance(); // consume 'from'
+            Some(YieldValue::From(self.parse_expression()?))
+        } else if !self.is_at_statement_end() {
+            Some(YieldValue::Value(self.parse_expression()?))
+        } else {
+            None
+        };
+        
+        Ok(Statement::Yield {
+            value,
+            is_from: value.is_some(),
+            span: self.get_current_span(),
+        })
     }
     
     fn parse_raise_statement(&mut self) -> Result<Statement, PythonParseError> {
-        todo!("Implement raise statement parsing")
+        // Expect 'raise' keyword
+        self.expect_token(TokenKind::Keyword("raise".to_string()))?;
+        
+        // Parse optional exception and cause
+        if self.is_at_statement_end() {
+            // Bare raise
+            Ok(Statement::Raise {
+                exception: None,
+                cause: None,
+                span: self.get_current_span(),
+            })
+        } else {
+            let exception = self.parse_expression()?;
+            
+            let cause = if self.check_keyword("from") {
+                self.advance(); // consume 'from'
+                Some(self.parse_expression()?)
+            } else {
+                None
+            };
+            
+            Ok(Statement::Raise {
+                exception: Some(exception),
+                cause,
+                span: self.get_current_span(),
+            })
+        }
     }
     
     fn parse_assert_statement(&mut self) -> Result<Statement, PythonParseError> {
-        todo!("Implement assert statement parsing")
+        // Expect 'assert' keyword
+        self.expect_token(TokenKind::Keyword("assert".to_string()))?;
+        
+        // Parse test expression
+        let test = self.parse_expression()?;
+        
+        // Parse optional message
+        let message = if self.check_token(TokenKind::Comma) {
+            self.advance(); // consume ','
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
+        
+        Ok(Statement::Assert {
+            test,
+            msg: message,
+            span: self.get_current_span(),
+        })
     }
     
     fn parse_import_statement(&mut self) -> Result<ImportStatement, PythonParseError> {
-        todo!("Implement import statement parsing")
+        // Expect 'import' keyword
+        self.expect_token(TokenKind::Keyword("import".to_string()))?;
+        
+        // Parse module names
+        let mut names = Vec::new();
+        loop {
+            let module_name = self.parse_dotted_name()?;
+            let alias = if self.check_keyword("as") {
+                self.advance(); // consume 'as'
+                Some(self.expect_identifier()?)
+            } else {
+                None
+            };
+            
+            names.push(ImportedName {
+                name: module_name,
+                alias,
+                span: self.get_current_span(),
+            });
+            
+            if self.check_token(TokenKind::Comma) {
+                self.advance(); // consume ','
+            } else {
+                break;
+            }
+        }
+        
+        Ok(ImportStatement::Import {
+            modules: names,
+            span: self.get_current_span(),
+        })
     }
     
     fn parse_from_import_statement(&mut self) -> Result<ImportStatement, PythonParseError> {
-        todo!("Implement from import statement parsing")
+        // Expect 'from' keyword
+        self.expect_token(TokenKind::Keyword("from".to_string()))?;
+        
+        // Parse module name (with optional relative imports)
+        let mut level = 0;
+        while self.check_token(TokenKind::Dot) {
+            self.advance(); // consume '.'
+            level += 1;
+        }
+        
+        let module = if self.check_keyword("import") {
+            None // from . import ...
+        } else {
+            Some(self.parse_dotted_name()?)
+        };
+        
+        // Expect 'import' keyword
+        self.expect_token(TokenKind::Keyword("import".to_string()))?;
+        
+        // Parse imported names
+        let names = if self.check_token(TokenKind::Star) {
+            self.advance(); // consume '*'
+            vec![ImportedName {
+                name: "*".to_string(),
+                alias: None,
+                span: self.get_current_span(),
+            }]
+        } else {
+            let mut names = Vec::new();
+            
+            // Handle parenthesized imports
+            let has_parens = self.check_token(TokenKind::LeftParen);
+            if has_parens {
+                self.advance(); // consume '('
+            }
+            
+            loop {
+                let name = self.expect_identifier()?;
+                let alias = if self.check_keyword("as") {
+                    self.advance(); // consume 'as'
+                    Some(self.expect_identifier()?)
+                } else {
+                    None
+                };
+                
+                names.push(ImportedName { name, alias, span: self.get_current_span() });
+                
+                if self.check_token(TokenKind::Comma) {
+                    self.advance(); // consume ','
+                } else {
+                    break;
+                }
+            }
+            
+            if has_parens {
+                self.expect_token(TokenKind::RightParen)?;
+            }
+            
+            names
+        };
+        
+        Ok(ImportStatement::FromImport {
+            module,
+            names,
+            level,
+            span: self.get_current_span(),
+        })
     }
     
     fn parse_global_statement(&mut self) -> Result<Statement, PythonParseError> {
-        todo!("Implement global statement parsing")
+        // Expect 'global' keyword
+        self.expect_token(TokenKind::Keyword("global".to_string()))?;
+        
+        // Parse variable names
+        let mut names = Vec::new();
+        loop {
+            let name = self.expect_identifier()?;
+            names.push(name);
+            
+            if self.check_token(TokenKind::Comma) {
+                self.advance(); // consume ','
+            } else {
+                break;
+            }
+        }
+        
+        Ok(Statement::Global {
+            names,
+            span: self.get_current_span(),
+        })
     }
     
     fn parse_nonlocal_statement(&mut self) -> Result<Statement, PythonParseError> {
-        todo!("Implement nonlocal statement parsing")
+        // Expect 'nonlocal' keyword
+        self.expect_token(TokenKind::Keyword("nonlocal".to_string()))?;
+        
+        // Parse variable names
+        let mut names = Vec::new();
+        loop {
+            let name = self.expect_identifier()?;
+            names.push(name);
+            
+            if self.check_token(TokenKind::Comma) {
+                self.advance(); // consume ','
+            } else {
+                break;
+            }
+        }
+        
+        Ok(Statement::Nonlocal {
+            names,
+            span: self.get_current_span(),
+        })
     }
     
     fn parse_delete_statement(&mut self) -> Result<Statement, PythonParseError> {
-        todo!("Implement delete statement parsing")
+        // Expect 'del' keyword
+        self.expect_token(TokenKind::Keyword("del".to_string()))?;
+        
+        // Parse targets to delete
+        let mut targets = Vec::new();
+        loop {
+            let target = self.parse_assignment_target()?;
+            targets.push(target);
+            
+            if self.check_token(TokenKind::Comma) {
+                self.advance(); // consume ','
+            } else {
+                break;
+            }
+        }
+        
+        Ok(Statement::Delete {
+            targets,
+            span: self.get_current_span(),
+        })
     }
     
     fn parse_expression(&mut self) -> Result<Expression, PythonParseError> {

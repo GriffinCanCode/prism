@@ -382,11 +382,14 @@ impl SemanticTypeInference {
         // Apply domain patterns
         let domain_context = self.domain_knowledge.classify_literal(literal);
 
+        // Generate semantic constraints based on literal type and domain
+        let constraints = self.generate_literal_constraints(literal, &base_type, &domain_context)?;
+
         Ok(InferredType {
             type_info: base_type,
             confidence: 0.9, // High confidence for literals
             inference_source: InferenceSource::Semantic,
-            constraints: Vec::new(), // TODO: Add semantic constraints
+            constraints,
             ai_metadata: None, // Will be populated later
             span,
         })
@@ -753,6 +756,211 @@ impl SemanticTypeInference {
 
     fn looks_like_phone_number(&self, value: &str) -> bool {
         value.chars().filter(|c| c.is_ascii_digit()).count() >= 7
+    }
+    
+    /// Generate semantic constraints for literals
+    fn generate_literal_constraints(
+        &self,
+        literal: &Literal,
+        base_type: &SemanticType,
+        domain_context: &Option<String>,
+    ) -> SemanticResult<Vec<SemanticConstraint>> {
+        let mut constraints = Vec::new();
+        
+        match literal {
+            Literal::Integer(value) => {
+                // Range constraints for integers
+                constraints.push(SemanticConstraint::Range {
+                    min: Some(*value),
+                    max: Some(*value),
+                });
+                
+                // Domain-specific constraints
+                if let Some(domain) = domain_context {
+                    match domain.as_str() {
+                        "financial" => {
+                            if *value < 0 {
+                                constraints.push(SemanticConstraint::BusinessRule {
+                                    rule: "Negative financial values may require special handling".to_string(),
+                                    severity: ConstraintSeverity::Warning,
+                                });
+                            }
+                        }
+                        "identity" => {
+                            if *value <= 0 {
+                                constraints.push(SemanticConstraint::BusinessRule {
+                                    rule: "Identity values must be positive".to_string(),
+                                    severity: ConstraintSeverity::Error,
+                                });
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            
+            Literal::Float(value) => {
+                // Precision constraints for floats
+                constraints.push(SemanticConstraint::Precision {
+                    decimal_places: self.count_decimal_places(*value),
+                });
+                
+                // Special value constraints
+                if value.is_nan() {
+                    constraints.push(SemanticConstraint::BusinessRule {
+                        rule: "NaN values require explicit handling".to_string(),
+                        severity: ConstraintSeverity::Warning,
+                    });
+                }
+                
+                if value.is_infinite() {
+                    constraints.push(SemanticConstraint::BusinessRule {
+                        rule: "Infinite values require explicit handling".to_string(),
+                        severity: ConstraintSeverity::Warning,
+                    });
+                }
+            }
+            
+            Literal::String(s) => {
+                // Length constraints for strings
+                constraints.push(SemanticConstraint::Length {
+                    min: Some(s.len() as i64),
+                    max: Some(s.len() as i64),
+                });
+                
+                // Format validation constraints
+                if let Some(domain) = domain_context {
+                    match domain.as_str() {
+                        "email" => {
+                            if !self.is_valid_email_format(s) {
+                                constraints.push(SemanticConstraint::BusinessRule {
+                                    rule: "String should be valid email format".to_string(),
+                                    severity: ConstraintSeverity::Error,
+                                });
+                            }
+                        }
+                        "url" => {
+                            if !self.is_valid_url_format(s) {
+                                constraints.push(SemanticConstraint::BusinessRule {
+                                    rule: "String should be valid URL format".to_string(),
+                                    severity: ConstraintSeverity::Error,
+                                });
+                            }
+                        }
+                        "phone" => {
+                            if !self.is_valid_phone_format(s) {
+                                constraints.push(SemanticConstraint::BusinessRule {
+                                    rule: "String should be valid phone number format".to_string(),
+                                    severity: ConstraintSeverity::Warning,
+                                });
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                
+                // Character set constraints
+                if !s.is_ascii() {
+                    constraints.push(SemanticConstraint::CharacterSet {
+                        allowed_sets: vec!["unicode".to_string()],
+                        required: true,
+                    });
+                }
+            }
+            
+            Literal::Boolean(_) => {
+                // Boolean literals are generally unconstrained
+                // But we can add domain-specific rules
+                if let Some(domain) = domain_context {
+                    if domain == "security" {
+                        constraints.push(SemanticConstraint::BusinessRule {
+                            rule: "Boolean security flags should be explicitly documented".to_string(),
+                            severity: ConstraintSeverity::Info,
+                        });
+                    }
+                }
+            }
+            
+            Literal::Null => {
+                // Null values require nullability constraints
+                constraints.push(SemanticConstraint::Nullability {
+                    nullable: true,
+                    null_handling: NullHandling::Explicit,
+                });
+            }
+            
+            Literal::Money { amount, currency } => {
+                // Financial constraints
+                constraints.push(SemanticConstraint::BusinessRule {
+                    rule: format!("Currency {} must be valid ISO 4217 code", currency),
+                    severity: ConstraintSeverity::Error,
+                });
+                
+                if *amount < 0.0 {
+                    constraints.push(SemanticConstraint::BusinessRule {
+                        rule: "Negative money amounts require explicit handling".to_string(),
+                        severity: ConstraintSeverity::Warning,
+                    });
+                }
+                
+                // Precision constraint for money
+                constraints.push(SemanticConstraint::Precision {
+                    decimal_places: 2, // Standard for most currencies
+                });
+            }
+            
+            Literal::Duration { value, unit } => {
+                // Temporal constraints
+                constraints.push(SemanticConstraint::BusinessRule {
+                    rule: format!("Time unit '{}' must be valid", unit),
+                    severity: ConstraintSeverity::Error,
+                });
+                
+                if *value < 0.0 {
+                    constraints.push(SemanticConstraint::BusinessRule {
+                        rule: "Negative durations require explicit handling".to_string(),
+                        severity: ConstraintSeverity::Warning,
+                    });
+                }
+            }
+            
+            Literal::Regex(pattern) => {
+                // Regex pattern constraints
+                if let Err(_) = regex::Regex::new(pattern) {
+                    constraints.push(SemanticConstraint::BusinessRule {
+                        rule: "Regex pattern must be valid".to_string(),
+                        severity: ConstraintSeverity::Error,
+                    });
+                }
+            }
+        }
+        
+        Ok(constraints)
+    }
+    
+    // Helper methods for validation
+    fn count_decimal_places(&self, value: f64) -> u8 {
+        let s = format!("{}", value);
+        if let Some(dot_pos) = s.find('.') {
+            (s.len() - dot_pos - 1).min(255) as u8
+        } else {
+            0
+        }
+    }
+    
+    fn is_valid_email_format(&self, s: &str) -> bool {
+        // Simple email validation - in practice, use a proper email validator
+        s.contains('@') && s.contains('.') && s.len() > 5
+    }
+    
+    fn is_valid_url_format(&self, s: &str) -> bool {
+        // Simple URL validation - in practice, use a proper URL parser
+        s.starts_with("http://") || s.starts_with("https://") || s.starts_with("ftp://")
+    }
+    
+    fn is_valid_phone_format(&self, s: &str) -> bool {
+        // Simple phone validation - in practice, use a proper phone validator
+        s.chars().any(|c| c.is_ascii_digit()) && s.len() >= 10
     }
 }
 

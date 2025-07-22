@@ -572,16 +572,9 @@ impl crate::symbols::SymbolManager for SymbolTable {
         SymbolTable::register_symbol(self, symbol_data)
     }
     
-    fn get_symbol(&self, symbol: &Symbol) -> Option<&SymbolData> {
-        // This would require returning a reference, which is challenging with RwLock
-        // For now, we'll need to adjust the trait or use a different approach
-        // This is a design decision that would need to be resolved
-        unimplemented!("get_symbol with reference return requires design adjustment")
-    }
-    
-    fn get_symbol_mut(&mut self, symbol: &Symbol) -> Option<&mut SymbolData> {
-        // Similar issue with mutable references
-        unimplemented!("get_symbol_mut with reference return requires design adjustment")
+    fn get_symbol(&self, symbol: &Symbol) -> Option<SymbolData> {
+        // Return owned data instead of reference due to Arc<RwLock> design
+        SymbolTable::get_symbol(self, symbol)
     }
     
     fn find_symbols<F>(&self, predicate: F) -> Vec<SymbolData>

@@ -8,8 +8,7 @@
 //! - **AI metadata**: Rich metadata for AI comprehension of actor behavior
 
 use crate::{authority, resources, intelligence};
-use prism_common::span::Span;
-use prism_effects::Effect;
+use crate::resources::effects::Effect;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Mutex};
 use std::time::{Duration, SystemTime, Instant};
@@ -255,8 +254,57 @@ impl ActorContext {
 
     /// Stop this actor
     pub fn stop(&self) {
-        // TODO: Implement actor stopping
-        todo!("Implement actor stopping")
+        // Implementation for actor stopping
+        if let Some(actor_system) = GLOBAL_ACTOR_SYSTEM.get() {
+            // Send stop message to the actor
+            let stop_message = ActorMessage {
+                from: ActorId(0), // System message
+                to: self.actor_id,
+                message_type: MessageType::Stop,
+                payload: serde_json::Value::Null,
+                timestamp: std::time::Instant::now(),
+                priority: MessagePriority::High,
+            };
+
+            // Try to send the stop message
+            if let Ok(mut system) = actor_system.write() {
+                if let Some(actor_state) = system.actors.get_mut(&self.actor_id) {
+                    // Mark actor as stopping
+                    actor_state.state = ActorState::Stopping;
+                    
+                    // Send stop message to actor's mailbox
+                    let _ = actor_state.mailbox_sender.try_send(stop_message);
+                    
+                    // Remove from active actors list
+                    system.actors.remove(&self.actor_id);
+                    
+                    // Notify supervisor if this actor has one
+                    if let Some(supervisor_id) = actor_state.supervisor {
+                        if let Some(supervisor_state) = system.actors.get_mut(&supervisor_id) {
+                            // Remove this actor from supervisor's children
+                            supervisor_state.children.retain(|&child_id| child_id != self.actor_id);
+                        }
+                    }
+                    
+                    // Stop all child actors
+                    let children_to_stop: Vec<ActorId> = actor_state.children.clone();
+                    for child_id in children_to_stop {
+                        if let Some(child_state) = system.actors.get_mut(&child_id) {
+                            child_state.state = ActorState::Stopping;
+                            let stop_child_message = ActorMessage {
+                                from: self.actor_id,
+                                to: child_id,
+                                message_type: MessageType::Stop,
+                                payload: serde_json::Value::Null,
+                                timestamp: std::time::Instant::now(),
+                                priority: MessagePriority::High,
+                            };
+                            let _ = child_state.mailbox_sender.try_send(stop_child_message);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Record an effect execution
@@ -265,7 +313,7 @@ impl ActorContext {
         F: std::future::Future<Output = Result<T, ActorError>>,
     {
         // For now, we are not using the execution context, so we can pass a dummy one.
-        let exec_context = crate::execution::ExecutionContext::new(
+        let exec_context = crate::platform::execution::ExecutionContext::new(
             crate::execution::ComponentId(self.actor_id.0),
             effect.clone(),
         );

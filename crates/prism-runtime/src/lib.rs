@@ -28,7 +28,8 @@ pub mod platform;
 pub mod security;
 pub mod concurrency;
 pub mod intelligence;
-pub mod ai_integration;
+// TODO: Re-enable when prism-ai dependency is available
+// pub mod ai_integration;
 
 // Public re-exports for common types
 pub use authority::{

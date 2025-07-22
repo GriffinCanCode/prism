@@ -138,186 +138,231 @@ impl IntegratedSymbolSystem {
         })
     }
 
-    /// Process a complete program with integrated symbol management
-    pub async fn process_program(&mut self, program: &Program) -> CompilerResult<IntegratedProcessingResult> {
+    /// Process program and extract all symbols with cross-crate resolution
+    pub async fn process_program(&mut self, program: &Program) -> CompilerResult<IntegrationResult> {
         let start_time = std::time::Instant::now();
-        info!("Starting integrated symbol processing for program");
+        let mut result = IntegrationResult::default();
+        
+        info!("Processing program for symbol integration: {} items", program.items.len());
 
-        let mut result = IntegratedProcessingResult {
-            extraction_stats: ExtractionStats::default(),
-            modules_processed: 0,
-            integrations_performed: 0,
-            validation_results: Vec::new(),
-            processing_time_ms: 0,
-        };
+        // Step 1: Extract symbols from AST
+        let extraction_result = self.symbol_extractor.extract_from_program(program).await?;
+        result.symbols_extracted = extraction_result.stats.total_symbols;
 
-        // Phase 1: Extract symbols from AST
-        info!("Phase 1: Extracting symbols from AST");
-        result.extraction_stats = self.symbol_extractor.extract_program_symbols(program).await?;
-
-        // Phase 2: Process modules with Smart Module Registry
-        info!("Phase 2: Processing modules with Smart Module Registry");
-        result.modules_processed = self.process_modules_with_registry(program).await?;
-
-        // Phase 3: Perform cross-system integrations
-        if self.config.enable_cross_system_integration {
-            info!("Phase 3: Performing cross-system integrations");
-            result.integrations_performed = self.perform_cross_system_integrations().await?;
+        // Step 2: Register symbols in symbol table
+        for symbol_data in &extraction_result.symbols {
+            self.symbol_table.register_symbol(symbol_data.clone())?;
         }
 
-        // Phase 4: Validate integrated system
-        if self.config.enable_comprehensive_validation {
-            info!("Phase 4: Validating integrated system");
-            result.validation_results = self.validate_integrated_system().await?;
+        // Step 3: Process modules and register with Smart Module Registry
+        for item in &program.items {
+            if let Item::Module(module_decl) = &item.inner {
+                self.process_module_registration(module_decl, &item.node_id).await?;
+                result.modules_registered += 1;
+            }
         }
 
-        // Phase 5: Synchronize with cache
-        if self.config.enable_real_time_sync {
-            info!("Phase 5: Synchronizing with cache");
-            self.synchronize_with_cache().await?;
-        }
+        // Step 4: Perform cross-crate symbol resolution
+        let resolution_results = self.perform_cross_crate_resolution(&extraction_result.symbols).await?;
+        result.symbols_resolved = resolution_results.len();
 
+        // Step 5: Update semantic database with resolved symbols
+        self.update_semantic_database(&resolution_results).await?;
+
+        // Step 6: Generate integration statistics
         result.processing_time_ms = start_time.elapsed().as_millis() as u64;
-
-        info!(
-            "Integrated symbol processing completed in {}ms: {} symbols, {} modules",
-            result.processing_time_ms,
-            result.extraction_stats.symbols_extracted,
-            result.modules_processed
-        );
+        result.integration_diagnostics = extraction_result.diagnostics;
 
         Ok(result)
     }
 
-    /// Process modules with the Smart Module Registry
-    async fn process_modules_with_registry(&self, program: &Program) -> CompilerResult<usize> {
-        let mut modules_processed = 0;
+    /// Register a module with the Smart Module Registry
+    async fn process_module_registration(
+        &self, 
+        module_decl: &ModuleDecl, 
+        node_id: &NodeId
+    ) -> CompilerResult<()> {
+        debug!("Registering module with Smart Module Registry: {}", module_decl.name);
 
-        for item in &program.items {
-            if let Item::Module(module_decl) = &item.kind {
-                // Register module with Smart Module Registry
-                self.module_registry.register_module(
-                    module_decl,
-                    std::path::PathBuf::from("placeholder.prsm"), // Would be actual file path
-                    crate::scope::ScopeId::new(0), // Would be actual scope ID
-                    item.id,
-                ).await?;
+        // Create a dummy scope ID and file path for now
+        // TODO: Get actual scope ID from scope tree integration
+        let scope_id = prism_compiler::scope::ScopeId::new(node_id.0 as u32);
+        let file_path = std::path::PathBuf::from(format!("{}.prism", module_decl.name));
 
-                modules_processed += 1;
-                debug!("Processed module with registry: {}", module_decl.name);
+        self.module_registry
+            .register_module(module_decl, file_path, scope_id, *node_id)
+            .await?;
+
+        Ok(())
+    }
+
+    /// Perform cross-crate symbol resolution for extracted symbols
+    async fn perform_cross_crate_resolution(
+        &self,
+        symbols: &[SymbolData],
+    ) -> CompilerResult<Vec<CrossCrateResolutionResult>> {
+        let mut resolution_results = Vec::new();
+
+        info!("Performing cross-crate resolution for {} symbols", symbols.len());
+
+        for symbol_data in symbols {
+            // Create resolution context for this symbol
+            let context = self.create_resolution_context(symbol_data).await?;
+
+            // Attempt to resolve symbol references within the symbol
+            let resolution_result = self.resolve_symbol_references(symbol_data, &context).await?;
+
+            resolution_results.push(resolution_result);
+        }
+
+        Ok(resolution_results)
+    }
+
+    /// Create resolution context for a symbol
+    async fn create_resolution_context(&self, symbol_data: &SymbolData) -> CompilerResult<ResolutionContext> {
+        // Extract current scope from symbol location
+        let current_scope = self.scope_tree.find_scope_for_location(&symbol_data.location);
+
+        // Extract current module from symbol metadata
+        let current_module = symbol_data.metadata.as_ref()
+            .and_then(|meta| meta.module_context.as_ref())
+            .map(|ctx| ctx.module_name.clone());
+
+        // Get available capabilities from effect system
+        let available_capabilities = self.extract_available_capabilities(symbol_data).await?;
+
+        Ok(ResolutionContext {
+            current_scope,
+            current_module,
+            available_capabilities,
+            effect_context: None, // TODO: Extract from effect registry
+            syntax_style: "canonical".to_string(),
+            preferences: crate::resolution::ResolutionPreferences::default(),
+        })
+    }
+
+    /// Resolve symbol references within a symbol's definition
+    async fn resolve_symbol_references(
+        &self,
+        symbol_data: &SymbolData,
+        context: &ResolutionContext,
+    ) -> CompilerResult<CrossCrateResolutionResult> {
+        let mut resolved_references = Vec::new();
+        let mut resolution_errors = Vec::new();
+
+        // Extract symbol references from the symbol's definition
+        let symbol_references = self.extract_symbol_references(symbol_data)?;
+
+        for reference in symbol_references {
+            match self.resolve_single_reference(&reference, context).await {
+                Ok(resolved) => {
+                    resolved_references.push(resolved);
+                }
+                Err(e) => {
+                    warn!("Failed to resolve reference '{}': {}", reference, e);
+                    resolution_errors.push(format!("Failed to resolve '{}': {}", reference, e));
+                }
             }
         }
 
-        Ok(modules_processed)
-    }
-
-    /// Perform cross-system integrations
-    async fn perform_cross_system_integrations(&self) -> CompilerResult<usize> {
-        let mut integrations = 0;
-
-        // Integration 1: Sync symbols with semantic database
-        self.sync_symbols_with_semantic_db().await?;
-        integrations += 1;
-
-        // Integration 2: Update scope tree with symbol information
-        self.update_scope_tree_with_symbols().await?;
-        integrations += 1;
-
-        // Integration 3: Cross-reference module registry with symbol table
-        self.cross_reference_modules_and_symbols().await?;
-        integrations += 1;
-
-        Ok(integrations)
-    }
-
-    /// Validate the integrated system
-    async fn validate_integrated_system(&self) -> CompilerResult<Vec<ValidationResult>> {
-        let mut validations = Vec::new();
-
-        // Validation 1: Symbol consistency
-        validations.push(self.validate_symbol_consistency().await?);
-
-        // Validation 2: Module coherence
-        validations.push(self.validate_module_coherence().await?);
-
-        // Validation 3: Cross-reference integrity
-        validations.push(self.validate_cross_references().await?);
-
-        // Validation 4: Semantic integration
-        validations.push(self.validate_semantic_integration().await?);
-
-        Ok(validations)
-    }
-
-    /// Synchronize with compilation cache
-    async fn synchronize_with_cache(&self) -> CompilerResult<()> {
-        // Update cache with symbol information
-        // This would integrate with the existing cache system
-        debug!("Synchronized symbol information with cache");
-        Ok(())
-    }
-
-    // Private helper methods for integrations and validations
-
-    async fn sync_symbols_with_semantic_db(&self) -> CompilerResult<()> {
-        // Synchronize symbol table with semantic database
-        // This would use existing semantic database APIs
-        debug!("Synchronized symbols with semantic database");
-        Ok(())
-    }
-
-    async fn update_scope_tree_with_symbols(&self) -> CompilerResult<()> {
-        // Update scope tree with symbol information
-        // This would use existing scope tree APIs
-        debug!("Updated scope tree with symbol information");
-        Ok(())
-    }
-
-    async fn cross_reference_modules_and_symbols(&self) -> CompilerResult<()> {
-        // Cross-reference module registry with symbol table
-        // This would ensure consistency between systems
-        debug!("Cross-referenced modules and symbols");
-        Ok(())
-    }
-
-    async fn validate_symbol_consistency(&self) -> CompilerResult<ValidationResult> {
-        // Validate that symbols are consistent across systems
-        Ok(ValidationResult {
-            validation_type: ValidationType::SymbolConsistency,
-            success: true,
-            issues: Vec::new(),
-            recommendations: Vec::new(),
+        Ok(CrossCrateResolutionResult {
+            original_symbol: symbol_data.symbol,
+            resolved_references,
+            resolution_errors,
+            cross_crate_dependencies: self.identify_cross_crate_dependencies(&resolved_references),
         })
     }
 
-    async fn validate_module_coherence(&self) -> CompilerResult<ValidationResult> {
-        // Validate that modules are coherent and well-structured
-        Ok(ValidationResult {
-            validation_type: ValidationType::ModuleCoherence,
-            success: true,
-            issues: Vec::new(),
-            recommendations: Vec::new(),
+    /// Extract symbol references from a symbol's definition
+    fn extract_symbol_references(&self, symbol_data: &SymbolData) -> CompilerResult<Vec<String>> {
+        let mut references = Vec::new();
+
+        // Extract from symbol metadata if available
+        if let Some(metadata) = &symbol_data.metadata {
+            // Extract from documentation references
+            if let Some(doc) = &metadata.documentation {
+                references.extend(doc.see_also.clone());
+                references.extend(doc.related_symbols.clone());
+            }
+
+            // Extract from business context
+            if let Some(business) = &metadata.business_context {
+                references.extend(business.related_entities.clone());
+                references.extend(business.dependencies.clone());
+            }
+        }
+
+        // TODO: Extract from AST node analysis
+        // This would require AST traversal to find identifier references
+
+        Ok(references)
+    }
+
+    /// Resolve a single symbol reference using the integrated resolver
+    async fn resolve_single_reference(
+        &self,
+        reference: &str,
+        context: &ResolutionContext,
+    ) -> CompilerResult<ResolvedReference> {
+        // Use the existing SymbolResolver infrastructure
+        // Note: This would require the SymbolResolver to be available in the integration
+        // For now, we'll create a placeholder implementation
+
+        Ok(ResolvedReference {
+            original_name: reference.to_string(),
+            resolved_symbol: None, // TODO: Actual resolution
+            resolution_path: "placeholder".to_string(),
+            confidence: 0.5,
+            cross_crate_source: None,
         })
     }
 
-    async fn validate_cross_references(&self) -> CompilerResult<ValidationResult> {
-        // Validate cross-references between systems
-        Ok(ValidationResult {
-            validation_type: ValidationType::CrossReference,
-            success: true,
-            issues: Vec::new(),
-            recommendations: Vec::new(),
-        })
+    /// Extract available capabilities for a symbol
+    async fn extract_available_capabilities(&self, symbol_data: &SymbolData) -> CompilerResult<Vec<String>> {
+        let mut capabilities = Vec::new();
+
+        // Extract from symbol metadata
+        if let Some(metadata) = &symbol_data.metadata {
+            if let Some(effects) = &metadata.effects {
+                capabilities.extend(effects.required_capabilities.clone());
+                capabilities.extend(effects.provided_capabilities.clone());
+            }
+        }
+
+        // TODO: Query effect registry for additional capabilities
+        
+        Ok(capabilities)
     }
 
-    async fn validate_semantic_integration(&self) -> CompilerResult<ValidationResult> {
-        // Validate semantic integration
-        Ok(ValidationResult {
-            validation_type: ValidationType::SemanticIntegration,
-            success: true,
-            issues: Vec::new(),
-            recommendations: Vec::new(),
-        })
+    /// Identify cross-crate dependencies from resolved references
+    fn identify_cross_crate_dependencies(&self, resolved_refs: &[ResolvedReference]) -> Vec<CrossCrateDependency> {
+        let mut dependencies = Vec::new();
+
+        for resolved_ref in resolved_refs {
+            if let Some(source) = &resolved_ref.cross_crate_source {
+                dependencies.push(CrossCrateDependency {
+                    target_crate: source.clone(),
+                    symbol_name: resolved_ref.original_name.clone(),
+                    dependency_type: DependencyType::Symbol,
+                });
+            }
+        }
+
+        dependencies
+    }
+
+    /// Update semantic database with resolution results
+    async fn update_semantic_database(&self, results: &[CrossCrateResolutionResult]) -> CompilerResult<()> {
+        for result in results {
+            // Update semantic database with resolved symbol information
+            // This would integrate with the existing SemanticDatabase
+            debug!("Updating semantic database for symbol: {:?}", result.original_symbol);
+            
+            // TODO: Actual semantic database update
+            // self.semantic_db.update_symbol_resolution(result).await?;
+        }
+        
+        Ok(())
     }
 
     /// Get comprehensive symbol statistics
@@ -371,6 +416,85 @@ pub struct SymbolStatistics {
     pub semantic_entries: usize,
     /// Nodes in scope tree
     pub scope_nodes: usize,
+}
+
+/// Result of integrated symbol processing
+#[derive(Debug, Default)]
+pub struct IntegrationResult {
+    /// Number of symbols extracted
+    pub symbols_extracted: usize,
+    /// Number of symbols resolved
+    pub symbols_resolved: usize,
+    /// Number of modules registered
+    pub modules_registered: usize,
+    /// Processing time in milliseconds
+    pub processing_time_ms: u64,
+    /// Integration diagnostics
+    pub integration_diagnostics: Vec<String>,
+}
+
+/// Result of cross-crate symbol resolution
+#[derive(Debug)]
+pub struct CrossCrateResolutionResult {
+    /// Original symbol that was processed
+    pub original_symbol: Symbol,
+    /// Successfully resolved references
+    pub resolved_references: Vec<ResolvedReference>,
+    /// Resolution errors encountered
+    pub resolution_errors: Vec<String>,
+    /// Cross-crate dependencies identified
+    pub cross_crate_dependencies: Vec<CrossCrateDependency>,
+}
+
+/// A resolved symbol reference
+#[derive(Debug)]
+pub struct ResolvedReference {
+    /// Original reference name
+    pub original_name: String,
+    /// Resolved symbol (if successful)
+    pub resolved_symbol: Option<Symbol>,
+    /// Resolution path taken
+    pub resolution_path: String,
+    /// Confidence in resolution (0.0 to 1.0)
+    pub confidence: f64,
+    /// Cross-crate source (if applicable)
+    pub cross_crate_source: Option<String>,
+}
+
+/// Cross-crate dependency information
+#[derive(Debug)]
+pub struct CrossCrateDependency {
+    /// Target crate name
+    pub target_crate: String,
+    /// Symbol name
+    pub symbol_name: String,
+    /// Type of dependency
+    pub dependency_type: DependencyType,
+}
+
+/// Types of cross-crate dependencies
+#[derive(Debug)]
+pub enum DependencyType {
+    Symbol,
+    Module,
+    Type,
+    Effect,
+    Capability,
+}
+
+/// Integration statistics
+#[derive(Debug)]
+pub struct IntegrationStatistics {
+    /// Total symbols processed
+    pub total_symbols_processed: usize,
+    /// Successful resolutions
+    pub successful_resolutions: usize,
+    /// Failed resolutions
+    pub failed_resolutions: usize,
+    /// Cross-crate dependencies found
+    pub cross_crate_dependencies: usize,
+    /// Cache hit ratio
+    pub cache_hit_ratio: f64,
 }
 
 /// Builder for IntegratedSymbolSystem

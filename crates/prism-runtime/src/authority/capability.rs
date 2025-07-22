@@ -12,8 +12,7 @@
 //! 4. **Audit Trail**: All capability usage is logged for security analysis
 //! 5. **AI-Comprehensible**: Structured capability metadata for AI analysis
 
-use prism_common::{span::Span, symbol::Symbol};
-use prism_effects::Effect;
+use crate::resources::effects::Effect;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock, Mutex};
 use std::time::{SystemTime, Duration};
@@ -66,7 +65,7 @@ impl Capability {
     }
 
     /// Check if this capability authorizes a specific operation
-    pub fn authorizes(&self, operation: &Operation, context: &crate::execution::ExecutionContext) -> bool {
+    pub fn authorizes(&self, operation: &Operation, context: &crate::platform::execution::ExecutionContext) -> bool {
         if !self.active || SystemTime::now() > self.valid_until {
             return false;
         }
@@ -377,7 +376,7 @@ impl ConstraintSet {
     }
 
     /// Check if all constraints allow an operation
-    pub fn allows(&self, operation: &Operation, context: &crate::execution::ExecutionContext) -> bool {
+    pub fn allows(&self, operation: &Operation, context: &crate::platform::execution::ExecutionContext) -> bool {
         self.time_constraints.iter().all(|c| c.allows(operation, context)) &&
         self.rate_limits.iter().all(|c| c.allows(operation, context)) &&
         self.resource_limits.iter().all(|c| c.allows(operation, context)) &&
@@ -424,7 +423,7 @@ impl CapabilitySet {
     }
 
     /// Check if the set contains a capability that authorizes an operation
-    pub fn authorizes(&self, operation: &Operation, context: &crate::execution::ExecutionContext) -> bool {
+    pub fn authorizes(&self, operation: &Operation, context: &crate::platform::execution::ExecutionContext) -> bool {
         self.capabilities
             .values()
             .any(|cap| cap.authorizes(operation, context))
@@ -548,7 +547,7 @@ impl CapabilityManager {
         &self,
         component_id: ComponentId,
         operation: &Operation,
-        context: &crate::execution::ExecutionContext,
+        context: &crate::platform::execution::ExecutionContext,
     ) -> Result<bool, CapabilityError> {
         let components = self.component_capabilities.read().unwrap();
         let capability_set = components.get(&component_id)
@@ -573,7 +572,7 @@ impl CapabilityManager {
     pub fn validate_capabilities(
         &self,
         capabilities: &CapabilitySet,
-        context: &crate::execution::ExecutionContext,
+        context: &crate::platform::execution::ExecutionContext,
     ) -> Result<(), CapabilityError> {
         // Remove expired capabilities
         let mut capabilities = capabilities.clone();
@@ -848,7 +847,7 @@ impl MemoryRegion {
 
 // Additional placeholder implementations for constraints
 impl TimeConstraint {
-    fn allows(&self, _operation: &Operation, _context: &crate::execution::ExecutionContext) -> bool {
+    fn allows(&self, _operation: &Operation, _context: &crate::platform::execution::ExecutionContext) -> bool {
         true // Placeholder implementation
     }
 
@@ -858,19 +857,19 @@ impl TimeConstraint {
 }
 
 impl RateLimit {
-    fn allows(&self, _operation: &Operation, _context: &crate::execution::ExecutionContext) -> bool {
+    fn allows(&self, _operation: &Operation, _context: &crate::platform::execution::ExecutionContext) -> bool {
         true // Placeholder implementation
     }
 }
 
 impl ResourceLimit {
-    fn allows(&self, _operation: &Operation, _context: &crate::execution::ExecutionContext) -> bool {
+    fn allows(&self, _operation: &Operation, _context: &crate::platform::execution::ExecutionContext) -> bool {
         true // Placeholder implementation
     }
 }
 
 impl ContextConstraint {
-    fn allows(&self, _operation: &Operation, _context: &crate::execution::ExecutionContext) -> bool {
+    fn allows(&self, _operation: &Operation, _context: &crate::platform::execution::ExecutionContext) -> bool {
         true // Placeholder implementation
     }
 }

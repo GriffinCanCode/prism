@@ -8,7 +8,7 @@
 //! - **AI metadata**: Rich metadata for AI comprehension of async patterns
 
 use crate::{authority, resources, intelligence};
-use prism_effects::Effect;
+use crate::resources::effects::Effect;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Mutex, atomic::{AtomicU64, Ordering}};
 use std::time::{Duration, SystemTime, Instant};
@@ -190,7 +190,7 @@ pub struct AsyncContext {
     /// Cancellation token
     pub cancellation_token: CancellationToken,
     /// Effect tracker handle
-    pub effect_handle: resources::EffectHandle,
+    pub effect_id: resources::EffectId,
     /// AI metadata collector
     pub ai_collector: Arc<intelligence::AIMetadataCollector>,
 }
@@ -319,14 +319,14 @@ impl AsyncRuntime {
         };
 
         // Create async context
-        let effect_handle = resources::EffectHandle::new(1); // TODO: Proper effect handle
+        let effect_id = resources::EffectId::new(); // TODO: Proper effect tracking
         let ai_collector = Arc::new(intelligence::AIMetadataCollector::new().unwrap()); // TODO: Proper error handling
 
         let context = AsyncContext {
             task_id,
             capabilities,
             cancellation_token: child_token.clone(),
-            effect_handle,
+            effect_id,
             ai_collector,
         };
 

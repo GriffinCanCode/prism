@@ -42,6 +42,7 @@ Coding conventions, best practices, and idiomatic patterns.
 | [PLD-007](./PLD-007.md) | Interoperability System | Planned | High | 0.2.0 | PLD-001 |
 | [PLD-008](./PLD-008.md) | Metaprogramming System | Planned | Medium | 0.4.0 | PLD-001, PLD-002 |
 | [PLD-009](./PLD-009.md) | Query-Based Compilation | Planned | Core | 0.1.0 | PLD-002 |
+| [PLD-010](./PLD-010.md) | Multi-Target Compilation Possibilities | Draft | High | 0.2.0 | PLT-100, PLT-101 |
 
 
 ### Standard Library (PLD-100 to PLD-199)

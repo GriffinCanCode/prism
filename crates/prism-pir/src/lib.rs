@@ -71,6 +71,7 @@ pub mod effects;
 pub use semantic::{
     PrismIR, PIRModule, PIRFunction, PIRSemanticType, PIRExpression,
     SemanticTypeRegistry, EffectGraph, CohesionMetrics, PIRMetadata,
+    ResourceLimits, ResourceUsageDelta,
 };
 
 pub use business::{
