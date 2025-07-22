@@ -338,6 +338,54 @@ function process_payment_batch(payments: Array<PaymentInstruction>) -> Result<Ba
 }
 ```
 
+#### PEP-009: PHP Compilation Target
+**Status**: Draft  
+**Type**: Feature
+```prism
+// Web development with WordPress/CMS integration and type safety
+function process_customer_transaction(customer: Customer, amount: MoneyAmount) -> Result<TransactionResult, BusinessError>
+    requires DatabaseAccess, AuditLogging, WordPressIntegration
+{
+    // Type-safe web development with business rule enforcement
+}
+```
+
+#### PEP-010: OCaml Compilation Target
+**Status**: Draft  
+**Type**: Feature
+```prism
+// Functional programming with formal verification and mathematical rigor
+function bayesian_inference(prior: Distribution<T>, evidence: StatisticalSample<T>) -> Result<Distribution<T>, StatisticalError>
+    requires MathematicalComputation, StatisticalValidation, FormalVerification
+{
+    // Mathematically sound computation with formal proofs
+}
+```
+
+#### PEP-011: CUDA Compilation Target
+**Status**: Draft  
+**Type**: Feature
+```prism
+// GPU computing for AI/ML and high-performance parallel processing
+function monte_carlo_simulation(scenarios: Array<MarketScenario>, iterations: Integer) -> Result<RiskMetrics, ComputationError>
+    requires GPUComputing, MassiveParallelism, FinancialMath
+{
+    // GPU-accelerated computation with type-safe parallel algorithms
+}
+```
+
+#### PEP-012: Dart Compilation Target
+**Status**: Draft  
+**Type**: Feature
+```prism
+// Cross-platform mobile development with Flutter integration
+function build_mobile_dashboard(user: AuthenticatedUser, data: AppData) -> MobileDashboard
+    requires MobileUI, CrossPlatformDeployment, StateManagement
+{
+    // Type-safe mobile development with business logic preservation
+}
+```
+
 ### Implemented Targets
 
 The following compilation targets are already implemented and stable:
