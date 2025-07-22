@@ -49,7 +49,7 @@
 //! ```
 
 // Re-export the capability system with the same API
-mod capability;
+pub mod capability;
 
 pub use capability::*;
 

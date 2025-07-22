@@ -230,7 +230,7 @@ pub struct ModuleDecl {
     /// Module description
     pub description: Option<String>,
     /// Module dependencies with semantic information
-    pub dependencies: Vec<ModuleDependency>,
+    pub dependencies: Vec<String>,
     /// Module stability level
     pub stability: StabilityLevel,
     /// Module version
@@ -666,7 +666,7 @@ pub struct ImportItem {
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ExportDecl {
     /// Export items
-    pub items: ExportItems,
+    pub items: Vec<ExportItem>,
 }
 
 /// **NEW**: Export items specification

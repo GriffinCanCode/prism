@@ -60,6 +60,17 @@ impl AIMetadataCollector {
         })
     }
 
+    /// Create a default AI metadata collector that handles errors gracefully
+    pub fn new_default() -> Self {
+        Self {
+            metadata_store: Arc::new(RwLock::new(RuntimeMetadataStore::new())),
+            context_analyzer: Arc::new(BusinessContextAnalyzer::new()),
+            performance_profiler: Arc::new(PerformanceProfiler::new()),
+            relationship_tracker: Arc::new(SemanticRelationshipTracker::new()),
+            export_manager: Arc::new(MetadataExportManager::new_default()),
+        }
+    }
+
     /// Record execution metadata for AI analysis
     pub fn record_execution<T>(
         &self,
@@ -1260,6 +1271,10 @@ struct MetadataExportManager;
 impl MetadataExportManager {
     fn new() -> Result<Self, AIMetadataError> {
         Ok(Self)
+    }
+
+    fn new_default() -> Self {
+        Self
     }
 
     fn export(

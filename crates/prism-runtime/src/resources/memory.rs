@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use serde::{Serialize, Deserialize};
 use thiserror::Error;
 
@@ -53,14 +53,14 @@ pub struct MemoryManager {
     config: MemoryManagerConfig,
 }
 
-/// Configuration for memory management
+/// Configuration for the memory manager
 #[derive(Debug, Clone)]
 pub struct MemoryManagerConfig {
-    /// Maximum total memory allowed
+    /// Maximum memory that can be allocated
     pub max_memory: Option<usize>,
     /// Whether to track allocation sources
     pub track_sources: bool,
-    /// Warning threshold percentage
+    /// Warning threshold as a fraction of max memory
     pub warning_threshold: f64,
 }
 
@@ -156,6 +156,75 @@ pub struct MemoryStatistics {
     pub max_allocation_size: usize,
     /// Memory limit (if any)
     pub memory_limit: Option<usize>,
+}
+
+/// Trait for types that have semantic meaning in memory allocation
+pub trait SemanticType: Send + Sync + 'static {
+    /// Get the semantic type name
+    fn type_name(&self) -> &'static str;
+    /// Get the business purpose of this allocation
+    fn business_purpose(&self) -> Option<&str> { None }
+    /// Get the expected lifetime
+    fn expected_lifetime(&self) -> Option<Duration> { None }
+}
+
+/// Smart pointer that tracks semantic information about memory allocations
+#[derive(Debug)]
+pub struct SemanticPtr<T: SemanticType> {
+    /// The actual data
+    data: Box<T>,
+    /// Allocation ID for tracking
+    allocation_id: AllocationId,
+    /// When this was allocated
+    allocated_at: Instant,
+}
+
+/// Unique identifier for memory allocations
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct AllocationId(u64);
+
+impl AllocationId {
+    /// Generate a new allocation ID
+    pub fn new() -> Self {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+        Self(NEXT_ID.fetch_add(1, Ordering::SeqCst))
+    }
+}
+
+impl<T: SemanticType> SemanticPtr<T> {
+    /// Create a new semantic pointer
+    pub fn new(data: T) -> Self {
+        Self {
+            data: Box::new(data),
+            allocation_id: AllocationId::new(),
+            allocated_at: Instant::now(),
+        }
+    }
+    
+    /// Get the allocation ID
+    pub fn allocation_id(&self) -> AllocationId {
+        self.allocation_id
+    }
+    
+    /// Get when this was allocated
+    pub fn allocated_at(&self) -> Instant {
+        self.allocated_at
+    }
+}
+
+impl<T: SemanticType> std::ops::Deref for SemanticPtr<T> {
+    type Target = T;
+    
+    fn deref(&self) -> &Self::Target {
+        &self.data
+    }
+}
+
+impl<T: SemanticType> std::ops::DerefMut for SemanticPtr<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.data
+    }
 }
 
 #[cfg(test)]

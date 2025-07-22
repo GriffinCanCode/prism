@@ -331,7 +331,7 @@ impl<T: Send + 'static> BatchProcessor<T> {
 
             if has_pending {
                 // Force flush remaining messages
-                let messages = {
+                let messages: Vec<_> = {
                     let mut pending = pending_messages.lock().unwrap();
                     pending.drain(..).collect()
                 };
@@ -392,13 +392,9 @@ impl<T: Send + 'static> BatchProcessor<T> {
     /// Update batch processing statistics after completion
     pub fn record_batch_completion(&self, batch_id: BatchId, processing_time: Duration) {
         let mut stats = self.stats.lock().unwrap();
-        stats.avg_processing_time = if stats.total_batches == 1 {
-            processing_time
-        } else {
-            Duration::from_nanos(
-                (stats.avg_processing_time.as_nanos() * (stats.total_batches - 1) as u128 + processing_time.as_nanos()) / stats.total_batches as u128
-            )
-        };
+        stats.avg_processing_time = Duration::from_nanos(
+            ((stats.avg_processing_time.as_nanos() * (stats.total_batches - 1) as u128 + processing_time.as_nanos()) / stats.total_batches as u128).try_into().unwrap()
+        );
 
         // Record for adaptive sizing
         let current_size = stats.avg_batch_size as usize;
@@ -412,7 +408,7 @@ impl<T: Send + 'static> BatchProcessor<T> {
 
     /// Get current processing statistics
     pub fn get_stats(&self) -> BatchProcessingStats {
-        self.stats.lock().unwrap().clone()
+        (*self.stats.lock().unwrap()).clone()
     }
 
     /// Perform adaptive batch size optimization
@@ -532,7 +528,7 @@ impl BatchingCoordinator {
 
     /// Get global batching metrics
     pub fn get_global_metrics(&self) -> GlobalBatchingMetrics {
-        let mut global_metrics = self.metrics.lock().unwrap().clone();
+        let mut global_metrics = (*self.metrics.lock().unwrap()).clone();
         
         // Aggregate metrics from all processors
         let processors = self.processors.read().unwrap();

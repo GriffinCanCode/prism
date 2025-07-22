@@ -75,8 +75,8 @@ pub enum RuntimeError {
     Resource(#[from] resources::ResourceError),
     
     /// Security violation
-    #[error("Security error: {message}")]
-    Security { message: String },
+    #[error("Security error: {0}")]
+    Security(#[from] security::SecurityError),
     
     /// Platform error
     #[error("Platform error: {message}")]
@@ -91,8 +91,11 @@ pub enum RuntimeError {
     Generic { message: String },
 }
 
-// Mock types for compilation
-pub struct Executable;
+/// Trait for executable code that can be run by the runtime
+pub trait Executable<T> {
+    /// Execute the code with the given capabilities and context
+    fn execute(&self, capabilities: &authority::CapabilitySet, context: &platform::execution::ExecutionContext) -> Result<T, RuntimeError>;
+}
 pub struct AIMetadataCollector;
 
 impl AIMetadataCollector {

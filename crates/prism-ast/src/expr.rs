@@ -918,17 +918,28 @@ impl fmt::Display for BinaryOperator {
             Self::Divide => write!(f, "/"),
             Self::Modulo => write!(f, "%"),
             Self::Power => write!(f, "**"),
+            Self::FloorDivide => write!(f, "//"),
+            Self::MatrixMultiply => write!(f, "@"),
             Self::Equal => write!(f, "=="),
             Self::NotEqual => write!(f, "!="),
             Self::Less => write!(f, "<"),
             Self::LessEqual => write!(f, "<="),
             Self::Greater => write!(f, ">"),
             Self::GreaterEqual => write!(f, ">="),
+            Self::LessThan => write!(f, "<"),
+            Self::LessThanOrEqual => write!(f, "<="),
+            Self::GreaterThan => write!(f, ">"),
+            Self::GreaterThanOrEqual => write!(f, ">="),
             Self::And => write!(f, "and"),
             Self::Or => write!(f, "or"),
+            Self::LogicalAnd => write!(f, "&&"),
+            Self::LogicalOr => write!(f, "||"),
             Self::BitAnd => write!(f, "&"),
             Self::BitOr => write!(f, "|"),
             Self::BitXor => write!(f, "^"),
+            Self::BitwiseAnd => write!(f, "&"),
+            Self::BitwiseOr => write!(f, "|"),
+            Self::BitwiseXor => write!(f, "^"),
             Self::LeftShift => write!(f, "<<"),
             Self::RightShift => write!(f, ">>"),
             Self::Assign => write!(f, "="),
@@ -936,14 +947,12 @@ impl fmt::Display for BinaryOperator {
             Self::SubtractAssign => write!(f, "-="),
             Self::MultiplyAssign => write!(f, "*="),
             Self::DivideAssign => write!(f, "/="),
+            Self::WalrusAssign => write!(f, ":="),
             Self::SemanticEqual => write!(f, "==="),
             Self::TypeCompatible => write!(f, "~="),
             Self::ConceptualMatch => write!(f, "≈"),
             Self::Range => write!(f, ".."),
             Self::RangeInclusive => write!(f, "..="),
-            Self::FloorDivide => write!(f, "//"),
-            Self::MatrixMultiply => write!(f, "@"),
-            Self::WalrusAssign => write!(f, ":="),
         }
     }
 }
@@ -952,10 +961,16 @@ impl fmt::Display for UnaryOperator {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Not => write!(f, "not"),
+            Self::LogicalNot => write!(f, "!"),
             Self::Negate => write!(f, "-"),
             Self::BitNot => write!(f, "~"),
+            Self::BitwiseNot => write!(f, "~"),
             Self::Reference => write!(f, "&"),
             Self::Dereference => write!(f, "*"),
+            Self::PreIncrement => write!(f, "++"),
+            Self::PostIncrement => write!(f, "++"),
+            Self::PreDecrement => write!(f, "--"),
+            Self::PostDecrement => write!(f, "--"),
         }
     }
 }
@@ -971,6 +986,63 @@ impl fmt::Display for LiteralValue {
             Self::Money { amount, currency } => write!(f, "{}.{}", amount, currency),
             Self::Duration { value, unit } => write!(f, "{}.{}", value, unit),
             Self::Regex(pattern) => write!(f, "r\"{}\"", pattern),
+        }
+    }
+}
+
+impl fmt::Display for Expr {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Expr::Literal(lit) => write!(f, "{}", lit.value),
+            Expr::Variable(var) => write!(f, "{}", var.name),
+            Expr::Binary(binary) => write!(f, "({} {} {})", binary.left.kind, binary.operator, binary.right.kind),
+            Expr::Unary(unary) => write!(f, "({}{})", unary.operator, unary.operand.kind),
+            Expr::Call(call) => {
+                write!(f, "{}(", call.callee.kind)?;
+                for (i, arg) in call.arguments.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", arg.kind)?;
+                }
+                write!(f, ")")
+            }
+            Expr::Member(member) => {
+                write!(f, "{}.{}", member.object.kind, member.member)
+            }
+            Expr::Index(index) => {
+                write!(f, "{}[{}]", index.object.kind, index.index.kind)
+            }
+            Expr::Array(array) => {
+                write!(f, "[")?;
+                for (i, elem) in array.elements.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", elem.kind)?;
+                }
+                write!(f, "]")
+            }
+            Expr::Object(obj) => {
+                write!(f, "{{")?;
+                for (i, field) in obj.fields.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    match &field.key {
+                        ObjectKey::Identifier(id) => write!(f, "{}", id)?,
+                        ObjectKey::String(s) => write!(f, "\"{}\"", s)?,
+                        ObjectKey::Computed(_) => write!(f, "[computed]")?,
+                    }
+                    write!(f, ": {}", field.value.kind)?;
+                }
+                write!(f, "}}")
+            }
+            Expr::If(if_expr) => {
+                write!(f, "if {} then {}", if_expr.condition.kind, if_expr.then_branch.kind)?;
+                if let Some(else_branch) = &if_expr.else_branch {
+                    write!(f, " else {}", else_branch.kind)?;
+                }
+                Ok(())
+            }
+            Expr::Block(block) => {
+                write!(f, "{{ ... }}")  // Simplified for now
+            }
+            _ => write!(f, "<expr>"),  // Fallback for other expression types
         }
     }
 }

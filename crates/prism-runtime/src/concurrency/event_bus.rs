@@ -10,7 +10,10 @@
 use crate::concurrency::actor_system::ActorError;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Mutex};
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime, Instant};
+use std::marker::PhantomData;
+use thiserror::Error;
+use serde::{Serialize, Deserialize};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
@@ -26,6 +29,8 @@ where
     metrics: Arc<Mutex<EventBusMetrics>>,
     /// AI metadata for comprehension
     ai_metadata: EventBusAIMetadata,
+    /// Phantom data to use the generic type
+    _phantom: PhantomData<T>,
 }
 
 /// Event subscriber information
@@ -181,6 +186,7 @@ where
             subscribers: Arc::new(RwLock::new(HashMap::new())),
             metrics: Arc::new(Mutex::new(EventBusMetrics::default())),
             ai_metadata: EventBusAIMetadata::default(),
+            _phantom: PhantomData,
         }
     }
 
@@ -190,6 +196,7 @@ where
             subscribers: Arc::new(RwLock::new(HashMap::new())),
             metrics: Arc::new(Mutex::new(EventBusMetrics::default())),
             ai_metadata,
+            _phantom: PhantomData,
         }
     }
 
@@ -239,6 +246,7 @@ where
             topic,
             receiver,
             event_bus: Arc::new(self.clone()),
+            _phantom: PhantomData,
         })
     }
 
@@ -339,10 +347,46 @@ where
     }
 
     /// Check if event passes subscriber filters
-    fn passes_filters(&self, _event: &T, _filters: &[EventFilter]) -> bool {
-        // TODO: Implement filter logic based on event properties
-        // For now, all events pass
+    fn passes_filters(&self, event: &T, filters: &[EventFilter]) -> bool {
+        // If no filters, event passes
+        if filters.is_empty() {
+            return true;
+        }
+
+        // Event must pass all filters (AND logic)
+        for filter in filters {
+            if !self.passes_single_filter(event, filter) {
+                return false;
+            }
+        }
+
         true
+    }
+
+    /// Check if event passes a single filter
+    fn passes_single_filter(&self, event: &T, filter: &EventFilter) -> bool {
+        match filter {
+            EventFilter::Property { key, value } => {
+                // For demonstration, we'll use a simple string representation check
+                // In a real implementation, this would extract properties from the event
+                let event_str = format!("{:?}", event);
+                event_str.contains(&format!("{}:{}", key, value)) || 
+                event_str.contains(&format!("{}: {}", key, value)) ||
+                event_str.contains(&format!("\"{}\":\"{}\"", key, value))
+            }
+            EventFilter::Pattern(pattern) => {
+                // Simple pattern matching using string contains
+                // In a real implementation, this would use regex
+                let event_str = format!("{:?}", event);
+                event_str.contains(pattern)
+            }
+            EventFilter::Custom(function_name) => {
+                // For demonstration, we'll match against the function name in the event
+                // In a real implementation, this would call a registered custom filter function
+                let event_str = format!("{:?}", event);
+                event_str.contains(function_name)
+            }
+        }
     }
 
     /// Clean up dead subscriber
@@ -361,6 +405,7 @@ where
             subscribers: Arc::clone(&self.subscribers),
             metrics: Arc::clone(&self.metrics),
             ai_metadata: self.ai_metadata.clone(),
+            _phantom: PhantomData,
         }
     }
 }
@@ -378,6 +423,8 @@ where
     receiver: mpsc::UnboundedReceiver<EventMessage>,
     /// Reference to event bus for unsubscribing
     event_bus: Arc<EventBus<T>>,
+    /// Phantom data to use the generic type
+    _phantom: PhantomData<T>,
 }
 
 impl<T> EventSubscription<T> 

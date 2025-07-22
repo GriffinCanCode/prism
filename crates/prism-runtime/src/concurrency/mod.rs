@@ -54,7 +54,7 @@ pub mod simple_tests;
 // Re-exports for public API
 pub use actor_system::{Actor, ActorRef, ActorSystem, Message, ActorId, ActorError};
 pub use async_runtime::{AsyncRuntime, AsyncHandle, AsyncResult, TaskPriority};
-pub use structured::{StructuredScope, CancellationToken, ScopeHandle};
+pub use structured::{StructuredScope, ScopeHandle};
 pub use event_bus::{EventBus, EventSubscription, EventPriority, EventFilter, EventBusAIMetadata};
 pub use supervision::{Supervisor, SupervisionStrategy, RestartPolicy, SupervisionDecision, ChildMetadata};
 pub use performance::{PerformanceOptimizer, MessageBatch, BatchingPolicy, LockFreeQueue, LockFreeMap, NumaScheduler};
@@ -95,17 +95,17 @@ impl ConcurrencySystem {
     }
 
     /// Spawn an actor with capabilities
-    pub fn spawn_actor<A: Actor + 'static>(
+    pub fn spawn_actor<A>(
         &self,
         actor: A,
         capabilities: authority::CapabilitySet,
     ) -> Result<ActorRef<A>, ConcurrencyError> {
-        self.actor_system.spawn_actor(actor, capabilities)
+        Ok(self.actor_system.spawn_actor(actor, capabilities)?)
     }
 
     /// Create a structured concurrency scope
     pub fn create_scope(&self) -> Result<StructuredScope, ConcurrencyError> {
-        self.structured_coordinator.create_scope()
+        Ok(self.structured_coordinator.create_scope()?)
     }
 
     /// Execute async code with structured concurrency
@@ -115,6 +115,9 @@ impl ConcurrencySystem {
         T: Send + 'static,
     {
         self.async_runtime.execute_structured(future).await
+            .map_err(|e| ConcurrencyError::Generic { 
+                message: format!("Async execution failed: {}", e) 
+            })
     }
 
     /// Get number of active actors
@@ -150,6 +153,21 @@ impl ConcurrencySystem {
             })
     }
 
+    /// Shutdown the concurrency coordinator
+    pub async fn shutdown(&self) -> Result<(), ConcurrencyError> {
+        // Shutdown all subsystems
+        self.actor_system.shutdown().await
+            .map_err(|e| ConcurrencyError::ActorSystem(e))?;
+        
+        self.async_runtime.shutdown().await
+            .map_err(|e| ConcurrencyError::AsyncRuntime(format!("Async runtime shutdown failed: {:?}", e)))?;
+        
+        self.event_bus.shutdown().await
+            .map_err(|e| ConcurrencyError::EventBus(format!("Event bus shutdown failed: {:?}", e)))?;
+        
+        Ok(())
+    }
+
     /// Create a high-performance lock-free queue
     pub fn create_lock_free_queue<T>(&self) -> performance::LockFreeQueue<T> {
         performance::LockFreeQueue::new()
@@ -165,8 +183,8 @@ impl ConcurrencySystem {
     }
 }
 
-/// Concurrency system errors
-#[derive(Debug, Error)]
+/// Concurrency-related errors
+#[derive(Debug, Clone, Error)]
 pub enum ConcurrencyError {
     /// Actor system error
     #[error("Actor system error: {0}")]
@@ -174,19 +192,15 @@ pub enum ConcurrencyError {
     
     /// Async runtime error
     #[error("Async runtime error: {0}")]
-    AsyncRuntime(#[from] async_runtime::AsyncError),
+    AsyncRuntime(String),
+    
+    /// Event bus error
+    #[error("Event bus error: {0}")]
+    EventBus(String),
     
     /// Structured concurrency error
     #[error("Structured concurrency error: {0}")]
     Structured(#[from] structured::StructuredError),
-    
-    /// Capability error during concurrent operation
-    #[error("Capability error: {0}")]
-    Capability(#[from] authority::CapabilityError),
-    
-    /// Effect error during concurrent operation
-    #[error("Effect error: {0}")]
-    Effect(#[from] resources::EffectError),
     
     /// Generic concurrency error
     #[error("Concurrency error: {message}")]

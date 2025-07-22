@@ -161,12 +161,30 @@ impl AstVisitor for DefaultVisitor {
             }
             Expr::Select(select_expr) => {
                 for arm in &select_expr.arms {
+                    match &arm.pattern {
+                        crate::ChannelPattern::Receive { channel, .. } => {
+                            self.visit_expr(channel);
+                        },
+                        crate::ChannelPattern::Send { channel, value } => {
+                            self.visit_expr(channel);
+                            self.visit_expr(value);
+                        },
+                    }
                     if let Some(guard) = &arm.guard {
                         self.visit_expr(guard);
                     }
                     self.visit_expr(&arm.body);
                 }
                 if let Some(default_arm) = &select_expr.default_arm {
+                    match &default_arm.pattern {
+                        crate::ChannelPattern::Receive { channel, .. } => {
+                            self.visit_expr(channel);
+                        },
+                        crate::ChannelPattern::Send { channel, value } => {
+                            self.visit_expr(channel);
+                            self.visit_expr(value);
+                        },
+                    }
                     if let Some(guard) = &default_arm.guard {
                         self.visit_expr(guard);
                     }
@@ -219,68 +237,7 @@ impl AstVisitor for DefaultVisitor {
             Expr::GeneratorExpression(_) => {},
             Expr::NamedExpression(_) => {},
             Expr::StarredExpression(_) => {},
-            // Concurrency expressions
-            // Expr::Actor(actor_expr) => {
-            //     self.visit_expr(&actor_expr.actor_impl);
-            //     for cap in &actor_expr.capabilities {
-            //         self.visit_expr(cap);
-            //     }
-            //     if let Some(config) = &actor_expr.config {
-            //         self.visit_expr(config);
-            //     }
-            // },
-            // Expr::Spawn(spawn_expr) => {
-            //     self.visit_expr(&spawn_expr.expression);
-            //     for cap in &spawn_expr.capabilities {
-            //         self.visit_expr(cap);
-            //     }
-            //     if let Some(priority) = &spawn_expr.priority {
-            //         self.visit_expr(priority);
-            //     }
-            // },
-            // Expr::Channel(channel_expr) => {
-            //     if let Some(channel) = &channel_expr.channel {
-            //         self.visit_expr(channel);
-            //     }
-            //     if let Some(value) = &channel_expr.value {
-            //         self.visit_expr(value);
-            //     }
-            //     if let Some(buffer_size) = &channel_expr.buffer_size {
-            //         self.visit_expr(buffer_size);
-            //     }
-            // },
-            // Expr::Select(select_expr) => {
-            //     for arm in &select_expr.arms {
-            //         match &arm.pattern {
-            //             crate::ChannelPattern::Receive { channel, .. } => {
-            //                 self.visit_expr(channel);
-            //             },
-            //             crate::ChannelPattern::Send { channel, value } => {
-            //                 self.visit_expr(channel);
-            //                 self.visit_expr(value);
-            //             },
-            //         }
-            //         if let Some(guard) = &arm.guard {
-            //             self.visit_expr(guard);
-            //         }
-            //         self.visit_expr(&arm.body);
-            //     }
-            //     if let Some(default_arm) = &select_expr.default_arm {
-            //         match &default_arm.pattern {
-            //             crate::ChannelPattern::Receive { channel, .. } => {
-            //                 self.visit_expr(channel);
-            //             },
-            //             crate::ChannelPattern::Send { channel, value } => {
-            //                 self.visit_expr(channel);
-            //                 self.visit_expr(value);
-            //             },
-            //         }
-            //         if let Some(guard) = &default_arm.guard {
-            //             self.visit_expr(guard);
-            //         }
-            //         self.visit_expr(&default_arm.body);
-            //     }
-            // },
+
         }
     }
 
@@ -412,24 +369,7 @@ impl AstVisitor for DefaultVisitor {
                 }
             }
             Stmt::Error(_) => {},
-            Stmt::Actor(actor_decl) => {
-                // Visit message handlers
-                for handler in &actor_decl.message_handlers {
-                    self.visit_stmt(&handler.body);
-                }
-                // Visit capabilities
-                for cap in &actor_decl.capabilities {
-                    self.visit_expr(cap);
-                }
-                // Visit effects
-                for effect in &actor_decl.effects {
-                    self.visit_expr(effect);
-                }
-                // Visit lifecycle hooks
-                for hook in &actor_decl.lifecycle_hooks {
-                    self.visit_stmt(&hook.body);
-                }
-            },
+
         }
     }
 
@@ -440,26 +380,68 @@ impl AstVisitor for DefaultVisitor {
     fn visit_pattern(&mut self, pattern: &AstNode<Pattern>) -> Self::Result {
         match &pattern.kind {
             Pattern::Tuple(patterns) => {
-                for pattern in patterns {
+                for pattern in &patterns.elements {
                     self.visit_pattern(pattern);
                 }
             }
             Pattern::Array(patterns) => {
-                for pattern in patterns {
+                for pattern in &patterns.elements {
                     self.visit_pattern(pattern);
                 }
             }
             Pattern::Object(fields) => {
-                for field in fields {
+                for field in &fields.fields {
                     self.visit_pattern(&field.pattern);
                 }
             }
             Pattern::Or(patterns) => {
-                for pattern in patterns {
+                for pattern in &patterns.alternatives {
                     self.visit_pattern(pattern);
                 }
             }
-            // Base cases
+            Pattern::Guard(guard) => {
+                self.visit_pattern(&guard.pattern);
+                self.visit_expr(&guard.condition);
+            }
+            Pattern::Type(type_pattern) => {
+                self.visit_pattern(&type_pattern.pattern);
+                self.visit_type(&type_pattern.type_annotation);
+            }
+            Pattern::Range(range) => {
+                self.visit_expr(&range.start);
+                self.visit_expr(&range.end);
+            }
+            Pattern::Constructor(constructor) => {
+                for arg in &constructor.arguments {
+                    self.visit_pattern(arg);
+                }
+                if let Some(type_args) = &constructor.type_arguments {
+                    for type_arg in type_args {
+                        self.visit_type(type_arg);
+                    }
+                }
+            }
+            Pattern::Slice(slice) => {
+                for pattern in &slice.prefix {
+                    self.visit_pattern(pattern);
+                }
+                if let Some(middle) = &slice.middle {
+                    self.visit_pattern(middle);
+                }
+                for pattern in &slice.suffix {
+                    self.visit_pattern(pattern);
+                }
+            }
+            Pattern::Record(record) => {
+                for field in &record.fields {
+                    if let Some(pattern) = &field.pattern {
+                        self.visit_pattern(pattern);
+                    }
+                }
+            }
+            Pattern::Error(_) => {
+                // Nothing to visit for error patterns
+            }
             Pattern::Wildcard | Pattern::Identifier(_) | Pattern::Literal(_) | Pattern::Rest(_) => {}
         }
     }

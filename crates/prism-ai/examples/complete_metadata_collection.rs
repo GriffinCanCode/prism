@@ -110,40 +110,15 @@ impl prism_ai::providers::MetadataProvider for ExampleSemanticProvider {
     }
     
     async fn provide_metadata(&self, _context: &prism_ai::providers::ProviderContext) -> Result<prism_ai::providers::DomainMetadata, prism_ai::AIIntegrationError> {
-        let semantic_metadata = prism_ai::providers::SemanticProviderMetadata {
-            type_info: prism_ai::providers::TypeInformation {
-                types_inferred: 45,
-                constraints_solved: 32,
-                semantic_types_identified: 28,
-            },
-            business_rules: vec![
-                prism_ai::providers::BusinessRule {
-                    rule_name: "Email validation".to_string(),
-                    rule_type: "validation".to_string(),
-                    confidence: 0.95,
-                },
-                prism_ai::providers::BusinessRule {
-                    rule_name: "User authorization".to_string(),
-                    rule_type: "security".to_string(),
-                    confidence: 0.92,
-                },
-            ],
-            relationships: vec![
-                prism_ai::providers::SemanticRelationship {
-                    source: "User".to_string(),
-                    target: "Profile".to_string(),
-                    relationship_type: "has_one".to_string(),
-                    confidence: 0.98,
-                },
-            ],
-            validation_results: prism_ai::providers::ValidationSummary {
-                rules_checked: 67,
-                violations_found: 3,
-                warnings_issued: 8,
-            },
-        };
-        
-        Ok(prism_ai::providers::DomainMetadata::Semantic(semantic_metadata))
+        Ok(prism_ai::providers::DomainMetadata::Semantic(SemanticMetadata {
+            type_system: Some(serde_json::json!({
+                "type": "static",
+                "inference": "partial"
+            })),
+            symbols: vec!["main".to_string(), "lib".to_string()],
+            patterns: vec!["ownership_based".to_string()],
+            confidence: 0.7,
+        }))
     }
     
     fn provider_info(&self) -> prism_ai::providers::ProviderInfo {

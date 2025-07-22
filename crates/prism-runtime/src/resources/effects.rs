@@ -37,6 +37,19 @@ pub enum Effect {
     Custom { name: String, metadata: HashMap<String, String> },
 }
 
+impl Effect {
+    /// Get the name of this effect for identification
+    pub fn name(&self) -> &str {
+        match self {
+            Effect::IO { operation, .. } => operation,
+            Effect::Memory { operation, .. } => operation,
+            Effect::Computation { operation, .. } => operation,
+            Effect::SystemCall { call, .. } => call,
+            Effect::Custom { name, .. } => name,
+        }
+    }
+}
+
 /// Resource measurement for effect tracking
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourceMeasurement {
@@ -110,7 +123,7 @@ pub struct EffectAllocation {
 }
 
 /// Errors that can occur in effect tracking
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum EffectError {
     /// Effect not found
     #[error("Effect not found: {effect_id:?}")]
@@ -130,6 +143,7 @@ pub enum EffectError {
 }
 
 /// Main effect tracking system
+#[derive(Debug)]
 pub struct EffectTracker {
     /// Active effect allocations
     allocations: RwLock<HashMap<EffectId, EffectAllocation>>,
@@ -412,6 +426,34 @@ pub fn computation_effect(operation: &str, complexity: Option<&str>) -> Effect {
         operation: operation.to_string(),
         complexity: complexity.map(|s| s.to_string()),
     }
+}
+
+/// Result of an effect execution
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EffectResult {
+    /// Effect ID
+    pub effect_id: EffectId,
+    /// Whether the effect succeeded
+    pub success: bool,
+    /// Error message if failed
+    pub error: Option<String>,
+    /// Resources consumed during execution
+    pub resources_consumed: ResourceMeasurement,
+    /// Duration of execution
+    pub duration: Duration,
+}
+
+/// Resource consumption summary
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ResourceConsumption {
+    /// CPU time consumed
+    pub cpu_time: Duration,
+    /// Memory allocated
+    pub memory_bytes: u64,
+    /// Network bytes transferred
+    pub network_bytes: u64,
+    /// Disk I/O bytes
+    pub disk_bytes: u64,
 }
 
 #[cfg(test)]

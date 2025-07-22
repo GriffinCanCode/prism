@@ -109,23 +109,111 @@ impl XmlExporter {
 #[async_trait]
 impl MetadataExporter for XmlExporter {
     async fn export(&self, metadata: &ComprehensiveAIMetadata) -> Result<String, AIIntegrationError> {
-        // For now, convert to JSON and then wrap in XML
-        // A proper implementation would use a dedicated XML serialization library
-        let json_data = serde_json::to_string_pretty(metadata)
-            .map_err(|e| AIIntegrationError::SerializationError(e.to_string()))?;
+        let mut xml_output = String::new();
+        
+        // XML header
+        xml_output.push_str(r#"<?xml version="1.0" encoding="UTF-8"?>"#);
+        xml_output.push('\n');
+        
+        // Root element
+        xml_output.push_str("<prism_ai_metadata>\n");
+        
+        // Metadata header
+        xml_output.push_str("  <header>\n");
+        xml_output.push_str(&format!("    <version>{}</version>\n", self.escape_xml(&metadata.version)));
+        xml_output.push_str(&format!("    <exported_at>{}</exported_at>\n", self.escape_xml(&metadata.exported_at)));
+        xml_output.push_str("    <format>xml</format>\n");
+        xml_output.push_str("  </header>\n");
+        
+        // Project information
+        xml_output.push_str("  <project_info>\n");
+        xml_output.push_str(&format!("    <name>{}</name>\n", self.escape_xml(&metadata.project_info.name)));
+        if let Some(ref version) = metadata.project_info.version {
+            xml_output.push_str(&format!("    <project_version>{}</project_version>\n", self.escape_xml(version)));
+        }
+        xml_output.push_str(&format!("    <root_path>{}</root_path>\n", self.escape_xml(&metadata.project_info.root_path.to_string_lossy())));
+        
+        // Source files
+        xml_output.push_str("    <source_files>\n");
+        for source_file in &metadata.project_info.source_files {
+            xml_output.push_str("      <file>\n");
+            xml_output.push_str(&format!("        <path>{}</path>\n", self.escape_xml(&source_file.path.to_string_lossy())));
+            xml_output.push_str(&format!("        <size>{}</size>\n", source_file.size));
+            xml_output.push_str(&format!("        <language>{}</language>\n", self.escape_xml(&source_file.language)));
+            xml_output.push_str(&format!("        <hash>{}</hash>\n", self.escape_xml(&source_file.hash)));
+            xml_output.push_str("      </file>\n");
+        }
+        xml_output.push_str("    </source_files>\n");
+        
+        // Dependencies
+        xml_output.push_str("    <dependencies>\n");
+        for dependency in &metadata.project_info.dependencies {
+            xml_output.push_str("      <dependency>\n");
+            xml_output.push_str(&format!("        <name>{}</name>\n", self.escape_xml(&dependency.name)));
+            xml_output.push_str(&format!("        <version>{}</version>\n", self.escape_xml(&dependency.version)));
+            xml_output.push_str(&format!("        <type>{:?}</type>\n", dependency.dependency_type));
+            xml_output.push_str(&format!("        <source>{}</source>\n", self.escape_xml(&dependency.source)));
+            xml_output.push_str("      </dependency>\n");
+        }
+        xml_output.push_str("    </dependencies>\n");
+        xml_output.push_str("  </project_info>\n");
+        
+        // Quality metrics
+        xml_output.push_str("  <quality_metrics>\n");
+        xml_output.push_str(&format!("    <lines_of_code>{}</lines_of_code>\n", metadata.quality_metrics.lines_of_code));
+        xml_output.push_str(&format!("    <cyclomatic_complexity>{}</cyclomatic_complexity>\n", metadata.quality_metrics.cyclomatic_complexity));
+        xml_output.push_str(&format!("    <cognitive_complexity>{}</cognitive_complexity>\n", metadata.quality_metrics.cognitive_complexity));
+        xml_output.push_str(&format!("    <test_coverage>{}</test_coverage>\n", metadata.quality_metrics.test_coverage));
+        xml_output.push_str(&format!("    <documentation_coverage>{}</documentation_coverage>\n", metadata.quality_metrics.documentation_coverage));
+        xml_output.push_str(&format!("    <technical_debt_ratio>{}</technical_debt_ratio>\n", metadata.quality_metrics.technical_debt_ratio));
+        xml_output.push_str("  </quality_metrics>\n");
+        
+        // Business context (if available)
+        if let Some(ref business_context) = metadata.business_context {
+            xml_output.push_str("  <business_context>\n");
+            if let Some(ref domain) = business_context.domain {
+                xml_output.push_str(&format!("    <domain>{}</domain>\n", self.escape_xml(domain)));
+            }
             
-        Ok(format!(
-            r#"<?xml version="1.0" encoding="UTF-8"?>
-<prism_ai_metadata>
-    <format>xml</format>
-    <version>{}</version>
-    <exported_at>{}</exported_at>
-    <json_representation><![CDATA[{}]]></json_representation>
-</prism_ai_metadata>"#,
-            metadata.version,
-            metadata.exported_at,
-            json_data
-        ))
+            xml_output.push_str("    <capabilities>\n");
+            for capability in &business_context.capabilities {
+                xml_output.push_str(&format!("      <capability>{}</capability>\n", self.escape_xml(capability)));
+            }
+            xml_output.push_str("    </capabilities>\n");
+            
+            xml_output.push_str("    <rules>\n");
+            for rule in &business_context.rules {
+                xml_output.push_str(&format!("      <rule>{}</rule>\n", self.escape_xml(rule)));
+            }
+            xml_output.push_str("    </rules>\n");
+            xml_output.push_str("  </business_context>\n");
+        }
+        
+        // Cross-system relationships
+        xml_output.push_str("  <relationships>\n");
+        for relationship in &metadata.relationships {
+            xml_output.push_str("    <relationship>\n");
+            xml_output.push_str("      <source>\n");
+            xml_output.push_str(&format!("        <system>{}</system>\n", self.escape_xml(&relationship.source.system)));
+            xml_output.push_str(&format!("        <component_id>{}</component_id>\n", self.escape_xml(&relationship.source.component_id)));
+            xml_output.push_str(&format!("        <component_type>{}</component_type>\n", self.escape_xml(&relationship.source.component_type)));
+            xml_output.push_str("      </source>\n");
+            xml_output.push_str("      <target>\n");
+            xml_output.push_str(&format!("        <system>{}</system>\n", self.escape_xml(&relationship.target.system)));
+            xml_output.push_str(&format!("        <component_id>{}</component_id>\n", self.escape_xml(&relationship.target.component_id)));
+            xml_output.push_str(&format!("        <component_type>{}</component_type>\n", self.escape_xml(&relationship.target.component_type)));
+            xml_output.push_str("      </target>\n");
+            xml_output.push_str(&format!("      <relationship_type>{:?}</relationship_type>\n", relationship.relationship_type));
+            xml_output.push_str(&format!("      <strength>{}</strength>\n", relationship.strength));
+            xml_output.push_str(&format!("      <description>{}</description>\n", self.escape_xml(&relationship.description)));
+            xml_output.push_str("    </relationship>\n");
+        }
+        xml_output.push_str("  </relationships>\n");
+        
+        // Close root element
+        xml_output.push_str("</prism_ai_metadata>\n");
+        
+        Ok(xml_output)
     }
     
     fn format(&self) -> ExportFormat {
@@ -141,6 +229,17 @@ impl MetadataExporter for XmlExporter {
     }
 }
 
+impl XmlExporter {
+    /// Escape XML special characters
+    fn escape_xml(&self, text: &str) -> String {
+        text.replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;")
+            .replace('"', "&quot;")
+            .replace('\'', "&apos;")
+    }
+}
+
 /// Binary exporter for AI metadata (using MessagePack)
 #[derive(Debug)]
 pub struct BinaryExporter;
@@ -153,11 +252,31 @@ impl BinaryExporter {
 
 #[async_trait]
 impl MetadataExporter for BinaryExporter {
-    async fn export(&self, _metadata: &ComprehensiveAIMetadata) -> Result<String, AIIntegrationError> {
-        // For now, return an error as binary export requires additional dependencies
-        Err(AIIntegrationError::SerializationError(
-            "Binary export not yet implemented - requires MessagePack or similar binary format".to_string()
-        ))
+    async fn export(&self, metadata: &ComprehensiveAIMetadata) -> Result<String, AIIntegrationError> {
+        // Serialize to MessagePack binary format
+        let binary_data = rmp_serde::to_vec(metadata)
+            .map_err(|e| AIIntegrationError::SerializationError(
+                format!("MessagePack serialization failed: {}", e)
+            ))?;
+        
+        // Encode as base64 string for text-based transport
+        let base64_encoded = base64::encode(&binary_data);
+        
+        // Wrap in a structured format for AI consumption
+        let wrapped_output = serde_json::json!({
+            "format": "binary",
+            "encoding": "messagepack+base64",
+            "size_bytes": binary_data.len(),
+            "data": base64_encoded,
+            "metadata": {
+                "compressed": false,
+                "version": metadata.version,
+                "exported_at": metadata.exported_at
+            }
+        });
+        
+        serde_json::to_string_pretty(&wrapped_output)
+            .map_err(|e| AIIntegrationError::SerializationError(e.to_string()))
     }
     
     fn format(&self) -> ExportFormat {
@@ -165,11 +284,11 @@ impl MetadataExporter for BinaryExporter {
     }
     
     fn file_extension(&self) -> &str {
-        "bin"
+        "msgpack.json"
     }
     
     fn mime_type(&self) -> &str {
-        "application/octet-stream"
+        "application/json"
     }
 }
 

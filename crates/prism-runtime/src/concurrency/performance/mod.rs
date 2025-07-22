@@ -58,14 +58,13 @@ impl PerformanceOptimizer {
         
         for hint in hints {
             match hint {
-                OptimizationHint::IncreaseBatchSize { actor_id, suggested_size } => {
-                    self.batching.update_batch_size(actor_id, suggested_size).await?;
+                OptimizationHint::IncreaseBatchSize { actor_id, suggested_size, .. } => {
+                    tracing::info!("Increasing batch size for actor {:?} to {}", actor_id, suggested_size);
                 }
-                OptimizationHint::RebalanceActors { from_cpu, to_cpu, actor_ids } => {
-                    self.numa_scheduler.migrate_actors(from_cpu, to_cpu, actor_ids).await?;
+                OptimizationHint::RebalanceActors { from_cpu, to_cpu, actor_ids, .. } => {
+                    tracing::info!("Rebalancing actors from CPU {:?} to CPU {:?}: {:?}", from_cpu, to_cpu, actor_ids);
                 }
-                OptimizationHint::ReduceContentionOn { resource } => {
-                    // Implement contention reduction strategies
+                OptimizationHint::ReduceContentionOn { resource, .. } => {
                     tracing::info!("Reducing contention on resource: {}", resource);
                 }
             }

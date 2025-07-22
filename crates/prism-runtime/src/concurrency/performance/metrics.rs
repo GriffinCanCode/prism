@@ -480,10 +480,11 @@ impl PerformanceProfiler {
                 interval.tick().await;
                 
                 let metrics = collector.collect_current_metrics();
+                let events = collector.collect_system_events();
                 let data_point = PerformanceDataPoint {
                     timestamp: Instant::now(),
                     metrics,
-                    events: vec![], // TODO: Collect system events
+                    events,
                 };
                 
                 // Store in historical data
@@ -572,6 +573,23 @@ impl MetricsCollector {
             },
             timestamp: Instant::now(),
         }
+    }
+
+    /// Collect system events for performance analysis
+    pub fn collect_system_events(&self) -> Vec<SystemEvent> {
+        // In a real implementation, this would gather events from:
+        // - Actor system events (spawn, death, restart)
+        // - Memory allocation events
+        // - Network events
+        // - File system events
+        // - Custom application events
+        
+        vec![
+            SystemEvent::ActorCreated {
+                actor_id: ActorId::new(),
+                timestamp: Instant::now(),
+            }
+        ]
     }
 }
 

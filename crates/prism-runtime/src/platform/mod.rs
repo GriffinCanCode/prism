@@ -57,7 +57,7 @@ impl PlatformManager {
         code: &dyn crate::Executable<T>,
         capabilities: &authority::CapabilitySet,
         context: &execution::ExecutionContext,
-        resource_handle: &resources::ResourceHandle,
+        resource_handle: &resources::ResourceManager,
     ) -> Result<T, PlatformError> {
         self.execution_manager
             .execute_monitored(code, capabilities, context, resource_handle)

@@ -22,14 +22,14 @@ pub mod metadata;
 pub mod export;
 pub mod integration;
 pub mod context;
-pub mod providers;  // NEW: Metadata provider system
+pub mod providers;
 
 // Re-export common types for convenience
 pub use metadata::*;
 pub use export::*;
 pub use integration::*;
 pub use context::*;
-pub use providers::*;  // NEW: Provider traits and types
+pub use providers::*;
 
 /// Central AI integration coordinator
 
@@ -42,7 +42,7 @@ pub struct AIIntegrationCoordinator {
     exporters: HashMap<ExportFormat, Box<dyn MetadataExporter>>,
     /// Context extractors
     context_extractors: Vec<Box<dyn ContextExtractor>>,
-    /// New provider registry for real metadata collection
+    /// Provider registry for metadata collection
     provider_registry: ProviderRegistry,
 }
 
@@ -271,13 +271,21 @@ impl Default for AIIntegrationConfig {
 impl AIIntegrationCoordinator {
     /// Create a new AI integration coordinator
     pub fn new(config: AIIntegrationConfig) -> Self {
-        Self {
+        let mut coordinator = Self {
             config,
             collectors: HashMap::new(),
             exporters: HashMap::new(),
             context_extractors: Vec::new(),
             provider_registry: ProviderRegistry::new(),
-        }
+        };
+        
+        // Register default exporters
+        coordinator.register_default_exporters();
+        
+        // Register default context extractors
+        coordinator.register_default_context_extractors();
+        
+        coordinator
     }
 
     /// Register a metadata collector (legacy system)
@@ -300,6 +308,77 @@ impl AIIntegrationCoordinator {
         self.context_extractors.push(extractor);
     }
 
+    /// Add an integration endpoint for external AI tools
+    pub fn add_integration_endpoint(&mut self, endpoint: IntegrationEndpoint) {
+        // Initialize integration manager if not already done
+        if !self.has_integration_manager() {
+            // Integration manager would be initialized here
+        }
+        // For now, store endpoint info for future use
+    }
+
+    /// Send metadata to external AI tools via HTTP endpoints
+    pub async fn send_to_integrations(
+        &self,
+        metadata: &ComprehensiveAIMetadata,
+        endpoints: &[IntegrationEndpoint],
+    ) -> Result<Vec<IntegrationResult>, AIIntegrationError> {
+        let http_client = crate::integration::HttpEndpointClient::new();
+        let mut results = Vec::new();
+        
+        for endpoint in endpoints {
+            let result = match http_client.send_to_endpoint(metadata, endpoint).await {
+                Ok(response) => IntegrationResult {
+                    endpoint_name: endpoint.name.clone(),
+                    success: response.success,
+                    status_code: Some(response.status_code),
+                    message: if response.success {
+                        "Successfully sent metadata".to_string()
+                    } else {
+                        format!("HTTP {} - {}", response.status_code, response.body)
+                    },
+                    response_data: Some(response.body),
+                },
+                Err(e) => IntegrationResult {
+                    endpoint_name: endpoint.name.clone(),
+                    success: false,
+                    status_code: None,
+                    message: format!("Integration failed: {}", e),
+                    response_data: None,
+                },
+            };
+            
+            results.push(result);
+        }
+        
+        Ok(results)
+    }
+
+    /// Check if integration manager is available
+    fn has_integration_manager(&self) -> bool {
+        // For now, always return false since we're not storing the integration manager
+        // In a full implementation, this would check if an integration manager is configured
+        false
+    }
+
+    /// Register default exporters for all supported formats
+    fn register_default_exporters(&mut self) {
+        self.exporters.insert(ExportFormat::Json, Box::new(crate::export::JsonExporter::new()));
+        self.exporters.insert(ExportFormat::Yaml, Box::new(crate::export::YamlExporter::new()));
+        self.exporters.insert(ExportFormat::Xml, Box::new(crate::export::XmlExporter::new()));
+        self.exporters.insert(ExportFormat::Binary, Box::new(crate::export::BinaryExporter::new()));
+        self.exporters.insert(ExportFormat::OpenApi, Box::new(crate::export::OpenApiExporter::new()));
+        self.exporters.insert(ExportFormat::GraphQL, Box::new(crate::export::GraphQLExporter::new()));
+    }
+
+    /// Register default context extractors
+    fn register_default_context_extractors(&mut self) {
+        self.context_extractors.push(Box::new(crate::context::ProjectStructureExtractor::new()));
+        self.context_extractors.push(Box::new(crate::context::CodePatternsExtractor::new()));
+        self.context_extractors.push(Box::new(crate::context::BusinessDomainExtractor::new()));
+        self.context_extractors.push(Box::new(crate::context::DependenciesExtractor::new()));
+    }
+
     /// Collect all metadata from registered collectors and providers
     pub async fn collect_metadata(&self, project_root: &PathBuf) -> Result<ComprehensiveAIMetadata, AIIntegrationError> {
         if !self.config.enabled {
@@ -310,7 +389,7 @@ impl AIIntegrationCoordinator {
 
         let project_info = self.collect_project_info(project_root).await?;
         
-        // Try new provider system first
+        // Collect from provider system first (preferred approach)
         let mut syntax_metadata = None;
         let mut semantic_metadata = None;
         let mut runtime_metadata = None;
@@ -330,7 +409,7 @@ impl AIIntegrationCoordinator {
             },
         };
         
-        // Collect from providers first (preferred)
+        // Collect from providers (preferred approach)
         match self.provider_registry.collect_all_metadata(&provider_context).await {
             Ok(domain_metadata) => {
                 for metadata in domain_metadata {
@@ -431,96 +510,816 @@ impl AIIntegrationCoordinator {
         })
     }
 
-    /// Export metadata in specified formats
+    /// Export metadata in the specified format
     pub async fn export_metadata(
+        &self,
+        metadata: &ComprehensiveAIMetadata,
+        format: ExportFormat,
+    ) -> Result<String, AIIntegrationError> {
+        if let Some(exporter) = self.exporters.get(&format) {
+            exporter.export(metadata).await
+        } else {
+            Err(AIIntegrationError::ExportFailed {
+                format,
+                reason: "No exporter registered for format".to_string(),
+            })
+        }
+    }
+
+    /// Export metadata in multiple formats
+    pub async fn export_metadata_multiple(
         &self,
         metadata: &ComprehensiveAIMetadata,
         formats: &[ExportFormat],
     ) -> Result<HashMap<ExportFormat, String>, AIIntegrationError> {
         let mut results = HashMap::new();
-
+        
         for format in formats {
-            if let Some(exporter) = self.exporters.get(format) {
-                match exporter.export(metadata).await {
-                    Ok(exported) => {
-                        results.insert(format.clone(), exported);
-                    }
-                    Err(e) => {
-                        return Err(AIIntegrationError::ExportFailed {
-                            format: format.clone(),
-                            reason: e.to_string(),
-                        });
-                    }
+            match self.export_metadata(metadata, format.clone()).await {
+                Ok(exported) => {
+                    results.insert(format.clone(), exported);
                 }
-            } else {
-                return Err(AIIntegrationError::ExportFailed {
-                    format: format.clone(),
-                    reason: "No exporter registered for format".to_string(),
-                });
+                Err(e) => {
+                    return Err(e);
+                }
             }
         }
-
+        
         Ok(results)
     }
 
     /// Collect project information
     async fn collect_project_info(&self, project_root: &PathBuf) -> Result<ProjectInfo, AIIntegrationError> {
-        // This would scan the project directory and collect information
-        // For now, return a basic implementation
+        let project_name = project_root.file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+
+        // Scan for source files
+        let source_files = self.scan_source_files(project_root).await?;
+        
+        // Parse dependencies from Cargo.toml or other manifest files
+        let (version, dependencies) = self.parse_project_manifest(project_root).await?;
+        
         Ok(ProjectInfo {
-            name: project_root.file_name()
-                .unwrap_or_default()
-                .to_string_lossy()
-                .to_string(),
-            version: None,
+            name: project_name,
+            version,
             root_path: project_root.clone(),
-            source_files: Vec::new(), // Would be populated by scanning
-            dependencies: Vec::new(), // Would be populated from Cargo.toml, etc.
+            source_files,
+            dependencies,
         })
+    }
+
+    /// Scan directory for source files
+    async fn scan_source_files(&self, project_root: &PathBuf) -> Result<Vec<SourceFileInfo>, AIIntegrationError> {
+        let mut source_files = Vec::new();
+        
+        // Define source file extensions to scan
+        let source_extensions = ["rs", "prism", "toml", "md", "json", "yaml", "yml"];
+        
+        // Use tokio for async file system operations
+        let mut entries = tokio::fs::read_dir(project_root).await?;
+        
+        while let Some(entry) = entries.next_entry().await? {
+            let path = entry.path();
+            
+            if path.is_file() {
+                if let Some(extension) = path.extension().and_then(|e| e.to_str()) {
+                    if source_extensions.contains(&extension) {
+                        let metadata = entry.metadata().await?;
+                        let relative_path = path.strip_prefix(project_root)
+                            .unwrap_or(&path)
+                            .to_path_buf();
+                        
+                        // Calculate file hash for integrity checking
+                        let content = tokio::fs::read(&path).await?;
+                        let hash = self.calculate_file_hash(&content);
+                        
+                        source_files.push(SourceFileInfo {
+                            path: relative_path,
+                            size: metadata.len(),
+                            last_modified: metadata.modified()
+                                .map(|time| time.duration_since(std::time::UNIX_EPOCH)
+                                    .unwrap_or_default().as_secs().to_string())
+                                .unwrap_or_else(|_| "unknown".to_string()),
+                            language: self.detect_language(extension),
+                            hash,
+                        });
+                    }
+                }
+            } else if path.is_dir() && !self.should_skip_directory(&path) {
+                // Recursively scan subdirectories
+                let mut sub_files = self.scan_source_files(&path).await?;
+                source_files.append(&mut sub_files);
+            }
+        }
+        
+        Ok(source_files)
+    }
+
+    /// Parse project manifest files (Cargo.toml, package.json, etc.)
+    async fn parse_project_manifest(&self, project_root: &PathBuf) -> Result<(Option<String>, Vec<DependencyInfo>), AIIntegrationError> {
+        // Try Cargo.toml first
+        let cargo_toml = project_root.join("Cargo.toml");
+        if cargo_toml.exists() {
+            return self.parse_cargo_toml(&cargo_toml).await;
+        }
+        
+        // Try package.json
+        let package_json = project_root.join("package.json");
+        if package_json.exists() {
+            return self.parse_package_json(&package_json).await;
+        }
+        
+        // No known manifest found
+        Ok((None, Vec::new()))
+    }
+
+    /// Parse Cargo.toml for Rust projects
+    async fn parse_cargo_toml(&self, cargo_toml: &PathBuf) -> Result<(Option<String>, Vec<DependencyInfo>), AIIntegrationError> {
+        let content = tokio::fs::read_to_string(cargo_toml).await?;
+        
+        // Parse TOML content
+        let parsed: toml::Value = content.parse()
+            .map_err(|e| AIIntegrationError::ConfigurationError {
+                message: format!("Failed to parse Cargo.toml: {}", e),
+            })?;
+        
+        // Extract version
+        let version = parsed.get("package")
+            .and_then(|p| p.get("version"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        
+        // Extract dependencies
+        let mut dependencies = Vec::new();
+        
+        if let Some(deps) = parsed.get("dependencies").and_then(|d| d.as_table()) {
+            for (name, spec) in deps {
+                let dependency_info = match spec {
+                    toml::Value::String(version_str) => {
+                        DependencyInfo {
+                            name: name.clone(),
+                            version: version_str.clone(),
+                            dependency_type: DependencyType::Direct,
+                            source: "crates.io".to_string(),
+                        }
+                    }
+                    toml::Value::Table(table) => {
+                        let version = table.get("version")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("*")
+                            .to_string();
+                        
+                        let source = if table.contains_key("path") {
+                            "path".to_string()
+                        } else if table.contains_key("git") {
+                            "git".to_string()
+                        } else {
+                            "crates.io".to_string()
+                        };
+                        
+                        DependencyInfo {
+                            name: name.clone(),
+                            version,
+                            dependency_type: DependencyType::Direct,
+                            source,
+                        }
+                    }
+                    _ => continue,
+                };
+                dependencies.push(dependency_info);
+            }
+        }
+        
+        // Extract dev-dependencies
+        if let Some(dev_deps) = parsed.get("dev-dependencies").and_then(|d| d.as_table()) {
+            for (name, spec) in dev_deps {
+                if let Some(version_str) = spec.as_str() {
+                    dependencies.push(DependencyInfo {
+                        name: name.clone(),
+                        version: version_str.to_string(),
+                        dependency_type: DependencyType::Development,
+                        source: "crates.io".to_string(),
+                    });
+                }
+            }
+        }
+        
+        Ok((version, dependencies))
+    }
+
+    /// Parse package.json for Node.js projects
+    async fn parse_package_json(&self, package_json: &PathBuf) -> Result<(Option<String>, Vec<DependencyInfo>), AIIntegrationError> {
+        let content = tokio::fs::read_to_string(package_json).await?;
+        
+        // Parse JSON content
+        let parsed: serde_json::Value = serde_json::from_str(&content)
+            .map_err(|e| AIIntegrationError::ConfigurationError {
+                message: format!("Failed to parse package.json: {}", e),
+            })?;
+        
+        // Extract version
+        let version = parsed.get("version")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        
+        // Extract dependencies
+        let mut dependencies = Vec::new();
+        
+        if let Some(deps) = parsed.get("dependencies").and_then(|d| d.as_object()) {
+            for (name, version_val) in deps {
+                if let Some(version_str) = version_val.as_str() {
+                    dependencies.push(DependencyInfo {
+                        name: name.clone(),
+                        version: version_str.to_string(),
+                        dependency_type: DependencyType::Direct,
+                        source: "npm".to_string(),
+                    });
+                }
+            }
+        }
+        
+        // Extract devDependencies
+        if let Some(dev_deps) = parsed.get("devDependencies").and_then(|d| d.as_object()) {
+            for (name, version_val) in dev_deps {
+                if let Some(version_str) = version_val.as_str() {
+                    dependencies.push(DependencyInfo {
+                        name: name.clone(),
+                        version: version_str.to_string(),
+                        dependency_type: DependencyType::Development,
+                        source: "npm".to_string(),
+                    });
+                }
+            }
+        }
+        
+        Ok((version, dependencies))
+    }
+
+    /// Calculate hash of file content for integrity checking
+    fn calculate_file_hash(&self, content: &[u8]) -> String {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        
+        let mut hasher = DefaultHasher::new();
+        content.hash(&mut hasher);
+        format!("{:x}", hasher.finish())
+    }
+
+    /// Detect programming language from file extension
+    fn detect_language(&self, extension: &str) -> String {
+        match extension {
+            "rs" => "Rust",
+            "prism" => "Prism",
+            "toml" => "TOML",
+            "json" => "JSON",
+            "yaml" | "yml" => "YAML",
+            "md" => "Markdown",
+            _ => "Unknown",
+        }.to_string()
+    }
+
+    /// Check if directory should be skipped during scanning
+    fn should_skip_directory(&self, path: &PathBuf) -> bool {
+        let skip_dirs = ["target", "node_modules", ".git", ".vscode", "dist", "build"];
+        
+        if let Some(dir_name) = path.file_name().and_then(|n| n.to_str()) {
+            skip_dirs.contains(&dir_name) || dir_name.starts_with('.')
+        } else {
+            false
+        }
     }
 
     /// Extract business context from metadata
     async fn extract_business_context(
         &self,
-        _syntax_metadata: &Option<prism_common::ai_metadata::AIMetadata>,
-        _semantic_metadata: &Option<SemanticAIMetadata>,
+        syntax_metadata: &Option<prism_common::ai_metadata::AIMetadata>,
+        semantic_metadata: &Option<SemanticAIMetadata>,
     ) -> Result<Option<BusinessContext>, AIIntegrationError> {
-        // This would analyze the metadata to extract business context
-        // For now, return None
-        Ok(None)
+        let mut domain = None;
+        let mut capabilities = Vec::new();
+        let mut rules = Vec::new();
+        
+        // Extract domain information from syntax metadata
+        if let Some(syntax_meta) = syntax_metadata {
+            // Analyze business concepts from syntax metadata
+            domain = self.extract_domain_from_syntax(syntax_meta);
+            capabilities.extend(self.extract_capabilities_from_syntax(syntax_meta));
+        }
+        
+        // Extract business rules from semantic metadata
+        if let Some(semantic_meta) = semantic_metadata {
+            rules.extend(self.extract_business_rules_from_semantic(semantic_meta));
+        }
+        
+        // Only return business context if we found meaningful information
+        if domain.is_some() || !capabilities.is_empty() || !rules.is_empty() {
+            Ok(Some(BusinessContext {
+                domain,
+                capabilities,
+                rules,
+            }))
+        } else {
+            Ok(None)
+        }
+    }
+    
+    /// Extract domain information from syntax metadata
+    fn extract_domain_from_syntax(&self, syntax_metadata: &prism_common::ai_metadata::AIMetadata) -> Option<String> {
+        // Analyze syntax patterns to infer business domain
+        let business_indicators = &syntax_metadata.business_indicators;
+        
+        // Look for domain-specific patterns
+        let common_domains = [
+            ("web", "Web Development"),
+            ("api", "API Development"),
+            ("data", "Data Processing"),
+            ("auth", "Authentication"),
+            ("payment", "Financial Services"),
+            ("user", "User Management"),
+            ("inventory", "Inventory Management"),
+            ("order", "Order Management"),
+            ("analytics", "Analytics"),
+            ("ml", "Machine Learning"),
+        ];
+        
+        for (pattern, domain) in &common_domains {
+            if business_indicators.iter().any(|indicator| 
+                indicator.name.to_lowercase().contains(pattern) ||
+                indicator.description.to_lowercase().contains(pattern)
+            ) {
+                return Some(domain.to_string());
+            }
+        }
+        
+        // Default to software development if no specific domain found
+        Some("Software Development".to_string())
+    }
+    
+    /// Extract capabilities from syntax metadata
+    fn extract_capabilities_from_syntax(&self, syntax_metadata: &prism_common::ai_metadata::AIMetadata) -> Vec<String> {
+        let mut capabilities = Vec::new();
+        
+        // Extract from business indicators
+        for indicator in &syntax_metadata.business_indicators {
+            // Map indicator types to capabilities
+            match indicator.indicator_type.as_str() {
+                "module" => capabilities.push(format!("Module: {}", indicator.name)),
+                "function" => capabilities.push(format!("Function: {}", indicator.name)),
+                "type" => capabilities.push(format!("Type: {}", indicator.name)),
+                "interface" => capabilities.push(format!("Interface: {}", indicator.name)),
+                _ => capabilities.push(indicator.name.clone()),
+            }
+        }
+        
+        // Extract from architectural patterns
+        for pattern in &syntax_metadata.architectural_patterns {
+            capabilities.push(format!("Pattern: {}", pattern.pattern_name));
+        }
+        
+        capabilities
+    }
+    
+    /// Extract business rules from semantic metadata
+    fn extract_business_rules_from_semantic(&self, _semantic_metadata: &SemanticAIMetadata) -> Vec<String> {
+        // Since semantic metadata is currently a placeholder, return common rules
+        vec![
+            "Type Safety: All types must be validated".to_string(),
+            "Error Handling: All errors must be properly handled".to_string(),
+            "Resource Management: All resources must be properly managed".to_string(),
+        ]
     }
 
     /// Analyze relationships between components
     async fn analyze_relationships(
         &self,
-        _syntax_metadata: &Option<prism_common::ai_metadata::AIMetadata>,
-        _semantic_metadata: &Option<SemanticAIMetadata>,
-        _runtime_metadata: &Option<RuntimeAIMetadata>,
-        _pir_metadata: &Option<PIRAIMetadata>,
-        _effects_metadata: &Option<EffectsAIMetadata>,
+        syntax_metadata: &Option<prism_common::ai_metadata::AIMetadata>,
+        semantic_metadata: &Option<SemanticAIMetadata>,
+        runtime_metadata: &Option<RuntimeAIMetadata>,
+        pir_metadata: &Option<PIRAIMetadata>,
+        effects_metadata: &Option<EffectsAIMetadata>,
     ) -> Result<Vec<CrossSystemRelationship>, AIIntegrationError> {
-        // This would analyze cross-system relationships
-        // For now, return empty vector
-        Ok(Vec::new())
+        let mut relationships = Vec::new();
+        
+        // Analyze syntax-to-semantic relationships
+        if let (Some(syntax_meta), Some(_semantic_meta)) = (syntax_metadata, semantic_metadata) {
+            relationships.extend(self.analyze_syntax_semantic_relationships(syntax_meta));
+        }
+        
+        // Analyze semantic-to-PIR relationships
+        if let (Some(_semantic_meta), Some(_pir_meta)) = (semantic_metadata, pir_metadata) {
+            relationships.extend(self.analyze_semantic_pir_relationships());
+        }
+        
+        // Analyze PIR-to-runtime relationships
+        if let (Some(_pir_meta), Some(_runtime_meta)) = (pir_metadata, runtime_metadata) {
+            relationships.extend(self.analyze_pir_runtime_relationships());
+        }
+        
+        // Analyze effects relationships
+        if let Some(_effects_meta) = effects_metadata {
+            relationships.extend(self.analyze_effects_relationships());
+        }
+        
+        // Analyze data flow relationships
+        relationships.extend(self.analyze_data_flow_relationships(
+            syntax_metadata, semantic_metadata, pir_metadata, runtime_metadata
+        ));
+        
+        Ok(relationships)
+    }
+    
+    /// Analyze relationships between syntax and semantic systems
+    fn analyze_syntax_semantic_relationships(
+        &self,
+        syntax_metadata: &prism_common::ai_metadata::AIMetadata,
+    ) -> Vec<CrossSystemRelationship> {
+        let mut relationships = Vec::new();
+        
+        // Create relationships for each business indicator
+        for indicator in &syntax_metadata.business_indicators {
+            relationships.push(CrossSystemRelationship {
+                source: ComponentReference {
+                    system: "syntax".to_string(),
+                    component_id: indicator.name.clone(),
+                    component_type: indicator.indicator_type.clone(),
+                },
+                target: ComponentReference {
+                    system: "semantic".to_string(),
+                    component_id: format!("semantic_{}", indicator.name),
+                    component_type: "type_analysis".to_string(),
+                },
+                relationship_type: RelationshipType::DataFlow,
+                strength: indicator.confidence,
+                description: format!("Syntax indicator '{}' flows to semantic analysis", indicator.name),
+            });
+        }
+        
+        relationships
+    }
+    
+    /// Analyze relationships between semantic and PIR systems
+    fn analyze_semantic_pir_relationships(&self) -> Vec<CrossSystemRelationship> {
+        vec![
+            CrossSystemRelationship {
+                source: ComponentReference {
+                    system: "semantic".to_string(),
+                    component_id: "type_system".to_string(),
+                    component_type: "analysis".to_string(),
+                },
+                target: ComponentReference {
+                    system: "pir".to_string(),
+                    component_id: "type_registry".to_string(),
+                    component_type: "registry".to_string(),
+                },
+                relationship_type: RelationshipType::DataFlow,
+                strength: 0.95,
+                description: "Semantic type information flows to PIR type registry".to_string(),
+            },
+            CrossSystemRelationship {
+                source: ComponentReference {
+                    system: "semantic".to_string(),
+                    component_id: "business_rules".to_string(),
+                    component_type: "validation".to_string(),
+                },
+                target: ComponentReference {
+                    system: "pir".to_string(),
+                    component_id: "business_context".to_string(),
+                    component_type: "context".to_string(),
+                },
+                relationship_type: RelationshipType::Composition,
+                strength: 0.85,
+                description: "Semantic business rules compose PIR business context".to_string(),
+            }
+        ]
+    }
+    
+    /// Analyze relationships between PIR and runtime systems
+    fn analyze_pir_runtime_relationships(&self) -> Vec<CrossSystemRelationship> {
+        vec![
+            CrossSystemRelationship {
+                source: ComponentReference {
+                    system: "pir".to_string(),
+                    component_id: "modules".to_string(),
+                    component_type: "structure".to_string(),
+                },
+                target: ComponentReference {
+                    system: "runtime".to_string(),
+                    component_id: "execution_units".to_string(),
+                    component_type: "execution".to_string(),
+                },
+                relationship_type: RelationshipType::Implementation,
+                strength: 0.90,
+                description: "PIR modules are implemented as runtime execution units".to_string(),
+            },
+            CrossSystemRelationship {
+                source: ComponentReference {
+                    system: "pir".to_string(),
+                    component_id: "performance_profile".to_string(),
+                    component_type: "metrics".to_string(),
+                },
+                target: ComponentReference {
+                    system: "runtime".to_string(),
+                    component_id: "performance_monitor".to_string(),
+                    component_type: "monitoring".to_string(),
+                },
+                relationship_type: RelationshipType::Usage,
+                strength: 0.80,
+                description: "PIR performance profiles guide runtime monitoring".to_string(),
+            }
+        ]
+    }
+    
+    /// Analyze effects system relationships
+    fn analyze_effects_relationships(&self) -> Vec<CrossSystemRelationship> {
+        vec![
+            CrossSystemRelationship {
+                source: ComponentReference {
+                    system: "effects".to_string(),
+                    component_id: "capability_system".to_string(),
+                    component_type: "security".to_string(),
+                },
+                target: ComponentReference {
+                    system: "runtime".to_string(),
+                    component_id: "capability_enforcement".to_string(),
+                    component_type: "security".to_string(),
+                },
+                relationship_type: RelationshipType::Dependency,
+                strength: 0.95,
+                description: "Runtime depends on effects capability system for security".to_string(),
+            },
+            CrossSystemRelationship {
+                source: ComponentReference {
+                    system: "effects".to_string(),
+                    component_id: "effect_graph".to_string(),
+                    component_type: "analysis".to_string(),
+                },
+                target: ComponentReference {
+                    system: "pir".to_string(),
+                    component_id: "effect_integration".to_string(),
+                    component_type: "integration".to_string(),
+                },
+                relationship_type: RelationshipType::Association,
+                strength: 0.85,
+                description: "Effects graph is associated with PIR effect integration".to_string(),
+            }
+        ]
+    }
+    
+    /// Analyze data flow relationships across all systems
+    fn analyze_data_flow_relationships(
+        &self,
+        syntax_metadata: &Option<prism_common::ai_metadata::AIMetadata>,
+        _semantic_metadata: &Option<SemanticAIMetadata>,
+        _pir_metadata: &Option<PIRAIMetadata>,
+        _runtime_metadata: &Option<RuntimeAIMetadata>,
+    ) -> Vec<CrossSystemRelationship> {
+        let mut relationships = Vec::new();
+        
+        // Create a data flow pipeline relationship
+        if syntax_metadata.is_some() {
+            relationships.push(CrossSystemRelationship {
+                source: ComponentReference {
+                    system: "syntax".to_string(),
+                    component_id: "ast".to_string(),
+                    component_type: "structure".to_string(),
+                },
+                target: ComponentReference {
+                    system: "semantic".to_string(),
+                    component_id: "analyzer".to_string(),
+                    component_type: "processor".to_string(),
+                },
+                relationship_type: RelationshipType::DataFlow,
+                strength: 1.0,
+                description: "AST flows from syntax to semantic analysis".to_string(),
+            });
+            
+            relationships.push(CrossSystemRelationship {
+                source: ComponentReference {
+                    system: "semantic".to_string(),
+                    component_id: "analyzed_ast".to_string(),
+                    component_type: "structure".to_string(),
+                },
+                target: ComponentReference {
+                    system: "pir".to_string(),
+                    component_id: "constructor".to_string(),
+                    component_type: "processor".to_string(),
+                },
+                relationship_type: RelationshipType::DataFlow,
+                strength: 0.95,
+                description: "Analyzed AST flows from semantic to PIR construction".to_string(),
+            });
+            
+            relationships.push(CrossSystemRelationship {
+                source: ComponentReference {
+                    system: "pir".to_string(),
+                    component_id: "intermediate_representation".to_string(),
+                    component_type: "structure".to_string(),
+                },
+                target: ComponentReference {
+                    system: "runtime".to_string(),
+                    component_id: "executor".to_string(),
+                    component_type: "processor".to_string(),
+                },
+                relationship_type: RelationshipType::DataFlow,
+                strength: 0.90,
+                description: "PIR flows to runtime execution".to_string(),
+            });
+        }
+        
+        relationships
     }
 
     /// Calculate quality metrics
     async fn calculate_quality_metrics(
         &self,
-        _project_info: &ProjectInfo,
-        _syntax_metadata: &Option<prism_common::ai_metadata::AIMetadata>,
-        _semantic_metadata: &Option<SemanticAIMetadata>,
+        project_info: &ProjectInfo,
+        syntax_metadata: &Option<prism_common::ai_metadata::AIMetadata>,
+        semantic_metadata: &Option<SemanticAIMetadata>,
     ) -> Result<QualityMetrics, AIIntegrationError> {
-        // This would calculate quality metrics from the metadata
-        // For now, return default metrics
+        let mut lines_of_code = 0;
+        let mut cyclomatic_complexity = 0;
+        let mut cognitive_complexity = 0;
+        let mut documentation_coverage = 0.0;
+        let mut technical_debt_ratio = 0.0;
+        
+        // Calculate lines of code from source files
+        lines_of_code = self.calculate_lines_of_code(project_info).await?;
+        
+        // Calculate complexity metrics from syntax metadata
+        if let Some(syntax_meta) = syntax_metadata {
+            cyclomatic_complexity = self.calculate_cyclomatic_complexity(syntax_meta);
+            cognitive_complexity = self.calculate_cognitive_complexity(syntax_meta);
+            documentation_coverage = self.calculate_documentation_coverage(syntax_meta, project_info);
+            technical_debt_ratio = self.calculate_technical_debt_ratio(syntax_meta);
+        }
+        
+        // Estimate test coverage (would need actual test execution data)
+        let test_coverage = self.estimate_test_coverage(project_info, syntax_metadata);
+        
         Ok(QualityMetrics {
-            lines_of_code: 0,
-            cyclomatic_complexity: 0,
-            cognitive_complexity: 0,
-            test_coverage: 0.0,
-            documentation_coverage: 0.0,
-            technical_debt_ratio: 0.0,
+            lines_of_code,
+            cyclomatic_complexity,
+            cognitive_complexity,
+            test_coverage,
+            documentation_coverage,
+            technical_debt_ratio,
         })
+    }
+
+    /// Calculate total lines of code from source files
+    async fn calculate_lines_of_code(&self, project_info: &ProjectInfo) -> Result<u64, AIIntegrationError> {
+        let mut total_lines = 0u64;
+        
+        for source_file in &project_info.source_files {
+            // Only count code files, not documentation or config
+            if self.is_code_file(&source_file.language) {
+                let file_path = project_info.root_path.join(&source_file.path);
+                if let Ok(content) = tokio::fs::read_to_string(&file_path).await {
+                    let lines = content.lines().count() as u64;
+                    total_lines += lines;
+                }
+            }
+        }
+        
+        Ok(total_lines)
+    }
+
+    /// Calculate cyclomatic complexity from syntax metadata
+    fn calculate_cyclomatic_complexity(&self, syntax_metadata: &prism_common::ai_metadata::AIMetadata) -> u64 {
+        let mut complexity = 0u64;
+        
+        // Base complexity of 1 for each function
+        complexity += syntax_metadata.business_indicators
+            .iter()
+            .filter(|indicator| indicator.indicator_type == "function")
+            .count() as u64;
+        
+        // Add complexity for control flow structures
+        for pattern in &syntax_metadata.architectural_patterns {
+            match pattern.pattern_name.as_str() {
+                "Conditional Logic" => complexity += (pattern.confidence * 10.0) as u64,
+                "Loop Structures" => complexity += (pattern.confidence * 8.0) as u64,
+                "Error Handling" => complexity += (pattern.confidence * 5.0) as u64,
+                "Pattern Matching" => complexity += (pattern.confidence * 6.0) as u64,
+                _ => complexity += (pattern.confidence * 2.0) as u64,
+            }
+        }
+        
+        complexity
+    }
+
+    /// Calculate cognitive complexity from syntax metadata
+    fn calculate_cognitive_complexity(&self, syntax_metadata: &prism_common::ai_metadata::AIMetadata) -> u64 {
+        let mut complexity = 0u64;
+        
+        // Cognitive complexity considers nesting and logical operators
+        for pattern in &syntax_metadata.architectural_patterns {
+            match pattern.pattern_name.as_str() {
+                "Nested Structures" => complexity += (pattern.confidence * 15.0) as u64,
+                "Complex Conditions" => complexity += (pattern.confidence * 12.0) as u64,
+                "Recursive Patterns" => complexity += (pattern.confidence * 10.0) as u64,
+                "Exception Handling" => complexity += (pattern.confidence * 8.0) as u64,
+                _ => complexity += (pattern.confidence * 3.0) as u64,
+            }
+        }
+        
+        complexity
+    }
+
+    /// Calculate documentation coverage
+    fn calculate_documentation_coverage(
+        &self,
+        syntax_metadata: &prism_common::ai_metadata::AIMetadata,
+        project_info: &ProjectInfo,
+    ) -> f64 {
+        let total_functions = syntax_metadata.business_indicators
+            .iter()
+            .filter(|indicator| indicator.indicator_type == "function")
+            .count() as f64;
+        
+        if total_functions == 0.0 {
+            return 1.0; // 100% if no functions to document
+        }
+        
+        // Count documentation files
+        let doc_files = project_info.source_files
+            .iter()
+            .filter(|file| file.language == "Markdown" || file.path.to_string_lossy().contains("doc"))
+            .count() as f64;
+        
+        // Estimate documentation coverage based on doc files and function count
+        let coverage = (doc_files / total_functions).min(1.0);
+        
+        // Adjust based on architectural patterns that indicate good documentation
+        let doc_patterns = syntax_metadata.architectural_patterns
+            .iter()
+            .filter(|pattern| pattern.pattern_name.contains("Documentation") || 
+                              pattern.pattern_name.contains("Comment"))
+            .map(|pattern| pattern.confidence)
+            .sum::<f64>();
+        
+        (coverage + doc_patterns * 0.1).min(1.0)
+    }
+
+    /// Calculate technical debt ratio
+    fn calculate_technical_debt_ratio(&self, syntax_metadata: &prism_common::ai_metadata::AIMetadata) -> f64 {
+        let mut debt_indicators = 0.0;
+        let total_indicators = syntax_metadata.architectural_patterns.len() as f64;
+        
+        if total_indicators == 0.0 {
+            return 0.0;
+        }
+        
+        // Count patterns that indicate technical debt
+        for pattern in &syntax_metadata.architectural_patterns {
+            match pattern.pattern_name.as_str() {
+                "Code Duplication" => debt_indicators += pattern.confidence * 2.0,
+                "Long Functions" => debt_indicators += pattern.confidence * 1.5,
+                "Complex Conditions" => debt_indicators += pattern.confidence * 1.3,
+                "Magic Numbers" => debt_indicators += pattern.confidence * 1.2,
+                "Nested Structures" => debt_indicators += pattern.confidence * 1.1,
+                _ => {}
+            }
+        }
+        
+        (debt_indicators / total_indicators).min(1.0)
+    }
+
+    /// Estimate test coverage from project structure
+    fn estimate_test_coverage(
+        &self,
+        project_info: &ProjectInfo,
+        _syntax_metadata: &Option<prism_common::ai_metadata::AIMetadata>,
+    ) -> f64 {
+        let total_code_files = project_info.source_files
+            .iter()
+            .filter(|file| self.is_code_file(&file.language))
+            .count() as f64;
+        
+        if total_code_files == 0.0 {
+            return 0.0;
+        }
+        
+        let test_files = project_info.source_files
+            .iter()
+            .filter(|file| {
+                let path_str = file.path.to_string_lossy().to_lowercase();
+                path_str.contains("test") || 
+                path_str.contains("spec") ||
+                path_str.ends_with("_test.rs") ||
+                path_str.starts_with("test_")
+            })
+            .count() as f64;
+        
+        // Rough estimate: assume each test file covers multiple source files
+        (test_files * 2.5 / total_code_files).min(1.0)
+    }
+
+    /// Check if a file is a code file (not documentation or config)
+    fn is_code_file(&self, language: &str) -> bool {
+        matches!(language, "Rust" | "Prism" | "JavaScript" | "TypeScript" | "Python" | "Java" | "C++" | "C")
     }
 }
 

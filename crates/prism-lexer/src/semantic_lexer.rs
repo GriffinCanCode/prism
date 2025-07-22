@@ -25,9 +25,9 @@
 //! 3. **Extension Points**: Allow higher-level modules to contribute analysis
 //! 4. **AI-First**: Generate rich metadata for AI comprehension
 
-use crate::{Lexer, LexerConfig, LexerResult, LexerError, Token, TokenKind};
+use crate::{Lexer, LexerConfig, LexerError, Token, TokenKind};
 use crate::semantic::{SemanticAnalyzer, SemanticPattern, IdentifierUsage};
-use crate::token::{SemanticContext, SyntaxStyle, DocValidationStatus, ResponsibilityContext, EffectContext, CohesionImpact};
+use crate::token::{DocValidationStatus, ResponsibilityContext, EffectContext, CohesionImpact};
 use prism_common::{SourceId, span::Span, symbol::SymbolTable, diagnostics::DiagnosticBag};
 use std::collections::HashMap;
 use regex::Regex;
@@ -557,12 +557,14 @@ impl<'source> SemanticLexer<'source> {
     
     /// Perform token enrichment (syntax detection moved to prism-syntax)
     pub fn analyze(mut self) -> Result<SemanticLexerResult, LexerError> {
-        // Step 1: Basic tokenization
+        // Step 1: Basic tokenization - store needed info before lexer is moved
+        let source_id = self.lexer.source_id();
         let lexer_result = self.lexer.tokenize();
         let mut tokens = lexer_result.tokens;
         let mut diagnostics = lexer_result.diagnostics;
         
         // Step 2: Token-level semantic enrichment
+        let mut previous_tokens: Vec<Token> = Vec::new();
         for (index, token) in tokens.iter_mut().enumerate() {
             // Basic semantic analysis for individual tokens
             self.semantic_analyzer.analyze_token(token);
@@ -596,15 +598,20 @@ impl<'source> SemanticLexer<'source> {
             // Apply extensions
             let context = SemanticExtensionContext {
                 token_index: index,
-                previous_tokens: tokens[..index].to_vec(),
-                source_id: self.lexer.source_id(),
-                symbol_table: self.lexer.symbol_table(),
+                previous_tokens: previous_tokens.clone(),
+                source_id,
+                symbol_table: &prism_common::symbol::SymbolTable::new(),
             };
             
             for extension in &self.extensions {
                 if let Err(e) = extension.analyze_token(token, &context) {
                     diagnostics.error(format!("Extension '{}' failed: {}", extension.name(), e), token.span);
                 }
+            }
+            
+            // Add current token to previous tokens for next iteration
+            if index < tokens.len() - 1 {
+                previous_tokens.push(token.clone());
             }
         }
         
@@ -817,7 +824,7 @@ impl LinguisticAnalyzer {
         abbrevs
     }
     
-    pub fn analyze_token(&mut self, token: &Token) -> Option<LinguisticContext> {
+    pub fn analyze_token(&mut self, _token: &Token) -> Option<LinguisticContext> {
         // Implement linguistic analysis
         None
     }
@@ -832,7 +839,7 @@ impl DocumentationValidator {
         }
     }
     
-    pub fn validate_token(&self, token: &Token) -> DocValidationStatus {
+    pub fn validate_token(&self, _token: &Token) -> DocValidationStatus {
         // Implement documentation validation
         DocValidationStatus {
             required_annotations: Vec::new(),
@@ -842,7 +849,7 @@ impl DocumentationValidator {
         }
     }
     
-    pub fn validate_global(&self, tokens: &[Token]) -> DocumentationValidationResult {
+    pub fn validate_global(&self, _tokens: &[Token]) -> DocumentationValidationResult {
         // Implement global documentation validation
         DocumentationValidationResult {
             compliance_score: 100.0,
@@ -862,7 +869,7 @@ impl CohesionCalculator {
         }
     }
     
-    pub fn calculate_impact(&mut self, token: &Token) -> Option<CohesionImpact> {
+    pub fn calculate_impact(&mut self, _token: &Token) -> Option<CohesionImpact> {
         // Implement cohesion impact calculation
         Some(CohesionImpact {
             type_cohesion_impact: 0.8,
@@ -873,7 +880,7 @@ impl CohesionCalculator {
         })
     }
     
-    pub fn calculate_global_metrics(&self, tokens: &[Token]) -> CohesionMetrics {
+    pub fn calculate_global_metrics(&self, _tokens: &[Token]) -> CohesionMetrics {
         // Implement global cohesion metrics calculation
         CohesionMetrics {
             overall_score: 85.0,
@@ -895,12 +902,12 @@ impl EffectAnalyzer {
         }
     }
     
-    pub fn analyze_token(&self, token: &Token) -> Option<EffectContext> {
+    pub fn analyze_token(&self, _token: &Token) -> Option<EffectContext> {
         // Implement effect analysis for individual tokens
         None
     }
     
-    pub fn analyze_global(&self, tokens: &[Token]) -> EffectAnalysisResult {
+    pub fn analyze_global(&self, _tokens: &[Token]) -> EffectAnalysisResult {
         // Implement global effect analysis
         EffectAnalysisResult {
             detected_effects: Vec::new(),

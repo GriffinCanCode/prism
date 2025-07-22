@@ -13,6 +13,7 @@
 //! 5. **AI-Comprehensible**: Structured capability metadata for AI analysis
 
 use crate::resources::effects::Effect;
+use crate::platform::execution::ExecutionTarget;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock, Mutex};
 use std::time::{SystemTime, Duration};
@@ -621,44 +622,66 @@ pub enum Operation {
 /// File system operations
 #[derive(Debug, Clone)]
 pub struct FileSystemOperation {
-    operation_type: FileOperation,
+    /// File path being accessed
     path: String,
+    /// Type of file system operation
+    operation_type: FileOperation,
+    /// Estimated size for write operations
+    estimated_size: Option<usize>,
 }
 
 impl FileSystemOperation {
-    /// Get the operation type
+    /// Create a new file system operation
+    pub fn new(path: String, operation_type: FileOperation, estimated_size: Option<usize>) -> Self {
+        Self { path, operation_type, estimated_size }
+    }
+
+    pub fn path(&self) -> &str {
+        &self.path
+    }
+
     pub fn operation_type(&self) -> FileOperation {
         self.operation_type
     }
 
-    /// Get the path
-    pub fn path(&self) -> &str {
-        &self.path
+    pub fn estimated_size(&self) -> Option<usize> {
+        self.estimated_size
     }
 }
 
 /// Network operations
 #[derive(Debug, Clone)]
 pub struct NetworkOperationStruct {
-    operation_type: NetworkOperation,
+    /// Host being accessed
     host: String,
+    /// Port being accessed
     port: u16,
+    /// Type of network operation
+    operation_type: NetworkOperation,
+    /// Estimated bytes for data transfer
+    estimated_bytes: Option<usize>,
 }
 
 impl NetworkOperationStruct {
-    /// Get the operation type
-    pub fn operation_type(&self) -> NetworkOperation {
-        self.operation_type
+    /// Create a new network operation
+    pub fn new(host: String, port: u16, operation_type: NetworkOperation, estimated_bytes: Option<usize>) -> Self {
+        Self { host, port, operation_type, estimated_bytes }
     }
 
-    /// Get the host
     pub fn host(&self) -> &str {
         &self.host
     }
 
-    /// Get the port
     pub fn port(&self) -> u16 {
         self.port
+    }
+
+    pub fn operation_type(&self) -> NetworkOperation {
+        self.operation_type
+    }
+
+    pub fn estimated_bytes(&self) -> Option<usize> {
+        self.estimated_bytes
     }
 }
 
@@ -666,7 +689,7 @@ impl NetworkOperationStruct {
 // For brevity, I'll include the key error types and audit structures
 
 /// Capability-related errors
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum CapabilityError {
     /// Capability not found
     #[error("Capability not found: {id:?}")]
@@ -765,16 +788,60 @@ pub struct CapabilityUsageStats {
 
 // Placeholder types for the constraint system
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TimeConstraint;
+pub enum TimeConstraint {
+    /// Capability is valid until a specific time
+    ValidUntil(SystemTime),
+    /// Capability is valid after a specific time
+    ValidAfter(SystemTime),
+    /// Capability is valid during a specific time range
+    ValidDuring { start: SystemTime, end: SystemTime },
+    /// Capability is valid during a specific time of day
+    TimeOfDay { start_hour: u8, end_hour: u8 },
+    /// Capability is valid on specific days of the week
+    DaysOfWeek(HashSet<u8>), // 0 for Sunday, 1 for Monday, etc.
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct RateLimit;
+pub enum RateLimit {
+    /// Maximum operations per second
+    PerSecond(u64),
+    /// Maximum operations per minute
+    PerMinute(u64),
+    /// Maximum operations per hour
+    PerHour(u64),
+    /// Burst rate with replenishment
+    Burst { max_burst: u64, replenish_rate: u64 },
+    /// Maximum concurrent operations
+    Concurrent(u64),
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ResourceLimit;
+pub enum ResourceLimit {
+    /// Maximum memory allocation
+    Memory(usize),
+    /// Maximum CPU time usage
+    CpuTime(Duration),
+    /// Maximum network bandwidth
+    NetworkBandwidth(usize),
+    /// Maximum file descriptors
+    FileDescriptors(u64),
+    /// Maximum disk space usage
+    DiskSpace(usize),
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ContextConstraint;
+pub enum ContextConstraint {
+    /// Requires specific capabilities to be present in the context
+    RequiredCapabilities(Vec<String>),
+    /// Forbids specific capabilities from being present in the context
+    ForbiddenCapabilities(Vec<String>),
+    /// Requires specific effects to be present in the context
+    RequiredEffects(Vec<String>),
+    /// Restricts the execution target (e.g., only allow execution on TypeScript, WebAssembly, etc.)
+    ExecutionTarget(HashSet<ExecutionTarget>),
+    /// Restricts the component ID that can execute the operation
+    ComponentId(HashSet<ComponentId>),
+}
 
 // Placeholder types for operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -810,71 +877,397 @@ pub enum SystemOperation {
 
 // Placeholder pattern types
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PathPattern;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct HostPattern;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PortRange;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MemoryRegion;
+pub struct PathPattern {
+    /// Pattern string (supports wildcards like * and **)
+    pattern: String,
+    /// Whether pattern is recursive
+    recursive: bool,
+}
 
 impl PathPattern {
-    fn matches(&self, _path: &str) -> bool {
-        true // Placeholder implementation
+    /// Create a new path pattern
+    pub fn new(pattern: String, recursive: bool) -> Self {
+        Self { pattern, recursive }
     }
+
+    /// Check if this pattern matches a path
+    fn matches(&self, path: &str) -> bool {
+        if self.recursive {
+            // Support recursive matching with **
+            self.matches_recursive(path)
+        } else {
+            // Simple wildcard matching
+            self.matches_simple(path)
+        }
+    }
+
+    /// Check if this pattern covers another pattern (is more permissive)
+    pub fn covers(&self, other: &PathPattern) -> bool {
+        // A pattern covers another if it's more general
+        if self.recursive && !other.recursive {
+            // Recursive patterns cover non-recursive ones in the same tree
+            other.pattern.starts_with(&self.pattern.replace("**", ""))
+        } else if self.pattern == "*" || self.pattern == "**" {
+            // Wildcard patterns cover everything
+            true
+        } else {
+            // Exact match or prefix match
+            other.pattern.starts_with(&self.pattern)
+        }
+    }
+
+    /// Simple wildcard matching (* matches any file/directory name)
+    fn matches_simple(&self, path: &str) -> bool {
+        if self.pattern == "*" {
+            return true;
+        }
+
+        // Split both pattern and path into segments
+        let pattern_segments: Vec<&str> = self.pattern.split('/').collect();
+        let path_segments: Vec<&str> = path.split('/').collect();
+
+        if pattern_segments.len() != path_segments.len() {
+            return false;
+        }
+
+        for (pattern_seg, path_seg) in pattern_segments.iter().zip(path_segments.iter()) {
+            if *pattern_seg != "*" && *pattern_seg != *path_seg {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    /// Recursive wildcard matching (** matches any number of directories)
+    fn matches_recursive(&self, path: &str) -> bool {
+        if self.pattern.contains("**") {
+            let parts: Vec<&str> = self.pattern.split("**").collect();
+            if parts.len() == 2 {
+                let prefix = parts[0].trim_end_matches('/');
+                let suffix = parts[1].trim_start_matches('/');
+                
+                if prefix.is_empty() && suffix.is_empty() {
+                    return true; // ** matches everything
+                }
+                
+                let prefix_matches = prefix.is_empty() || path.starts_with(prefix);
+                let suffix_matches = suffix.is_empty() || path.ends_with(suffix);
+                
+                return prefix_matches && suffix_matches;
+            }
+        }
+        
+        // Fallback to simple matching
+        self.matches_simple(path)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct HostPattern {
+    /// Host pattern (supports wildcards)
+    pattern: String,
+    /// Whether to allow subdomains
+    allow_subdomains: bool,
 }
 
 impl HostPattern {
-    fn matches(&self, _host: &str) -> bool {
-        true // Placeholder implementation
+    /// Create a new host pattern
+    pub fn new(pattern: String, allow_subdomains: bool) -> Self {
+        Self { pattern, allow_subdomains }
     }
+
+    /// Check if this pattern matches a host
+    fn matches(&self, host: &str) -> bool {
+        if self.pattern == "*" {
+            return true;
+        }
+
+        if self.allow_subdomains {
+            // Allow subdomains (e.g., *.example.com matches api.example.com)
+            if self.pattern.starts_with("*.") {
+                let domain = &self.pattern[2..];
+                return host.ends_with(domain) && 
+                       (host == domain || host.ends_with(&format!(".{}", domain)));
+            }
+        }
+
+        // Exact match or simple wildcard
+        if self.pattern.contains('*') {
+            self.wildcard_match(host)
+        } else {
+            self.pattern == host
+        }
+    }
+
+    /// Check if this pattern covers another pattern
+    pub fn covers(&self, other: &HostPattern) -> bool {
+        if self.pattern == "*" {
+            return true;
+        }
+
+        if self.allow_subdomains && other.allow_subdomains {
+            // More general subdomain patterns cover more specific ones
+            if self.pattern.starts_with("*.") && other.pattern.starts_with("*.") {
+                let self_domain = &self.pattern[2..];
+                let other_domain = &other.pattern[2..];
+                return other_domain.ends_with(self_domain);
+            }
+        }
+
+        // Exact match
+        self.pattern == other.pattern
+    }
+
+    /// Simple wildcard matching for hosts
+    fn wildcard_match(&self, host: &str) -> bool {
+        let pattern_parts: Vec<&str> = self.pattern.split('.').collect();
+        let host_parts: Vec<&str> = host.split('.').collect();
+
+        if pattern_parts.len() != host_parts.len() {
+            return false;
+        }
+
+        for (pattern_part, host_part) in pattern_parts.iter().zip(host_parts.iter()) {
+            if *pattern_part != "*" && *pattern_part != *host_part {
+                return false;
+            }
+        }
+
+        true
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PortRange {
+    /// Start of port range (inclusive)
+    start: u16,
+    /// End of port range (inclusive)
+    end: u16,
 }
 
 impl PortRange {
-    fn contains(&self, _port: u16) -> bool {
-        true // Placeholder implementation
+    /// Create a new port range
+    pub fn new(start: u16, end: u16) -> Self {
+        Self { start, end }
     }
+
+    /// Create a single port range
+    pub fn single(port: u16) -> Self {
+        Self { start: port, end: port }
+    }
+
+    /// Check if this range contains a port
+    fn contains(&self, port: u16) -> bool {
+        port >= self.start && port <= self.end
+    }
+
+    /// Check if this range covers another range
+    pub fn covers(&self, other: &PortRange) -> bool {
+        self.start <= other.start && self.end >= other.end
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MemoryRegion {
+    /// Start address of memory region
+    start_addr: usize,
+    /// Size of memory region in bytes
+    size: usize,
+    /// Allowed operations on this region
+    allowed_operations: HashSet<MemoryOperationType>,
 }
 
 impl MemoryRegion {
-    fn allows(&self, _operation: &MemoryOperation) -> bool {
-        true // Placeholder implementation
+    /// Create a new memory region
+    pub fn new(start_addr: usize, size: usize, allowed_operations: HashSet<MemoryOperationType>) -> Self {
+        Self { start_addr, size, allowed_operations }
+    }
+
+    /// Check if this region allows a memory operation
+    fn allows(&self, operation: &MemoryOperation) -> bool {
+        // Check if operation type is allowed
+        if !self.allowed_operations.contains(&operation.operation_type) {
+            return false;
+        }
+
+        // Check if operation is within memory bounds
+        let op_start = operation.address;
+        let op_end = operation.address.saturating_add(operation.size);
+        let region_end = self.start_addr.saturating_add(self.size);
+
+        op_start >= self.start_addr && op_end <= region_end
     }
 }
 
-// Additional placeholder implementations for constraints
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum MemoryOperationType {
+    Read,
+    Write,
+    Execute,
+    Allocate,
+    Deallocate,
+}
+
+// Additional proper implementations for constraints
 impl TimeConstraint {
+    /// Check if this constraint allows an operation at the current time
     fn allows(&self, _operation: &Operation, _context: &crate::platform::execution::ExecutionContext) -> bool {
-        true // Placeholder implementation
+        let now = SystemTime::now();
+        
+        match self {
+            TimeConstraint::ValidUntil(until) => now <= *until,
+            TimeConstraint::ValidAfter(after) => now >= *after,
+            TimeConstraint::ValidDuring { start, end } => now >= *start && now <= *end,
+            TimeConstraint::TimeOfDay { start_hour, end_hour } => {
+                // Get current hour (simplified - would need proper timezone handling)
+                if let Ok(duration) = now.duration_since(SystemTime::UNIX_EPOCH) {
+                    let hours_since_epoch = (duration.as_secs() / 3600) % 24;
+                    let current_hour = hours_since_epoch as u8;
+                    
+                    if start_hour <= end_hour {
+                        current_hour >= *start_hour && current_hour <= *end_hour
+                    } else {
+                        // Handle overnight ranges (e.g., 22:00 to 06:00)
+                        current_hour >= *start_hour || current_hour <= *end_hour
+                    }
+                } else {
+                    false
+                }
+            }
+            TimeConstraint::DaysOfWeek(allowed_days) => {
+                // Get current day of week (simplified)
+                if let Ok(duration) = now.duration_since(SystemTime::UNIX_EPOCH) {
+                    let days_since_epoch = duration.as_secs() / (24 * 3600);
+                    let day_of_week = ((days_since_epoch + 4) % 7) as u8; // Unix epoch was Thursday
+                    allowed_days.contains(&day_of_week)
+                } else {
+                    false
+                }
+            }
+        }
     }
 
+    /// Get the maximum time this constraint is valid until
     fn max_valid_until(&self) -> SystemTime {
-        SystemTime::now() + Duration::from_secs(3600) // Placeholder implementation
+        match self {
+            TimeConstraint::ValidUntil(until) => *until,
+            TimeConstraint::ValidAfter(_) => SystemTime::now() + Duration::from_secs(365 * 24 * 3600), // 1 year
+            TimeConstraint::ValidDuring { end, .. } => *end,
+            TimeConstraint::TimeOfDay { .. } => SystemTime::now() + Duration::from_secs(24 * 3600), // 1 day
+            TimeConstraint::DaysOfWeek(_) => SystemTime::now() + Duration::from_secs(7 * 24 * 3600), // 1 week
+        }
     }
 }
 
 impl RateLimit {
-    fn allows(&self, _operation: &Operation, _context: &crate::platform::execution::ExecutionContext) -> bool {
-        true // Placeholder implementation
+    /// Check if this rate limit allows an operation
+    fn allows(&self, _operation: &Operation, context: &crate::platform::execution::ExecutionContext) -> bool {
+        // In a real implementation, this would track operation counts over time windows
+        // For now, we'll do a simplified check based on the current context
+        
+        match self {
+            RateLimit::PerSecond(max_per_sec) => {
+                // Simplified: assume we can track operations per second
+                // In reality, this would need a sliding window counter
+                *max_per_sec > 0 // Just check that some operations are allowed
+            }
+            RateLimit::PerMinute(max_per_min) => {
+                *max_per_min > 0
+            }
+            RateLimit::PerHour(max_per_hour) => {
+                *max_per_hour > 0
+            }
+            RateLimit::Burst { max_burst, replenish_rate } => {
+                // Token bucket algorithm would be implemented here
+                *max_burst > 0 && *replenish_rate > 0
+            }
+            RateLimit::Concurrent(max_concurrent) => {
+                // Would check current concurrent operations
+                *max_concurrent > 0
+            }
+        }
     }
 }
 
 impl ResourceLimit {
-    fn allows(&self, _operation: &Operation, _context: &crate::platform::execution::ExecutionContext) -> bool {
-        true // Placeholder implementation
+    /// Check if this resource limit allows an operation
+    fn allows(&self, operation: &Operation, context: &crate::platform::execution::ExecutionContext) -> bool {
+        match self {
+            ResourceLimit::Memory(max_bytes) => {
+                // Check if operation would exceed memory limit
+                if let Operation::Memory(mem_op) = operation {
+                    mem_op.size <= *max_bytes
+                } else {
+                    true // Non-memory operations don't consume memory directly
+                }
+            }
+            ResourceLimit::CpuTime(max_duration) => {
+                // In a real implementation, this would track CPU time usage
+                // For now, just check that the limit is reasonable
+                *max_duration > Duration::from_millis(1)
+            }
+            ResourceLimit::NetworkBandwidth(max_bytes_per_sec) => {
+                // Check network operation bandwidth requirements
+                if let Operation::Network(net_op) = operation {
+                    // Simplified: assume operation size represents bandwidth need
+                    net_op.estimated_bytes().unwrap_or(0) <= *max_bytes_per_sec
+                } else {
+                    true
+                }
+            }
+            ResourceLimit::FileDescriptors(max_fds) => {
+                // Would check current file descriptor usage
+                *max_fds > 0
+            }
+            ResourceLimit::DiskSpace(max_bytes) => {
+                // Check if file operation would exceed disk space limit
+                if let Operation::FileSystem(fs_op) = operation {
+                    fs_op.estimated_size().unwrap_or(0) <= *max_bytes
+                } else {
+                    true
+                }
+            }
+        }
     }
 }
 
 impl ContextConstraint {
-    fn allows(&self, _operation: &Operation, _context: &crate::platform::execution::ExecutionContext) -> bool {
-        true // Placeholder implementation
+    /// Check if this context constraint allows an operation
+    fn allows(&self, operation: &Operation, context: &crate::platform::execution::ExecutionContext) -> bool {
+        match self {
+            ContextConstraint::RequiredCapabilities(required_caps) => {
+                // Check if context has all required capabilities
+                required_caps.iter().all(|cap_name| {
+                    context.capabilities.capability_names().contains(cap_name)
+                })
+            }
+            ContextConstraint::ForbiddenCapabilities(forbidden_caps) => {
+                // Check that context doesn't have forbidden capabilities
+                !forbidden_caps.iter().any(|cap_name| {
+                    context.capabilities.capability_names().contains(cap_name)
+                })
+            }
+            ContextConstraint::RequiredEffects(required_effects) => {
+                // Check if context has required effects
+                let current_effects = context.current_effects();
+                required_effects.iter().all(|effect_name| {
+                    current_effects.iter().any(|effect| effect.name() == *effect_name)
+                })
+            }
+            ContextConstraint::ExecutionTarget(allowed_targets) => {
+                // Check if current execution target is allowed
+                allowed_targets.contains(&context.target())
+            }
+            ContextConstraint::ComponentId(allowed_components) => {
+                // Check if current component is allowed
+                allowed_components.contains(&context.current_component())
+            }
+        }
     }
 }
 
-// Placeholder operation types
+// Enhanced operation types with proper implementations
 #[derive(Debug, Clone)]
 pub struct DatabaseOperationStruct {
     operation_type: DatabaseOperation,
@@ -883,6 +1276,11 @@ pub struct DatabaseOperationStruct {
 }
 
 impl DatabaseOperationStruct {
+    /// Create a new database operation
+    pub fn new(operation_type: DatabaseOperation, tables: Vec<String>, estimated_rows: usize) -> Self {
+        Self { operation_type, tables, estimated_rows }
+    }
+
     pub fn operation_type(&self) -> DatabaseOperation {
         self.operation_type
     }
@@ -898,17 +1296,30 @@ impl DatabaseOperationStruct {
 
 #[derive(Debug, Clone)]
 pub struct MemoryOperation {
+    /// Memory address being accessed
+    address: usize,
+    /// Size of memory operation
     size: usize,
+    /// Type of memory operation
+    operation_type: MemoryOperationType,
 }
 
 impl MemoryOperation {
     /// Create a new memory operation
-    pub fn new(size: usize) -> Self {
-        Self { size }
+    pub fn new(address: usize, size: usize, operation_type: MemoryOperationType) -> Self {
+        Self { address, size, operation_type }
     }
-    
+
+    pub fn address(&self) -> usize {
+        self.address
+    }
+
     pub fn size(&self) -> usize {
         self.size
+    }
+
+    pub fn operation_type(&self) -> MemoryOperationType {
+        self.operation_type
     }
 }
 

@@ -182,6 +182,27 @@ pub struct BusinessIntelligenceReport {
     pub recommendations: Vec<String>,
 }
 
+/// Intelligence system for runtime analysis and optimization
+#[derive(Debug)]
+pub struct IntelligenceSystem {
+    /// Metadata collector
+    metadata_collector: Arc<metadata::AIMetadataCollector>,
+}
+
+impl IntelligenceSystem {
+    /// Create a new intelligence system
+    pub fn new() -> Result<Self, IntelligenceError> {
+        Ok(Self {
+            metadata_collector: Arc::new(metadata::AIMetadataCollector::new()?),
+        })
+    }
+
+    /// Get the metadata collector
+    pub fn metadata_collector(&self) -> &Arc<metadata::AIMetadataCollector> {
+        &self.metadata_collector
+    }
+}
+
 /// Intelligence and analytics errors
 #[derive(Debug, Error)]
 pub enum IntelligenceError {

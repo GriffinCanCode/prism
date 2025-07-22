@@ -262,8 +262,8 @@ impl StructuredScope {
 
         for task_id in task_handles {
             let task = {
-                let tasks = self.child_tasks.read().unwrap();
-                tasks.get(&task_id).cloned()
+                let mut tasks = self.child_tasks.write().unwrap();
+                tasks.remove(&task_id)
             };
 
             if let Some(task) = task {

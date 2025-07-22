@@ -12,7 +12,7 @@
 //! 4. **Performance Optimized**: Target-specific optimizations where beneficial
 //! 5. **AI-Comprehensible**: Structured execution metadata for AI analysis
 
-use crate::{authority::capability, resources::effects, RuntimeError};
+use crate::{authority::capability, resources::effects, RuntimeError, Executable};
 use crate::resources::effects::Effect;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Mutex};
@@ -114,6 +114,27 @@ pub enum ExecutionTarget {
     WebAssembly,
     /// Native LLVM target
     Native,
+}
+
+/// TypeScript execution configuration
+#[derive(Debug, Clone)]
+pub struct TypeScriptConfig {
+    pub enable_strict_mode: bool,
+    pub target_version: String,
+}
+
+/// WebAssembly execution configuration
+#[derive(Debug, Clone, Default)]
+pub struct WebAssemblyConfig {
+    pub enable_simd: bool,
+    pub memory_pages: u32,
+}
+
+/// Native execution configuration
+#[derive(Debug, Clone)]
+pub struct NativeConfig {
+    pub optimization_level: u8,
+    pub enable_debug_info: bool,
 }
 
 /// Configuration for code execution
@@ -293,120 +314,52 @@ pub struct SemanticState {
 #[derive(Debug)]
 pub struct ExecutionManager {
     /// Target-specific execution adapters
-    target_adapters: HashMap<ExecutionTarget, Box<dyn TargetAdapter>>,
+    target_adapters: HashMap<ExecutionTarget, TargetAdapterImpl>,
     /// Execution monitoring system
     execution_monitor: Arc<ExecutionMonitor>,
     /// Execution metrics collector
     metrics_collector: Arc<ExecutionMetricsCollector>,
 }
 
-impl ExecutionManager {
-    /// Create a new execution manager
-    pub fn new() -> Result<Self, ExecutionError> {
-        let mut target_adapters: HashMap<ExecutionTarget, Box<dyn TargetAdapter>> = HashMap::new();
-        
-        // Register target adapters
-        target_adapters.insert(
-            ExecutionTarget::TypeScript,
-            Box::new(TypeScriptAdapter::new()?)
-        );
-        target_adapters.insert(
-            ExecutionTarget::WebAssembly,
-            Box::new(WebAssemblyAdapter::new()?)
-        );
-        target_adapters.insert(
-            ExecutionTarget::Native,
-            Box::new(NativeAdapter::new()?)
-        );
+/// Concrete implementation of target adapters
+#[derive(Debug)]
+pub enum TargetAdapterImpl {
+    TypeScript(TypeScriptAdapter),
+    WebAssembly(WebAssemblyAdapter),
+    Native(NativeAdapter),
+}
 
-        Ok(Self {
-            target_adapters,
-            execution_monitor: Arc::new(ExecutionMonitor::new()?),
-            metrics_collector: Arc::new(ExecutionMetricsCollector::new()),
-        })
-    }
-
-    /// Execute code with full monitoring and capability checking
-    pub fn execute_monitored<T>(
+impl TargetAdapterImpl {
+    /// Execute code on this target adapter
+    pub fn execute<T>(
         &self,
         code: &dyn Executable<T>,
         capabilities: &crate::authority::CapabilitySet,
         context: &ExecutionContext,
-        resource_handle: &crate::resources::ResourceHandle,
     ) -> Result<T, ExecutionError> {
-        // Validate capabilities before execution
-        self.validate_execution_capabilities(code, capabilities, context)?;
-        
-        // Get target adapter
-        let adapter = self.target_adapters.get(&context.target)
-            .ok_or_else(|| ExecutionError::UnsupportedTarget { 
-                target: context.target.clone() 
-            })?;
-
-        // Start monitoring
-        let monitor_handle = self.execution_monitor.start_monitoring(context)?;
-        
-        // Execute with adapter
-        let result = adapter.execute(code, capabilities, context);
-        
-        // Stop monitoring and collect metrics
-        let execution_metrics = self.execution_monitor.stop_monitoring(monitor_handle)?;
-        self.metrics_collector.record_execution(&execution_metrics, context);
-        
-        // Process result
-        match result {
-            Ok(value) => {
-                self.handle_successful_execution(context, &execution_metrics);
-                Ok(value)
-            }
-            Err(e) => {
-                self.handle_failed_execution(context, &execution_metrics, &e);
-                Err(e)
-            }
+        match self {
+            TargetAdapterImpl::TypeScript(adapter) => adapter.execute(code, capabilities, context),
+            TargetAdapterImpl::WebAssembly(adapter) => adapter.execute(code, capabilities, context),
+            TargetAdapterImpl::Native(adapter) => adapter.execute(code, capabilities, context),
         }
     }
     
-    /// Validate that code has required capabilities for execution
-    fn validate_execution_capabilities<T>(
-        &self,
-        code: &dyn Executable<T>,
-        available_capabilities: &crate::authority::CapabilitySet,
-        context: &ExecutionContext,
-    ) -> Result<(), ExecutionError> {
-        let required_capabilities = code.required_capabilities();
-        
-        // Check if available capabilities contain all required ones
-        if !available_capabilities.contains_all(&required_capabilities) {
-            return Err(ExecutionError::InsufficientCapabilities {
-                required: required_capabilities.capability_names(),
-                available: available_capabilities.capability_names(),
-            });
+    /// Get adapter name
+    pub fn name(&self) -> &'static str {
+        match self {
+            TargetAdapterImpl::TypeScript(adapter) => adapter.name(),
+            TargetAdapterImpl::WebAssembly(adapter) => adapter.name(),
+            TargetAdapterImpl::Native(adapter) => adapter.name(),
         }
-        
-        Ok(())
     }
     
-    /// Handle successful execution
-    fn handle_successful_execution(
-        &self,
-        context: &ExecutionContext,
-        metrics: &ExecutionMetrics,
-    ) {
-        // Log successful execution
-        println!("Execution {} completed successfully in {:?}", 
-            context.execution_id.0, metrics.duration);
-    }
-    
-    /// Handle failed execution
-    fn handle_failed_execution(
-        &self,
-        context: &ExecutionContext,
-        metrics: &ExecutionMetrics,
-        error: &ExecutionError,
-    ) {
-        // Log failed execution
-        println!("Execution {} failed after {:?}: {}", 
-            context.execution_id.0, metrics.duration, error);
+    /// Check if adapter is available
+    pub fn is_available(&self) -> bool {
+        match self {
+            TargetAdapterImpl::TypeScript(adapter) => adapter.is_available(),
+            TargetAdapterImpl::WebAssembly(adapter) => adapter.is_available(),
+            TargetAdapterImpl::Native(adapter) => adapter.is_available(),
+        }
     }
 }
 
@@ -458,8 +411,8 @@ impl TargetAdapter for TypeScriptAdapter {
         // For now, delegate to the code's execute method
         code.execute(capabilities, context)
             .map_err(|e| match e {
-                crate::RuntimeError::Capability(cap_err) => ExecutionError::Capability(cap_err),
-                crate::RuntimeError::Effect(effect_err) => ExecutionError::Effect(effect_err),
+                crate::RuntimeError::Authority(cap_err) => ExecutionError::Capability(cap_err),
+                crate::RuntimeError::Resource(resource_err) => ExecutionError::Resource(resource_err),
                 _ => ExecutionError::Generic { 
                     message: format!("TypeScript execution failed: {}", e) 
                 },
@@ -502,8 +455,8 @@ impl TargetAdapter for WebAssemblyAdapter {
         // For now, delegate to the code's execute method
         code.execute(capabilities, context)
             .map_err(|e| match e {
-                crate::RuntimeError::Capability(cap_err) => ExecutionError::Capability(cap_err),
-                crate::RuntimeError::Effect(effect_err) => ExecutionError::Effect(effect_err),
+                crate::RuntimeError::Authority(cap_err) => ExecutionError::Capability(cap_err),
+                crate::RuntimeError::Resource(resource_err) => ExecutionError::Resource(resource_err),
                 _ => ExecutionError::Generic { 
                     message: format!("WebAssembly execution failed: {}", e) 
                 },
@@ -546,8 +499,8 @@ impl TargetAdapter for NativeAdapter {
         // For now, delegate to the code's execute method
         code.execute(capabilities, context)
             .map_err(|e| match e {
-                crate::RuntimeError::Capability(cap_err) => ExecutionError::Capability(cap_err),
-                crate::RuntimeError::Effect(effect_err) => ExecutionError::Effect(effect_err),
+                crate::RuntimeError::Authority(cap_err) => ExecutionError::Capability(cap_err),
+                crate::RuntimeError::Resource(resource_err) => ExecutionError::Resource(resource_err),
                 _ => ExecutionError::Generic { 
                     message: format!("Native execution failed: {}", e) 
                 },
@@ -733,14 +686,7 @@ pub struct ExecutionRecord {
     pub timestamp: SystemTime,
 }
 
-/// Configuration for target adapters
-#[derive(Debug, Clone)]
-pub struct TypeScriptConfig {
-    /// Node.js version to use
-    pub node_version: String,
-    /// TypeScript compiler options
-    pub ts_options: HashMap<String, String>,
-}
+
 
 impl Default for TypeScriptConfig {
     fn default() -> Self {
@@ -768,13 +714,7 @@ impl Default for WasmConfig {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct NativeConfig {
-    /// Optimization level
-    pub opt_level: u8,
-    /// Debug symbols
-    pub debug_symbols: bool,
-}
+
 
 impl Default for NativeConfig {
     fn default() -> Self {
@@ -833,9 +773,9 @@ pub enum ExecutionError {
     #[error("Capability error: {0}")]
     Capability(#[from] crate::authority::CapabilityError),
 
-    /// Effect error during execution
-    #[error("Effect error: {0}")]
-    Effect(#[from] crate::resources::EffectError),
+    /// Resource error during execution
+    #[error("Resource error: {0}")]
+    Resource(#[from] crate::resources::ResourceError),
 
     /// Generic execution error
     #[error("Execution error: {message}")]

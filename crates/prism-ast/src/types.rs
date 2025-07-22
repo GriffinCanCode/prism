@@ -5,6 +5,7 @@
 use crate::{AstNode, Expr};
 use prism_common::symbol::Symbol;
 use std::collections::HashMap;
+use std::fmt;
 
 /// Type AST node
 #[derive(Debug, Clone)]
@@ -22,6 +23,8 @@ pub enum Type {
     Tuple(TupleType),
     /// Array types
     Array(ArrayType),
+    /// Composite types
+    Composite(CompositeType),
     /// Semantic types (Prism-specific)
     Semantic(SemanticType),
     /// Dependent types
@@ -1728,4 +1731,173 @@ impl Default for SemanticTypeMetadata {
             compliance_requirements: Vec::new(),
         }
     }
-} 
+}
+
+/// Semantic type information for AI-assisted type inference
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct SemanticTypeInfo {
+    /// Business domain this type belongs to
+    pub business_domain: Option<String>,
+    /// Type constraints derived from semantic analysis
+    pub constraints: Vec<TypeConstraint>,
+    /// Usage patterns observed for this type
+    pub usage_patterns: Vec<String>,
+    /// Confidence level in this type inference (0.0 to 1.0)
+    pub confidence: f64,
+}
+
+/// Composite type for complex data structures
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CompositeType {
+    /// Type name
+    pub name: String,
+    /// Field definitions
+    pub fields: Vec<CompositeField>,
+    /// Type parameters for generics
+    pub type_parameters: Vec<TypeParameter>,
+    /// Composite type kind
+    pub kind: CompositeTypeKind,
+}
+
+/// Field in a composite type
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CompositeField {
+    /// Field name
+    pub name: String,
+    /// Field type
+    pub field_type: Box<AstNode<Type>>,
+    /// Whether the field is optional
+    pub optional: bool,
+    /// Field visibility
+    pub visibility: FieldVisibility,
+}
+
+/// Kind of composite type
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum CompositeTypeKind {
+    /// Struct type
+    Struct,
+    /// Enum type
+    Enum,
+    /// Union type
+    Union,
+    /// Interface type
+    Interface,
+    /// Trait type
+    Trait,
+}
+
+/// Field visibility
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum FieldVisibility {
+    /// Public field
+    Public,
+    /// Private field
+    Private,
+    /// Protected field
+    Protected,
+    /// Internal field
+    Internal,
+}
+
+impl Default for SemanticTypeInfo {
+    fn default() -> Self {
+        Self {
+            business_domain: None,
+            constraints: Vec::new(),
+            usage_patterns: Vec::new(),
+            confidence: 0.0,
+        }
+    }
+}
+
+impl Default for CompositeType {
+    fn default() -> Self {
+        Self {
+            name: "Unknown".to_string(),
+            fields: Vec::new(),
+            type_parameters: Vec::new(),
+            kind: CompositeTypeKind::Struct,
+        }
+    }
+}
+
+impl Default for FieldVisibility {
+    fn default() -> Self {
+        Self::Public
+    }
+}
+
+impl fmt::Display for Type {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Type::Primitive(prim) => {
+                match prim {
+                    PrimitiveType::Boolean => write!(f, "bool"),
+                    PrimitiveType::Integer(int_type) => {
+                        match int_type {
+                            IntegerType::Signed(bits) => write!(f, "i{}", bits),
+                            IntegerType::Unsigned(bits) => write!(f, "u{}", bits),
+                            IntegerType::Natural => write!(f, "nat"),
+                            IntegerType::BigInt => write!(f, "bigint"),
+                        }
+                    }
+                    PrimitiveType::Float(float_type) => {
+                        match float_type {
+                            FloatType::F32 => write!(f, "f32"),
+                            FloatType::F64 => write!(f, "f64"),
+                            FloatType::Decimal => write!(f, "decimal"),
+                        }
+                    }
+                    PrimitiveType::String => write!(f, "string"),
+                    PrimitiveType::Char => write!(f, "char"),
+                    PrimitiveType::Unit => write!(f, "()"),
+                    PrimitiveType::Never => write!(f, "!"),
+                    PrimitiveType::Int32 => write!(f, "i32"),
+                    PrimitiveType::Int64 => write!(f, "i64"),
+                    PrimitiveType::Float64 => write!(f, "f64"),
+                }
+            }
+            Type::Named(named) => {
+                write!(f, "{}", named.name)?;
+                if !named.type_arguments.is_empty() {
+                    write!(f, "<")?;
+                    for (i, arg) in named.type_arguments.iter().enumerate() {
+                        if i > 0 { write!(f, ", ")?; }
+                        write!(f, "{}", arg.kind)?;
+                    }
+                    write!(f, ">")?;
+                }
+                Ok(())
+            }
+            Type::Function(func) => {
+                write!(f, "(")?;
+                for (i, param) in func.parameters.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", param.kind)?;
+                }
+                write!(f, ") -> {}", func.return_type.kind)
+            }
+            Type::Tuple(tuple) => {
+                write!(f, "(")?;
+                for (i, elem) in tuple.elements.iter().enumerate() {
+                    if i > 0 { write!(f, ", ")?; }
+                    write!(f, "{}", elem.kind)?;
+                }
+                write!(f, ")")
+            }
+            Type::Array(array) => {
+                write!(f, "[{}]", array.element_type.kind)
+            }
+            Type::Composite(comp) => {
+                write!(f, "{}", comp.name)
+            }
+            _ => write!(f, "<type>"),  // Fallback for other types
+        }
+    }
+}
