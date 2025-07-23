@@ -207,7 +207,7 @@ impl ProjectStructureExtractor {
                 // Skip common directories that shouldn't be counted
                 if !["target", "node_modules", ".git", "dist", "build"].contains(&dir_name) 
                    && !dir_name.starts_with('.') {
-                    self.count_files_recursive(&path, counts).await?;
+                                          Box::pin(self.count_files_recursive(&path, counts)).await?;
                 }
             }
         }
@@ -265,7 +265,7 @@ impl ProjectStructureExtractor {
                 let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                 if !["target", "node_modules", ".git", "dist", "build"].contains(&dir_name) 
                    && !dir_name.starts_with('.') {
-                    self.calculate_size_recursive(&path, file_count, total_size).await?;
+                                          Box::pin(self.calculate_size_recursive(&path, file_count, total_size)).await?;
                 }
             }
         }
@@ -461,7 +461,7 @@ impl CodePatternsExtractor {
                 // Skip target and other build directories
                 if !["target", "node_modules", ".git", "dist", "build"].contains(&dir_name) 
                    && !dir_name.starts_with('.') {
-                    self.find_rust_files_recursive(&path, rust_files).await?;
+                                          Box::pin(self.find_rust_files_recursive(&path, rust_files)).await?;
                 }
             }
         }
@@ -692,7 +692,7 @@ impl BusinessDomainExtractor {
     /// Infer primary domain from collected data
     fn infer_primary_domain(&self, domain_data: &std::collections::HashMap<String, String>) -> String {
         // Simple heuristic: if we find specific indicators, classify accordingly
-        let all_text = domain_data.values().collect::<Vec<_>>().join(" ").to_lowercase();
+        let all_text = domain_data.values().map(|s| s.as_str()).collect::<Vec<_>>().join(" ").to_lowercase();
         
         if all_text.contains("web") || all_text.contains("api") || all_text.contains("frontend") {
             "Web Development".to_string()
@@ -737,7 +737,7 @@ impl BusinessDomainExtractor {
                 let dir_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
                 if !["target", "node_modules", ".git", "dist", "build"].contains(&dir_name) 
                    && !dir_name.starts_with('.') {
-                    self.find_source_files_recursive(&path, source_files).await?;
+                                          Box::pin(self.find_source_files_recursive(&path, source_files)).await?;
                 }
             }
         }
@@ -901,7 +901,8 @@ impl DependenciesExtractor {
     
     /// Categorize dependencies
     async fn categorize_dependencies(&self, dependency_data: &std::collections::HashMap<String, String>) -> Result<String, AIIntegrationError> {
-        let dependencies = dependency_data.get("dependencies").unwrap_or(&String::new());
+        let empty_string = String::new();
+        let dependencies = dependency_data.get("dependencies").unwrap_or(&empty_string);
         let mut categories = Vec::new();
         
         if dependencies.contains("serde") || dependencies.contains("json") {
@@ -928,7 +929,8 @@ impl DependenciesExtractor {
     
     /// Calculate basic dependency metrics
     fn calculate_dependency_metrics(&self, dependency_data: &std::collections::HashMap<String, String>) -> String {
-        let dependencies = dependency_data.get("dependencies").unwrap_or(&String::new());
+        let empty_string = String::new();
+        let dependencies = dependency_data.get("dependencies").unwrap_or(&empty_string);
         let dep_count = dependencies.matches(",").count() + if dependencies.is_empty() { 0 } else { 1 };
         let dev_count = dependencies.matches("(dev)").count();
         let runtime_count = dependencies.matches("(runtime)").count();

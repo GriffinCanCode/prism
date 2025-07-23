@@ -5,6 +5,7 @@
 
 use crate::{AIIntegrationError, ComprehensiveAIMetadata, ExportFormat};
 use async_trait::async_trait;
+use base64::Engine;
 use serde_json;
 use serde_yaml;
 use std::collections::HashMap;
@@ -260,7 +261,7 @@ impl MetadataExporter for BinaryExporter {
             ))?;
         
         // Encode as base64 string for text-based transport
-        let base64_encoded = base64::encode(&binary_data);
+        let base64_encoded = base64::engine::general_purpose::STANDARD.encode(&binary_data);
         
         // Wrap in a structured format for AI consumption
         let wrapped_output = serde_json::json!({

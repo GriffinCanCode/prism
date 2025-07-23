@@ -260,9 +260,18 @@ pub struct DocumentationMetadata {
 }
 
 /// Registry for managing metadata providers
-#[derive(Debug)]
 pub struct ProviderRegistry {
     providers: HashMap<MetadataDomain, Vec<Box<dyn MetadataProvider>>>,
+}
+
+impl std::fmt::Debug for ProviderRegistry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut debug_struct = f.debug_struct("ProviderRegistry");
+        for (domain, providers) in &self.providers {
+            debug_struct.field(&format!("{:?}", domain), &format!("{} providers", providers.len()));
+        }
+        debug_struct.finish()
+    }
 }
 
 impl ProviderRegistry {
@@ -509,25 +518,21 @@ impl MetadataProvider for BasicSyntaxProvider {
         self.enabled
     }
     
-    async fn provide_metadata(&self, context: &ProviderContext) -> Result<DomainMetadata, AIIntegrationError> {
+    async fn provide_metadata(&self, _context: &ProviderContext) -> Result<DomainMetadata, AIIntegrationError> {
         // TODO: Implement actual syntax analysis
         let basic_ai_metadata = prism_common::ai_metadata::AIMetadata {
-            business_indicators: vec![
-                prism_common::ai_metadata::BusinessIndicator {
+            business_rules: vec![
+                prism_common::ai_metadata::BusinessRuleEntry {
                     name: "project_root".to_string(),
                     description: "Project root directory analysis".to_string(),
-                    indicator_type: "project".to_string(),
-                    confidence: 0.9,
-                    location: Some(prism_common::ai_metadata::SourceLocation {
-                        file: context.project_root.to_string_lossy().to_string(),
-                        line: 1,
-                        column: 1,
-                        span: None,
-                    }),
+                    location: prism_common::span::Span::from_offsets(0, 1, prism_common::span::SourceId::new(1)),
+                    category: prism_common::ai_metadata::BusinessRuleCategory::Validation,
+                    enforcement: prism_common::ai_metadata::EnforcementLevel::Recommended,
                 }
             ],
-            architectural_patterns: vec![],
-            performance_indicators: vec![],
+            insights: vec![],
+            semantic_contexts: vec![],
+            confidence: 0.9,
         };
         
         Ok(DomainMetadata::Syntax(SyntaxMetadata {
@@ -1047,7 +1052,7 @@ impl PerformanceMetadataProvider {
                         }
                     }
                 } else if path.is_dir() && !self.should_skip(&path) {
-                    self.count_files_recursive(&path, count).await?;
+                    Box::pin(self.count_files_recursive(&path, count)).await?;
                 }
             }
         }
@@ -1138,12 +1143,12 @@ impl DocumentationMetadataProvider {
         let docs_dir_exists = project_root.join("docs").exists();
         let doc_files = self.count_doc_files(project_root).await?;
         
-        let mut coverage = 0.0;
+        let mut coverage: f32 = 0.0;
         if readme_exists { coverage += 0.3; }
         if docs_dir_exists { coverage += 0.3; }
         if doc_files > 0 { coverage += 0.4; }
         
-        Ok(coverage.min(1.0))
+        Ok(coverage.min(1.0).into())
     }
     
     async fn assess_quality(&self, project_root: &PathBuf) -> Result<f64, AIIntegrationError> {
@@ -1151,12 +1156,12 @@ impl DocumentationMetadataProvider {
         let has_api_docs = self.has_api_documentation(project_root).await?;
         let has_tutorials = self.has_tutorials(project_root).await?;
         
-        let mut quality = 0.5; // Base score
+        let mut quality: f32 = 0.5; // Base score
         if has_examples { quality += 0.2; }
         if has_api_docs { quality += 0.2; }
         if has_tutorials { quality += 0.1; }
         
-        Ok(quality.min(1.0))
+        Ok(quality.min(1.0).into())
     }
     
     async fn identify_missing_docs(&self, _project_root: &PathBuf) -> Result<Vec<String>, AIIntegrationError> {
@@ -1185,7 +1190,7 @@ impl DocumentationMetadataProvider {
                         }
                     }
                 } else if path.is_dir() && !self.should_skip(&path) {
-                    self.count_docs_recursive(&path, count).await?;
+                    Box::pin(self.count_docs_recursive(&path, count)).await?;
                 }
             }
         }

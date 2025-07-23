@@ -14,7 +14,7 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+
 use serde::{Serialize, Deserialize};
 use thiserror::Error;
 
@@ -309,7 +309,7 @@ impl AIIntegrationCoordinator {
     }
 
     /// Add an integration endpoint for external AI tools
-    pub fn add_integration_endpoint(&mut self, endpoint: IntegrationEndpoint) {
+    pub fn add_integration_endpoint(&mut self, _endpoint: IntegrationEndpoint) {
         // Initialize integration manager if not already done
         if !self.has_integration_manager() {
             // Integration manager would be initialized here
@@ -609,7 +609,7 @@ impl AIIntegrationCoordinator {
                 }
             } else if path.is_dir() && !self.should_skip_directory(&path) {
                 // Recursively scan subdirectories
-                let mut sub_files = self.scan_source_files(&path).await?;
+                let mut sub_files = Box::pin(self.scan_source_files(&path)).await?;
                 source_files.append(&mut sub_files);
             }
         }
@@ -828,7 +828,7 @@ impl AIIntegrationCoordinator {
     /// Extract domain information from syntax metadata
     fn extract_domain_from_syntax(&self, syntax_metadata: &prism_common::ai_metadata::AIMetadata) -> Option<String> {
         // Analyze syntax patterns to infer business domain
-        let business_indicators = &syntax_metadata.business_indicators;
+        let business_rules = &syntax_metadata.business_rules;
         
         // Look for domain-specific patterns
         let common_domains = [
@@ -845,9 +845,9 @@ impl AIIntegrationCoordinator {
         ];
         
         for (pattern, domain) in &common_domains {
-            if business_indicators.iter().any(|indicator| 
-                indicator.name.to_lowercase().contains(pattern) ||
-                indicator.description.to_lowercase().contains(pattern)
+            if business_rules.iter().any(|rule| 
+                rule.name.to_lowercase().contains(pattern) ||
+                rule.description.to_lowercase().contains(pattern)
             ) {
                 return Some(domain.to_string());
             }
@@ -861,21 +861,32 @@ impl AIIntegrationCoordinator {
     fn extract_capabilities_from_syntax(&self, syntax_metadata: &prism_common::ai_metadata::AIMetadata) -> Vec<String> {
         let mut capabilities = Vec::new();
         
-        // Extract from business indicators
-        for indicator in &syntax_metadata.business_indicators {
-            // Map indicator types to capabilities
-            match indicator.indicator_type.as_str() {
-                "module" => capabilities.push(format!("Module: {}", indicator.name)),
-                "function" => capabilities.push(format!("Function: {}", indicator.name)),
-                "type" => capabilities.push(format!("Type: {}", indicator.name)),
-                "interface" => capabilities.push(format!("Interface: {}", indicator.name)),
-                _ => capabilities.push(indicator.name.clone()),
+        // Extract from business rules
+        for rule in &syntax_metadata.business_rules {
+            // Map rule categories to capabilities
+            match rule.category {
+                prism_common::ai_metadata::BusinessRuleCategory::Validation => 
+                    capabilities.push(format!("Validation: {}", rule.name)),
+                prism_common::ai_metadata::BusinessRuleCategory::Constraint => 
+                    capabilities.push(format!("Constraint: {}", rule.name)),
+                prism_common::ai_metadata::BusinessRuleCategory::Workflow => 
+                    capabilities.push(format!("Workflow: {}", rule.name)),
+                prism_common::ai_metadata::BusinessRuleCategory::Compliance => 
+                    capabilities.push(format!("Compliance: {}", rule.name)),
+                prism_common::ai_metadata::BusinessRuleCategory::Security => 
+                    capabilities.push(format!("Security: {}", rule.name)),
             }
         }
         
-        // Extract from architectural patterns
-        for pattern in &syntax_metadata.architectural_patterns {
-            capabilities.push(format!("Pattern: {}", pattern.pattern_name));
+        // Extract from insights (including architectural patterns)
+        for insight in &syntax_metadata.insights {
+            match insight.insight_type {
+                prism_common::ai_metadata::AIInsightType::ArchitecturalImprovement => 
+                    capabilities.push(format!("Architecture: {}", insight.content)),
+                prism_common::ai_metadata::AIInsightType::PatternRecognition => 
+                    capabilities.push(format!("Pattern: {}", insight.content)),
+                _ => capabilities.push(insight.content.clone()),
+            }
         }
         
         capabilities
@@ -937,22 +948,22 @@ impl AIIntegrationCoordinator {
     ) -> Vec<CrossSystemRelationship> {
         let mut relationships = Vec::new();
         
-        // Create relationships for each business indicator
-        for indicator in &syntax_metadata.business_indicators {
+        // Create relationships for each business rule
+        for rule in &syntax_metadata.business_rules {
             relationships.push(CrossSystemRelationship {
                 source: ComponentReference {
                     system: "syntax".to_string(),
-                    component_id: indicator.name.clone(),
-                    component_type: indicator.indicator_type.clone(),
+                    component_id: rule.name.clone(),
+                    component_type: format!("{:?}", rule.category),
                 },
                 target: ComponentReference {
                     system: "semantic".to_string(),
-                    component_id: format!("semantic_{}", indicator.name),
+                    component_id: format!("semantic_{}", rule.name),
                     component_type: "type_analysis".to_string(),
                 },
                 relationship_type: RelationshipType::DataFlow,
-                strength: indicator.confidence,
-                description: format!("Syntax indicator '{}' flows to semantic analysis", indicator.name),
+                strength: 0.8, // Default confidence for business rules
+                description: format!("Business rule '{}' flows to semantic analysis", rule.name),
             });
         }
         
@@ -1160,8 +1171,8 @@ impl AIIntegrationCoordinator {
         
         Ok(QualityMetrics {
             lines_of_code,
-            cyclomatic_complexity,
-            cognitive_complexity,
+            cyclomatic_complexity: cyclomatic_complexity.try_into().unwrap(),
+            cognitive_complexity: cognitive_complexity.try_into().unwrap(),
             test_coverage,
             documentation_coverage,
             technical_debt_ratio,
@@ -1190,20 +1201,29 @@ impl AIIntegrationCoordinator {
     fn calculate_cyclomatic_complexity(&self, syntax_metadata: &prism_common::ai_metadata::AIMetadata) -> u64 {
         let mut complexity = 0u64;
         
-        // Base complexity of 1 for each function
-        complexity += syntax_metadata.business_indicators
+        // Base complexity of 1 for each function-related business rule
+        complexity += syntax_metadata.business_rules
             .iter()
-            .filter(|indicator| indicator.indicator_type == "function")
+            .filter(|rule| rule.name.to_lowercase().contains("function"))
             .count() as u64;
         
-        // Add complexity for control flow structures
-        for pattern in &syntax_metadata.architectural_patterns {
-            match pattern.pattern_name.as_str() {
-                "Conditional Logic" => complexity += (pattern.confidence * 10.0) as u64,
-                "Loop Structures" => complexity += (pattern.confidence * 8.0) as u64,
-                "Error Handling" => complexity += (pattern.confidence * 5.0) as u64,
-                "Pattern Matching" => complexity += (pattern.confidence * 6.0) as u64,
-                _ => complexity += (pattern.confidence * 2.0) as u64,
+        // Add complexity for control flow structures from insights
+        for insight in &syntax_metadata.insights {
+            match insight.insight_type {
+                prism_common::ai_metadata::AIInsightType::PatternRecognition => {
+                    if insight.content.contains("Conditional") {
+                        complexity += (insight.confidence * 10.0) as u64;
+                    } else if insight.content.contains("Loop") {
+                        complexity += (insight.confidence * 8.0) as u64;
+                    } else if insight.content.contains("Error") {
+                        complexity += (insight.confidence * 5.0) as u64;
+                    } else if insight.content.contains("Pattern Matching") {
+                        complexity += (insight.confidence * 6.0) as u64;
+                    } else {
+                        complexity += (insight.confidence * 2.0) as u64;
+                    }
+                },
+                _ => complexity += (insight.confidence * 2.0) as u64,
             }
         }
         
@@ -1215,13 +1235,17 @@ impl AIIntegrationCoordinator {
         let mut complexity = 0u64;
         
         // Cognitive complexity considers nesting and logical operators
-        for pattern in &syntax_metadata.architectural_patterns {
-            match pattern.pattern_name.as_str() {
-                "Nested Structures" => complexity += (pattern.confidence * 15.0) as u64,
-                "Complex Conditions" => complexity += (pattern.confidence * 12.0) as u64,
-                "Recursive Patterns" => complexity += (pattern.confidence * 10.0) as u64,
-                "Exception Handling" => complexity += (pattern.confidence * 8.0) as u64,
-                _ => complexity += (pattern.confidence * 3.0) as u64,
+        for insight in &syntax_metadata.insights {
+            if insight.content.contains("Nested Structures") {
+                complexity += (insight.confidence * 15.0) as u64;
+            } else if insight.content.contains("Complex Conditions") {
+                complexity += (insight.confidence * 12.0) as u64;
+            } else if insight.content.contains("Recursive Patterns") {
+                complexity += (insight.confidence * 10.0) as u64;
+            } else if insight.content.contains("Exception Handling") {
+                complexity += (insight.confidence * 8.0) as u64;
+            } else {
+                complexity += (insight.confidence * 3.0) as u64;
             }
         }
         
@@ -1234,9 +1258,9 @@ impl AIIntegrationCoordinator {
         syntax_metadata: &prism_common::ai_metadata::AIMetadata,
         project_info: &ProjectInfo,
     ) -> f64 {
-        let total_functions = syntax_metadata.business_indicators
+        let total_functions = syntax_metadata.business_rules
             .iter()
-            .filter(|indicator| indicator.indicator_type == "function")
+            .filter(|rule| rule.name.to_lowercase().contains("function"))
             .count() as f64;
         
         if total_functions == 0.0 {
@@ -1252,39 +1276,42 @@ impl AIIntegrationCoordinator {
         // Estimate documentation coverage based on doc files and function count
         let coverage = (doc_files / total_functions).min(1.0);
         
-        // Adjust based on architectural patterns that indicate good documentation
-        let doc_patterns = syntax_metadata.architectural_patterns
+        // Adjust based on insights that indicate good documentation
+        let doc_insights = syntax_metadata.insights
             .iter()
-            .filter(|pattern| pattern.pattern_name.contains("Documentation") || 
-                              pattern.pattern_name.contains("Comment"))
-            .map(|pattern| pattern.confidence)
+            .filter(|insight| insight.content.contains("Documentation") || 
+                              insight.content.contains("Comment"))
+            .map(|insight| insight.confidence)
             .sum::<f64>();
         
-        (coverage + doc_patterns * 0.1).min(1.0)
+        (coverage + doc_insights * 0.1).min(1.0)
     }
 
     /// Calculate technical debt ratio
     fn calculate_technical_debt_ratio(&self, syntax_metadata: &prism_common::ai_metadata::AIMetadata) -> f64 {
         let mut debt_indicators = 0.0;
-        let total_indicators = syntax_metadata.architectural_patterns.len() as f64;
+        let total_indicators = syntax_metadata.insights.len() as f64;
         
         if total_indicators == 0.0 {
             return 0.0;
         }
         
-        // Count patterns that indicate technical debt
-        for pattern in &syntax_metadata.architectural_patterns {
-            match pattern.pattern_name.as_str() {
-                "Code Duplication" => debt_indicators += pattern.confidence * 2.0,
-                "Long Functions" => debt_indicators += pattern.confidence * 1.5,
-                "Complex Conditions" => debt_indicators += pattern.confidence * 1.3,
-                "Magic Numbers" => debt_indicators += pattern.confidence * 1.2,
-                "Nested Structures" => debt_indicators += pattern.confidence * 1.1,
-                _ => {}
+        // Count insights that indicate technical debt
+        for insight in &syntax_metadata.insights {
+            if insight.content.contains("Code Duplication") {
+                debt_indicators += insight.confidence * 2.0;
+            } else if insight.content.contains("Long Functions") {
+                debt_indicators += insight.confidence * 1.5;
+            } else if insight.content.contains("Complex Conditions") {
+                debt_indicators += insight.confidence * 1.3;
+            } else if insight.content.contains("Magic Numbers") {
+                debt_indicators += insight.confidence * 1.2;
+            } else if insight.content.contains("Nested Structures") {
+                debt_indicators += insight.confidence * 1.1;
             }
         }
         
-        (debt_indicators / total_indicators).min(1.0)
+        (debt_indicators / total_indicators).min(1.0_f64)
     }
 
     /// Estimate test coverage from project structure

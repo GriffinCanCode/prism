@@ -138,35 +138,31 @@ impl BasicSyntaxCollector {
 
 #[async_trait]
 impl MetadataCollector for BasicSyntaxCollector {
-    async fn collect_metadata(&self, project_root: &PathBuf) -> Result<CollectedMetadata, AIIntegrationError> {
+    async fn collect_metadata(&self, _project_root: &PathBuf) -> Result<CollectedMetadata, AIIntegrationError> {
         // TODO: Implement actual syntax analysis
         // For now, create a basic placeholder metadata
         
         let basic_ai_metadata = prism_common::ai_metadata::AIMetadata {
-            business_indicators: vec![
-                prism_common::ai_metadata::BusinessIndicator {
+            business_rules: vec![
+                prism_common::ai_metadata::BusinessRuleEntry {
                     name: "project_structure".to_string(),
                     description: "Basic project structure analysis".to_string(),
-                    indicator_type: "structure".to_string(),
-                    confidence: 0.8,
-                    location: Some(prism_common::ai_metadata::SourceLocation {
-                        file: project_root.to_string_lossy().to_string(),
-                        line: 1,
-                        column: 1,
-                        span: None,
-                    }),
+                    location: prism_common::span::Span::from_offsets(0, 1, prism_common::span::SourceId::new(1)),
+                    category: prism_common::ai_metadata::BusinessRuleCategory::Validation,
+                    enforcement: prism_common::ai_metadata::EnforcementLevel::Recommended,
                 }
             ],
-            architectural_patterns: vec![
-                prism_common::ai_metadata::ArchitecturalPattern {
-                    pattern_name: "Modular Architecture".to_string(),
-                    description: "Project uses modular architecture".to_string(),
+            insights: vec![
+                prism_common::ai_metadata::AIInsight {
+                    insight_type: prism_common::ai_metadata::AIInsightType::ArchitecturalImprovement,
+                    content: "Project uses modular architecture with src and tests components".to_string(),
                     confidence: 0.7,
-                    components: vec!["src".to_string(), "tests".to_string()],
-                    relationships: vec![],
+                    location: Some(prism_common::span::Span::from_offsets(0, 1, prism_common::span::SourceId::new(1))),
+                    evidence: vec!["src".to_string(), "tests".to_string()],
                 }
             ],
-            performance_indicators: vec![],
+            semantic_contexts: vec![],
+            confidence: 0.8,
         };
         
         Ok(CollectedMetadata::new(
@@ -225,9 +221,16 @@ impl MetadataCollector for BasicSemanticCollector {
 }
 
 /// Metadata aggregator that combines multiple collectors
-#[derive(Debug)]
 pub struct MetadataAggregator {
     collectors: Vec<Box<dyn MetadataCollector>>,
+}
+
+impl std::fmt::Debug for MetadataAggregator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MetadataAggregator")
+            .field("collectors", &format!("{} collectors", self.collectors.len()))
+            .finish()
+    }
 }
 
 impl MetadataAggregator {
@@ -672,7 +675,7 @@ impl PerformanceMetricsCollector {
                     }
                 }
             } else if path.is_dir() && !self.should_skip_directory(&path) {
-                self.count_files_recursive(&path, count).await?;
+                Box::pin(self.count_files_recursive(&path, count)).await?;
             }
         }
         
@@ -782,7 +785,7 @@ impl DocumentationCollector {
                     }
                 }
             } else if path.is_dir() && !self.should_skip_directory(&path) {
-                self.find_doc_files_recursive(&path, project_root, doc_files).await?;
+                                  Box::pin(self.find_doc_files_recursive(&path, project_root, doc_files)).await?;
             }
         }
         
