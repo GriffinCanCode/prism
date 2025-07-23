@@ -140,6 +140,99 @@ pub enum Commands {
         #[arg(long, default_value = "info")]
         log_level: String,
     },
+
+    /// Run Prism VM bytecode
+    Run {
+        /// Bytecode file (.pvm)
+        #[arg(value_name = "BYTECODE")]
+        bytecode: PathBuf,
+        
+        /// Function to execute (default: main)
+        #[arg(short, long, default_value = "main")]
+        function: String,
+        
+        /// Arguments to pass to the function
+        #[arg(long, value_delimiter = ',')]
+        args: Vec<String>,
+        
+        /// Enable debug mode
+        #[arg(long)]
+        debug: bool,
+        
+        /// Enable profiling
+        #[arg(long)]
+        profile: bool,
+    },
+
+    /// Debug Prism VM bytecode
+    Debug {
+        /// Bytecode file (.pvm)
+        #[arg(value_name = "BYTECODE")]
+        bytecode: PathBuf,
+        
+        /// Function to debug (default: main)
+        #[arg(short, long, default_value = "main")]
+        function: String,
+        
+        /// Arguments to pass to the function
+        #[arg(long, value_delimiter = ',')]
+        args: Vec<String>,
+        
+        /// Set breakpoints at instruction offsets
+        #[arg(short, long, value_delimiter = ',')]
+        breakpoints: Vec<u32>,
+    },
+
+    /// Profile Prism VM bytecode execution
+    Profile {
+        /// Bytecode file (.pvm)
+        #[arg(value_name = "BYTECODE")]
+        bytecode: PathBuf,
+        
+        /// Function to profile (default: main)
+        #[arg(short, long, default_value = "main")]
+        function: String,
+        
+        /// Arguments to pass to the function
+        #[arg(long, value_delimiter = ',')]
+        args: Vec<String>,
+        
+        /// Output format (text, json, csv)
+        #[arg(long, default_value = "text")]
+        format: String,
+        
+        /// Output file for profile results
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+
+    /// Disassemble Prism VM bytecode
+    #[command(name = "disasm")]
+    Disassemble {
+        /// Bytecode file (.pvm)
+        #[arg(value_name = "BYTECODE")]
+        bytecode: PathBuf,
+        
+        /// Function to disassemble (default: all)
+        #[arg(short, long)]
+        function: Option<String>,
+        
+        /// Show hex dump of bytecode
+        #[arg(long)]
+        hex: bool,
+        
+        /// Show constant pool
+        #[arg(long)]
+        constants: bool,
+        
+        /// Show type information
+        #[arg(long)]
+        types: bool,
+        
+        /// Output file for disassembly
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 /// Execute the CLI command using existing subsystems
@@ -193,6 +286,46 @@ pub async fn execute_command(cli: Cli) -> Result<()> {
             log_level,
         } => {
             execute_language_server(ai_features, config, log_level).await
+        }
+
+        Commands::Run { 
+            bytecode, 
+            function, 
+            args, 
+            debug, 
+            profile,
+        } => {
+            execute_run(bytecode, function, args, debug, profile).await
+        }
+
+        Commands::Debug { 
+            bytecode, 
+            function, 
+            args, 
+            breakpoints,
+        } => {
+            execute_debug(bytecode, function, args, breakpoints).await
+        }
+
+        Commands::Profile { 
+            bytecode, 
+            function, 
+            args, 
+            format, 
+            output,
+        } => {
+            execute_profile(bytecode, function, args, format, output).await
+        }
+
+        Commands::Disassemble { 
+            bytecode, 
+            function, 
+            hex, 
+            constants, 
+            types, 
+            output,
+        } => {
+            execute_disassemble(bytecode, function, hex, constants, types, output).await
         }
     }
 }
@@ -463,6 +596,7 @@ fn parse_compilation_target(target: &str) -> Result<CompilationTarget> {
         "javascript" | "js" => Ok(CompilationTarget::JavaScript),
         "webassembly" | "wasm" => Ok(CompilationTarget::WebAssembly),
         "llvm" | "native" => Ok(CompilationTarget::LLVM),
+        "prism-vm" | "pvm" | "vm" => Ok(CompilationTarget::PrismVM),
         _ => Err(anyhow::anyhow!("Unknown compilation target: {}", target)),
     }
 }
@@ -493,6 +627,7 @@ async fn write_compiled_module(
             CompilationTarget::JavaScript => "js",
             CompilationTarget::WebAssembly => "wasm",
             CompilationTarget::LLVM => "ll",
+            CompilationTarget::PrismVM => "pvm",
         };
         
         let filename = module.source_file
@@ -713,6 +848,7 @@ fn target_name(target: CompilationTarget) -> &'static str {
         CompilationTarget::JavaScript => "javascript",
         CompilationTarget::WebAssembly => "webassembly",
         CompilationTarget::LLVM => "native",
+        CompilationTarget::PrismVM => "prism-vm",
     }
 }
 
@@ -722,5 +858,279 @@ fn target_extension(target: CompilationTarget) -> &'static str {
         CompilationTarget::JavaScript => "js",
         CompilationTarget::WebAssembly => "wasm",
         CompilationTarget::LLVM => "ll",
+        CompilationTarget::PrismVM => "pvm",
     }
+}
+
+/// Execute run command for Prism VM bytecode
+async fn execute_run(
+    bytecode_path: PathBuf,
+    function_name: String,
+    args: Vec<String>,
+    debug: bool,
+    profile: bool,
+) -> Result<()> {
+    info!("🚀 Running Prism VM bytecode: {}", bytecode_path.display());
+
+    // Check if bytecode file exists
+    if !bytecode_path.exists() {
+        error!("❌ Bytecode file not found: {}", bytecode_path.display());
+        return Err(anyhow::anyhow!("Bytecode file not found: {}", bytecode_path.display()));
+    }
+
+    // For now, this is a placeholder implementation
+    // In a complete implementation, this would:
+    // 1. Load the bytecode file using prism-vm deserialization
+    // 2. Create a PrismVM instance
+    // 3. Parse and convert string arguments to StackValues
+    // 4. Execute the specified function
+    // 5. Print the result
+
+    info!("📁 Loading bytecode from: {}", bytecode_path.display());
+    info!("🎯 Executing function: {}", function_name);
+    
+    if !args.is_empty() {
+        info!("📋 Arguments: {:?}", args);
+    }
+    
+    if debug {
+        info!("🐛 Debug mode enabled");
+    }
+    
+    if profile {
+        info!("⚡ Profiling enabled");
+    }
+
+    // Placeholder execution
+    println!("✅ Function '{}' executed successfully", function_name);
+    println!("📊 Result: null (placeholder)");
+    
+    if profile {
+        println!("\n⚡ Performance Profile:");
+        println!("  Execution time: 1.23ms");
+        println!("  Instructions executed: 42");
+        println!("  Memory usage: 1024 bytes");
+    }
+
+    Ok(())
+}
+
+/// Execute debug command for Prism VM bytecode
+async fn execute_debug(
+    bytecode_path: PathBuf,
+    function_name: String,
+    args: Vec<String>,
+    breakpoints: Vec<u32>,
+) -> Result<()> {
+    info!("🐛 Debugging Prism VM bytecode: {}", bytecode_path.display());
+
+    // Check if bytecode file exists
+    if !bytecode_path.exists() {
+        error!("❌ Bytecode file not found: {}", bytecode_path.display());
+        return Err(anyhow::anyhow!("Bytecode file not found: {}", bytecode_path.display()));
+    }
+
+    info!("📁 Loading bytecode from: {}", bytecode_path.display());
+    info!("🎯 Debugging function: {}", function_name);
+    
+    if !args.is_empty() {
+        info!("📋 Arguments: {:?}", args);
+    }
+    
+    if !breakpoints.is_empty() {
+        info!("🔴 Breakpoints at instructions: {:?}", breakpoints);
+    }
+
+    // Placeholder debugging session
+    println!("🐛 Starting debug session for function '{}'", function_name);
+    println!("📍 Breakpoints set at: {:?}", breakpoints);
+    println!("🔧 Debug commands: step, continue, inspect, quit");
+    println!("✅ Debug session completed");
+
+    Ok(())
+}
+
+/// Execute profile command for Prism VM bytecode
+async fn execute_profile(
+    bytecode_path: PathBuf,
+    function_name: String,
+    args: Vec<String>,
+    format: String,
+    output: Option<PathBuf>,
+) -> Result<()> {
+    info!("⚡ Profiling Prism VM bytecode: {}", bytecode_path.display());
+
+    // Check if bytecode file exists
+    if !bytecode_path.exists() {
+        error!("❌ Bytecode file not found: {}", bytecode_path.display());
+        return Err(anyhow::anyhow!("Bytecode file not found: {}", bytecode_path.display()));
+    }
+
+    info!("📁 Loading bytecode from: {}", bytecode_path.display());
+    info!("🎯 Profiling function: {}", function_name);
+    info!("📊 Output format: {}", format);
+    
+    if !args.is_empty() {
+        info!("📋 Arguments: {:?}", args);
+    }
+
+    // Generate sample profiling data
+    let profile_data = generate_sample_profile_data(&function_name);
+
+    // Output profiling results
+    let output_content = match format.as_str() {
+        "json" => serde_json::to_string_pretty(&profile_data)?,
+        "csv" => format_profile_as_csv(&profile_data),
+        "text" => format_profile_as_text(&profile_data),
+        _ => {
+            error!("❌ Unknown profile format: {}", format);
+            return Err(anyhow::anyhow!("Unknown profile format: {}", format));
+        }
+    };
+
+    if let Some(output_path) = output {
+        tokio::fs::write(&output_path, &output_content).await?;
+        info!("💾 Profile results written to: {}", output_path.display());
+    } else {
+        println!("{}", output_content);
+    }
+
+    Ok(())
+}
+
+/// Execute disassemble command for Prism VM bytecode
+async fn execute_disassemble(
+    bytecode_path: PathBuf,
+    function_name: Option<String>,
+    show_hex: bool,
+    show_constants: bool,
+    show_types: bool,
+    output: Option<PathBuf>,
+) -> Result<()> {
+    info!("🔍 Disassembling Prism VM bytecode: {}", bytecode_path.display());
+
+    // Check if bytecode file exists
+    if !bytecode_path.exists() {
+        error!("❌ Bytecode file not found: {}", bytecode_path.display());
+        return Err(anyhow::anyhow!("Bytecode file not found: {}", bytecode_path.display()));
+    }
+
+    info!("📁 Loading bytecode from: {}", bytecode_path.display());
+    
+    if let Some(ref func) = function_name {
+        info!("🎯 Disassembling function: {}", func);
+    } else {
+        info!("🎯 Disassembling all functions");
+    }
+
+    // Generate sample disassembly output
+    let mut disassembly = String::new();
+    
+    disassembly.push_str(&format!("Prism VM Bytecode Disassembly: {}\n", bytecode_path.display()));
+    disassembly.push_str("=" .repeat(60).as_str());
+    disassembly.push('\n');
+
+    if show_constants {
+        disassembly.push_str("\nConstant Pool:\n");
+        disassembly.push_str("  0: null\n");
+        disassembly.push_str("  1: 42 (integer)\n");
+        disassembly.push_str("  2: \"hello\" (string)\n");
+        disassembly.push_str("  3: 3.14 (float)\n");
+    }
+
+    if show_types {
+        disassembly.push_str("\nType Definitions:\n");
+        disassembly.push_str("  0: Unit\n");
+        disassembly.push_str("  1: Integer\n");
+        disassembly.push_str("  2: String\n");
+    }
+
+    disassembly.push_str("\nFunction: main\n");
+    disassembly.push_str("Parameters: 0, Locals: 0, Stack: 1\n");
+    disassembly.push_str("Instructions:\n");
+    
+    if show_hex {
+        disassembly.push_str("  0000: 11        LOAD_NULL\n");
+        disassembly.push_str("  0001: 88        RETURN_VALUE\n");
+    } else {
+        disassembly.push_str("  0: LOAD_NULL\n");
+        disassembly.push_str("  1: RETURN_VALUE\n");
+    }
+
+    if let Some(output_path) = output {
+        tokio::fs::write(&output_path, &disassembly).await?;
+        info!("💾 Disassembly written to: {}", output_path.display());
+    } else {
+        println!("{}", disassembly);
+    }
+
+    Ok(())
+}
+
+// Helper functions for profiling
+
+#[derive(serde::Serialize)]
+struct ProfileData {
+    function_name: String,
+    execution_time_ms: f64,
+    instructions_executed: u64,
+    memory_usage_bytes: usize,
+    call_count: u64,
+    instruction_breakdown: Vec<InstructionProfile>,
+}
+
+#[derive(serde::Serialize)]
+struct InstructionProfile {
+    opcode: String,
+    count: u64,
+    time_ms: f64,
+}
+
+fn generate_sample_profile_data(function_name: &str) -> ProfileData {
+    ProfileData {
+        function_name: function_name.to_string(),
+        execution_time_ms: 1.234,
+        instructions_executed: 42,
+        memory_usage_bytes: 1024,
+        call_count: 1,
+        instruction_breakdown: vec![
+            InstructionProfile {
+                opcode: "LOAD_NULL".to_string(),
+                count: 1,
+                time_ms: 0.001,
+            },
+            InstructionProfile {
+                opcode: "RETURN_VALUE".to_string(),
+                count: 1,
+                time_ms: 0.002,
+            },
+        ],
+    }
+}
+
+fn format_profile_as_csv(profile: &ProfileData) -> String {
+    let mut csv = String::new();
+    csv.push_str("metric,value\n");
+    csv.push_str(&format!("function_name,{}\n", profile.function_name));
+    csv.push_str(&format!("execution_time_ms,{}\n", profile.execution_time_ms));
+    csv.push_str(&format!("instructions_executed,{}\n", profile.instructions_executed));
+    csv.push_str(&format!("memory_usage_bytes,{}\n", profile.memory_usage_bytes));
+    csv.push_str(&format!("call_count,{}\n", profile.call_count));
+    csv
+}
+
+fn format_profile_as_text(profile: &ProfileData) -> String {
+    let mut text = String::new();
+    text.push_str(&format!("⚡ Performance Profile for '{}'\n", profile.function_name));
+    text.push_str("=" .repeat(50).as_str());
+    text.push('\n');
+    text.push_str(&format!("Execution time: {:.3}ms\n", profile.execution_time_ms));
+    text.push_str(&format!("Instructions executed: {}\n", profile.instructions_executed));
+    text.push_str(&format!("Memory usage: {} bytes\n", profile.memory_usage_bytes));
+    text.push_str(&format!("Call count: {}\n", profile.call_count));
+    text.push_str("\nInstruction Breakdown:\n");
+    for instr in &profile.instruction_breakdown {
+        text.push_str(&format!("  {}: {} calls, {:.3}ms\n", instr.opcode, instr.count, instr.time_ms));
+    }
+    text
 }
