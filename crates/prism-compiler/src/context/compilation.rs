@@ -43,6 +43,8 @@ pub enum CompilationTarget {
     LLVM,
     /// JavaScript for web deployment
     JavaScript,
+    /// Prism VM for unified debugging and runtime optimization
+    PrismVM,
 }
 
 /// Compilation phases
@@ -270,6 +272,7 @@ impl std::fmt::Display for CompilationTarget {
             CompilationTarget::WebAssembly => write!(f, "wasm"),
             CompilationTarget::LLVM => write!(f, "llvm"),
             CompilationTarget::JavaScript => write!(f, "javascript"),
+            CompilationTarget::PrismVM => write!(f, "prism-vm"),
         }
     }
 }
