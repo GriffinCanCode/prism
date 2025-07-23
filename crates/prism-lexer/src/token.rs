@@ -1051,7 +1051,6 @@ impl fmt::Display for TokenKind {
             Self::Public => write!(f, "public"),
             Self::Pub => write!(f, "pub"),
             Self::Private => write!(f, "private"),
-            Self::Internal => write!(f, "internal"),
             Self::Protected => write!(f, "protected"),
             Self::True => write!(f, "true"),
             Self::False => write!(f, "false"),

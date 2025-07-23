@@ -461,19 +461,23 @@ impl SemanticAnalyzer {
                 });
             }
             TokenKind::Function | TokenKind::Fn => {
-                if let Some(function_name) = &self.current_function {
-                    let confidence = if self.is_descriptive_name(function_name) { 0.8 } else { 0.5 };
+                // Always create a pattern for function tokens, even without a name
+                let (description, confidence) = if let Some(function_name) = &self.current_function {
+                    let conf = if self.is_descriptive_name(function_name) { 0.8 } else { 0.5 };
+                    (format!("Function '{}' defined", function_name), conf)
+                } else {
+                    ("Function definition detected".to_string(), 0.7)
+                };
                     
                     self.patterns.push(SemanticPattern {
                         pattern_type: PatternType::FunctionNaming,
-                        description: format!("Function '{}' defined", function_name),
+                    description,
                         confidence,
                         ai_comprehension_hints: vec![
                             "Function names should be descriptive".to_string(),
                             "Consider if this function has single responsibility".to_string(),
                         ],
                     });
-                }
             }
             TokenKind::Type => {
                 self.patterns.push(SemanticPattern {
@@ -728,8 +732,11 @@ mod tests {
         let mut analyzer = SemanticAnalyzer::new();
         let mut token = Token::new(
             TokenKind::Module,
-            Span::new(prism_common::SourceId::new(1), prism_common::span::Position::new(1, 1), prism_common::span::Position::new(1, 7)),
-            SyntaxStyle::Canonical,
+            Span::new(
+                prism_common::span::Position::new(1, 1, 0), 
+                prism_common::span::Position::new(1, 7, 6), 
+                prism_common::SourceId::new(1)
+            ),
         );
         
         analyzer.analyze_token(&mut token);
@@ -766,8 +773,11 @@ mod tests {
         let mut analyzer = SemanticAnalyzer::new();
         let mut token = Token::new(
             TokenKind::Function,
-            Span::new(prism_common::SourceId::new(1), prism_common::span::Position::new(1, 1), prism_common::span::Position::new(1, 9)),
-            SyntaxStyle::Canonical,
+            Span::new(
+                prism_common::span::Position::new(1, 1, 0), 
+                prism_common::span::Position::new(1, 9, 8), 
+                prism_common::SourceId::new(1)
+            ),
         );
         
         analyzer.analyze_token(&mut token);

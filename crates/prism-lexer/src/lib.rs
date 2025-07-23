@@ -18,7 +18,7 @@
 //!
 //! ## Data Flow
 //! 
-//! ```
+//! ```text
 //! Source Code → prism-lexer → Enriched Tokens → prism-syntax → Canonical Form → prism-parser → AST
 //! ```
 
