@@ -43,14 +43,24 @@ Coding conventions, best practices, and idiomatic patterns.
 | [PLD-008](./PLD-008.md) | Metaprogramming System | Planned | Medium | 0.4.0 | PLD-001, PLD-002 |
 | [PLD-009](./PLD-009.md) | Query-Based Compilation | Planned | Core | 0.1.0 | PLD-002 |
 | [PLD-010](./PLD-010.md) | Multi-Target Compilation Possibilities | Draft | High | 0.2.0 | PLT-100, PLT-101 |
-| [PLD-100](./PLD-100.md) | Standard Library Overview | Draft | High | 1.0.0 | PLD-001 through PLD-010 |
+| [PLD-011](./PLD-011.md) | Prism Virtual Machine System | Draft | Core | 0.2.0 | PLD-001, PLD-002, PLD-005 |
 
+### Runtime & Virtual Machine (PLD-050 to PLD-099)
+
+| ID | Title | Status | Priority | Target Version | Dependencies |
+|----|-------|--------|----------|----------------|--------------|
+| PLD-050 | Garbage Collection System | Planned | Core | 0.2.0 | PLD-006, PLD-011 |
+| PLD-051 | Memory Management Strategy | Planned | Core | 0.2.0 | PLD-006, PLD-050 |
+| PLD-052 | JIT Compilation Architecture | Planned | High | 0.3.0 | PLD-011 |
+| PLD-053 | VM Performance Optimization | Planned | High | 0.3.0 | PLD-011, PLD-052 |
+| PLD-054 | Bytecode Verification System | Planned | High | 0.2.0 | PLD-011 |
+| PLD-055 | VM Security & Sandboxing | Planned | High | 0.2.0 | PLD-011, PLD-003 |
 
 ### Standard Library (PLD-100 to PLD-199)
 
 | ID | Title | Status | Priority | Target Version | Dependencies |
 |----|-------|--------|----------|----------------|--------------|
-| PLD-100 | Standard Library Overview | Planned | High | 0.1.0 | PLD-001 through PLD-009 |
+| [PLD-100](./PLD-100.md) | Standard Library Overview | Draft | High | 1.0.0 | PLD-001 through PLD-055 |
 | PLD-101 | Core Types & Traits | Planned | Core | 0.1.0 | PLD-001 |
 | PLD-102 | Collections Framework | Planned | High | 0.1.0 | PLD-001, PLD-101 |
 | PLD-103 | I/O & Networking | Planned | High | 0.2.0 | PLD-003, PLD-007 |
@@ -128,11 +138,16 @@ Coding conventions, best practices, and idiomatic patterns.
 - AI metadata generation
 
 ### Version 0.2.0 - Intelligence & Security (Q2 2025)
-**Theme**: AI metadata export and security foundations
+**Theme**: AI metadata export, security foundations, and VM system
 
 **Essential PLDs**:
 - [ ] PLD-003: Effect System & Capabilities
 - [ ] PLD-007: Interoperability System
+- [ ] PLD-011: Prism Virtual Machine System
+- [ ] PLD-050: Garbage Collection System
+- [ ] PLD-051: Memory Management Strategy
+- [ ] PLD-054: Bytecode Verification System
+- [ ] PLD-055: VM Security & Sandboxing
 - [ ] PLD-103: I/O & Networking
 - [ ] PLD-107: Serialization & Formats
 - [ ] PLD-108: Cryptography & Security
@@ -149,15 +164,19 @@ Coding conventions, best practices, and idiomatic patterns.
 **Deliverables**:
 - AI-readable metadata export
 - Effect tracking system
+- Prism Virtual Machine with bytecode compilation
+- Advanced garbage collection system
 - WASM compilation target
 - Package repository with security
 - Comprehensive security model
 
 ### Version 0.3.0 - Performance & Concurrency (Q3 2025)
-**Theme**: Optimization and advanced features
+**Theme**: Optimization, advanced features, and VM performance
 
 **Essential PLDs**:
 - [ ] PLD-005: Concurrency Model
+- [ ] PLD-052: JIT Compilation Architecture
+- [ ] PLD-053: VM Performance Optimization
 - [ ] PLD-109: Database Integration
 - [ ] PLD-153: Metadata Export & Tooling
 - [ ] PLD-202: Build System Integration
@@ -165,11 +184,13 @@ Coding conventions, best practices, and idiomatic patterns.
 - [ ] PLD-209: Performance Analysis
 
 **Deliverables**:
-- Native code generation
-- Concurrency support
+- Native code generation via LLVM
+- JIT compilation for VM hot paths
+- Advanced VM performance optimizations
+- Concurrency support with actor model
 - Advanced metadata export features
-- Performance tooling
-- Migration assistance
+- Performance tooling and profiling
+- Migration assistance from other languages
 
 ### Version 0.4.0 - Power Features (Q4 2025)
 **Theme**: Advanced language features
@@ -265,4 +286,4 @@ This index is automatically updated when:
 - Dependencies are modified
 - Roadmap milestones are reached
 
-Last automated check: 2025-01-17 00:00:00 UTC
+Last automated check: 2025-01-17 12:00:00 UTC

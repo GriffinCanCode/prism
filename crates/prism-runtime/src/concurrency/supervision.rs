@@ -59,7 +59,6 @@ pub struct ChildSpec {
 }
 
 /// Supervision strategies for handling child failures
-#[derive(Debug, Clone)]
 pub enum SupervisionStrategy {
     /// Restart only the failed child
     OneForOne,
@@ -69,6 +68,31 @@ pub enum SupervisionStrategy {
     RestForOne,
     /// Custom strategy with user-defined logic
     Custom(Box<dyn Fn(&ActorId, &ActorError) -> SupervisionDecision + Send + Sync>),
+}
+
+impl std::fmt::Debug for SupervisionStrategy {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SupervisionStrategy::OneForOne => write!(f, "OneForOne"),
+            SupervisionStrategy::OneForAll => write!(f, "OneForAll"),
+            SupervisionStrategy::RestForOne => write!(f, "RestForOne"),
+            SupervisionStrategy::Custom(_) => write!(f, "Custom(<function>)"),
+        }
+    }
+}
+
+impl Clone for SupervisionStrategy {
+    fn clone(&self) -> Self {
+        match self {
+            SupervisionStrategy::OneForOne => SupervisionStrategy::OneForOne,
+            SupervisionStrategy::OneForAll => SupervisionStrategy::OneForAll,
+            SupervisionStrategy::RestForOne => SupervisionStrategy::RestForOne,
+            SupervisionStrategy::Custom(_) => {
+                // Cannot clone function pointers, default to OneForOne
+                SupervisionStrategy::OneForOne
+            }
+        }
+    }
 }
 
 /// Restart policies for individual children
@@ -149,7 +173,7 @@ pub struct NetworkIoProfile {
 }
 
 /// Supervision statistics for monitoring
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct SupervisionStats {
     /// Total child failures handled
     pub total_failures: u64,

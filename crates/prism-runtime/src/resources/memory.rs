@@ -5,7 +5,7 @@
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::{Duration, SystemTime, Instant};
 use serde::{Serialize, Deserialize};
 use thiserror::Error;
 
@@ -35,7 +35,7 @@ pub struct MemoryAllocation {
     /// Size of allocation in bytes
     pub size: usize,
     /// When allocated
-    pub allocated_at: Instant,
+    pub allocated_at: SystemTime,
     /// Purpose/context of allocation
     pub purpose: String,
     /// Stack trace or source information
@@ -198,7 +198,7 @@ impl<T: SemanticType> SemanticPtr<T> {
         Self {
             data: Box::new(data),
             allocation_id: AllocationId::new(),
-            allocated_at: Instant::now(),
+            allocated_at: SystemTime::now(),
         }
     }
     

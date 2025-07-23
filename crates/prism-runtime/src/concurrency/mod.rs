@@ -36,7 +36,7 @@ use std::sync::Arc;
 use thiserror::Error;
 
 pub mod actor_system;
-pub mod async_runtime;
+pub mod r#async;
 pub mod structured;
 pub mod event_bus;  // NEW: Event bus for publish-subscribe patterns
 pub mod supervision;  // NEW: Supervision system for fault tolerance
@@ -53,58 +53,57 @@ pub mod simple_tests;
 
 // Re-exports for public API
 pub use actor_system::{Actor, ActorRef, ActorSystem, Message, ActorId, ActorError};
-pub use async_runtime::{AsyncRuntime, AsyncHandle, AsyncResult, TaskPriority};
+pub use r#async::{AsyncRuntime, AsyncHandle, AsyncResult, TaskPriority, TaskId, CancellationToken, AsyncContext};
 pub use structured::{StructuredScope, ScopeHandle};
 pub use event_bus::{EventBus, EventSubscription, EventPriority, EventFilter, EventBusAIMetadata};
 pub use supervision::{Supervisor, SupervisionStrategy, RestartPolicy, SupervisionDecision, ChildMetadata};
 pub use performance::{PerformanceOptimizer, MessageBatch, BatchingPolicy, LockFreeQueue, LockFreeMap, NumaScheduler};
 
-/// Complete concurrency system that coordinates all concurrency models
-#[derive(Debug)]
+/// Concurrency system coordinator
 pub struct ConcurrencySystem {
-    /// Actor system for stateful concurrent components
-    actor_system: Arc<actor_system::ActorSystem>,
+    /// Actor system for message-passing concurrency
+    actor_system: actor_system::ActorSystem,
     
-    /// Async runtime for I/O-bound operations
-    async_runtime: Arc<async_runtime::AsyncRuntime>,
+    /// Async runtime for async/await concurrency
+    async_runtime: r#async::AsyncRuntime,
+    
+    /// Event bus for publish-subscribe messaging
+    event_bus: event_bus::EventBus<String>,
     
     /// Structured concurrency coordinator
-    structured_coordinator: Arc<structured::StructuredCoordinator>,
+    structured_coordinator: structured::StructuredCoordinator,
     
-    /// Performance optimizer for high-performance operations
-    performance_optimizer: Arc<performance::PerformanceOptimizer>,
+    /// Performance optimizer
+    performance_optimizer: performance::PerformanceOptimizer,
+    
+    /// Lock-free data structures for high-performance coordination
+    coordination_data: performance::LockFreeMap<String, String>,
 }
 
 impl ConcurrencySystem {
     /// Create a new concurrency system
     pub fn new() -> Result<Self, ConcurrencyError> {
-        let actor_system = Arc::new(actor_system::ActorSystem::new()?);
-        let async_runtime = Arc::new(async_runtime::AsyncRuntime::new()?);
-        let structured_coordinator = Arc::new(structured::StructuredCoordinator::new()?);
-        let performance_optimizer = Arc::new(performance::PerformanceOptimizer::new()
-            .map_err(|e| ConcurrencyError::Generic { 
-                message: format!("Failed to create performance optimizer: {}", e) 
-            })?);
-
         Ok(Self {
-            actor_system,
-            async_runtime,
-            structured_coordinator,
-            performance_optimizer,
+            actor_system: actor_system::ActorSystem::new()?,
+            async_runtime: r#async::AsyncRuntime::new()?,
+            event_bus: event_bus::EventBus::new(),
+            structured_coordinator: structured::StructuredCoordinator::new(),
+            performance_optimizer: performance::PerformanceOptimizer::new(),
+            coordination_data: performance::LockFreeMap::new(),
         })
     }
 
     /// Spawn an actor with capabilities
-    pub fn spawn_actor<A>(
+    pub fn spawn_actor<A: actor_system::Actor + 'static>(
         &self,
         actor: A,
         capabilities: authority::CapabilitySet,
-    ) -> Result<ActorRef<A>, ConcurrencyError> {
+    ) -> Result<actor_system::ActorRef<A>, ConcurrencyError> {
         Ok(self.actor_system.spawn_actor(actor, capabilities)?)
     }
 
     /// Create a structured concurrency scope
-    pub fn create_scope(&self) -> Result<StructuredScope, ConcurrencyError> {
+    pub fn create_scope(&self) -> Result<structured::StructuredScope, ConcurrencyError> {
         Ok(self.structured_coordinator.create_scope()?)
     }
 
@@ -142,7 +141,7 @@ impl ConcurrencySystem {
 
     /// Get performance optimization hints
     pub fn get_optimization_hints(&self) -> Vec<performance::OptimizationHint> {
-        self.performance_optimizer.get_optimization_hints()
+        self.performance_optimizer.generate_hints()
     }
 
     /// Apply automatic performance optimizations
@@ -159,8 +158,7 @@ impl ConcurrencySystem {
         self.actor_system.shutdown().await
             .map_err(|e| ConcurrencyError::ActorSystem(e))?;
         
-        self.async_runtime.shutdown().await
-            .map_err(|e| ConcurrencyError::AsyncRuntime(format!("Async runtime shutdown failed: {:?}", e)))?;
+        self.async_runtime.shutdown().await?;
         
         self.event_bus.shutdown().await
             .map_err(|e| ConcurrencyError::EventBus(format!("Event bus shutdown failed: {:?}", e)))?;
@@ -192,7 +190,7 @@ pub enum ConcurrencyError {
     
     /// Async runtime error
     #[error("Async runtime error: {0}")]
-    AsyncRuntime(String),
+    AsyncRuntime(#[from] r#async::AsyncError),
     
     /// Event bus error
     #[error("Event bus error: {0}")]

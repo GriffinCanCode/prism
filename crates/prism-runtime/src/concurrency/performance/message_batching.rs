@@ -175,7 +175,7 @@ pub struct BatchProcessor<T> {
 }
 
 /// Batch processing statistics
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct BatchProcessingStats {
     /// Total batches processed
     pub total_batches: u64,
@@ -463,6 +463,15 @@ pub struct BatchingCoordinator {
     metrics: Arc<Mutex<GlobalBatchingMetrics>>,
 }
 
+impl std::fmt::Debug for BatchingCoordinator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BatchingCoordinator")
+            .field("processors", &"<HashMap<ActorId, BatchProcessor>>")
+            .field("metrics", &"<GlobalBatchingMetrics>")
+            .finish()
+    }
+}
+
 /// Trait for type-erased batch processors
 pub trait BatchProcessorTrait {
     fn get_stats(&self) -> BatchProcessingStats;
@@ -481,7 +490,7 @@ impl<T: Send + 'static> BatchProcessorTrait for BatchProcessor<T> {
 }
 
 /// Global batching metrics across all actors
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct GlobalBatchingMetrics {
     /// Total processors active
     pub active_processors: usize,

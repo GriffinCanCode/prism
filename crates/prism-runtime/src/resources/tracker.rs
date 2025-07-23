@@ -25,7 +25,7 @@ use std::sync::{Arc, RwLock, Mutex};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use std::thread;
 use std::fs;
-use std::io::Read;
+
 use serde::{Serialize, Deserialize};
 use thiserror::Error;
 
@@ -47,6 +47,20 @@ pub enum ResourceType {
     Gpu,
     /// Custom resource defined by applications
     Custom(String),
+}
+
+impl ResourceType {
+    /// Get the name of the resource type
+    pub fn name(&self) -> &str {
+        match self {
+            ResourceType::Cpu => "cpu",
+            ResourceType::Memory => "memory",
+            ResourceType::Network => "network",
+            ResourceType::Disk => "disk",
+            ResourceType::Gpu => "gpu",
+            ResourceType::Custom(name) => name,
+        }
+    }
 }
 
 /// Comprehensive resource usage snapshot
@@ -234,7 +248,7 @@ pub struct ResourceAllocation {
 }
 
 /// Trait for releasing resource allocations
-pub trait ResourceReleaseHandle: Send + Sync {
+pub trait ResourceReleaseHandle: Send + Sync + std::fmt::Debug {
     /// Release the allocated resource
     fn release(&self);
     /// Check if resource is still allocated
@@ -274,6 +288,7 @@ pub struct ResourceStats {
 }
 
 /// Main resource tracking system
+#[derive(Debug)]
 pub struct ResourceTracker {
     /// Configuration for the tracker
     config: ResourceTrackerConfig,
@@ -290,7 +305,6 @@ pub struct ResourceTracker {
 }
 
 /// Configuration for resource tracking
-#[derive(Debug, Clone)]
 pub struct ResourceTrackerConfig {
     /// How often to collect resource metrics
     pub collection_interval: Duration,
@@ -304,6 +318,32 @@ pub struct ResourceTrackerConfig {
     pub detailed_network: bool,
     /// Custom resource collection callbacks
     pub custom_collectors: HashMap<String, Box<dyn CustomResourceCollector>>,
+}
+
+impl std::fmt::Debug for ResourceTrackerConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ResourceTrackerConfig")
+            .field("collection_interval", &self.collection_interval)
+            .field("history_retention", &self.history_retention)
+            .field("numa_aware", &self.numa_aware)
+            .field("per_core_cpu", &self.per_core_cpu)
+            .field("detailed_network", &self.detailed_network)
+            .field("custom_collectors", &format!("{} collectors", self.custom_collectors.len()))
+            .finish()
+    }
+}
+
+impl Clone for ResourceTrackerConfig {
+    fn clone(&self) -> Self {
+        Self {
+            collection_interval: self.collection_interval,
+            history_retention: self.history_retention,
+            numa_aware: self.numa_aware,
+            per_core_cpu: self.per_core_cpu,
+            detailed_network: self.detailed_network,
+            custom_collectors: HashMap::new(), // Cannot clone trait objects, so create empty
+        }
+    }
 }
 
 /// Trait for collecting custom resource metrics
@@ -444,7 +484,7 @@ impl ResourceTracker {
         let available_amount = self.calculate_available_resource(&current_snapshot, &request.resource_type)?;
         
         // Validate that we have enough resources
-        if available_amount < request.amount {
+        if available_amount < request.amount as u64 {
             return Err(ResourceError::InsufficientResources {
                 resource_type: request.resource_type.clone(),
                 requested: request.amount,
@@ -454,10 +494,11 @@ impl ResourceTracker {
         
         // Check NUMA preference if specified
         if let Some(numa_node) = request.numa_preference {
-            if !self.is_numa_node_available(numa_node, &request.resource_type, request.amount)? {
+            if !self.is_numa_node_available(numa_node, &request.resource_type, request.amount as u64)? {
                 return Err(ResourceError::NumaNodeUnavailable {
                     node: numa_node,
                     resource_type: request.resource_type.clone(),
+                    amount: request.amount as u64,
                 });
             }
         }
@@ -477,7 +518,7 @@ impl ResourceTracker {
             allocated_at: Instant::now(),
             release_handle: Arc::new(RealReleaseHandle::new(
                 allocation_id.clone(),
-                Arc::downgrade(&self.allocations),
+                Arc::clone(&self.allocations),
             )),
         };
         
@@ -485,7 +526,7 @@ impl ResourceTracker {
         allocations.insert(allocation_id.clone(), allocation.clone());
         
         // Update resource tracking
-        self.record_allocation(&request.resource_type, request.amount);
+        self.record_allocation(&request.resource_type, request.amount as u64);
         
         // Log allocation for debugging
         tracing::debug!(
@@ -523,14 +564,20 @@ impl ResourceTracker {
                 Ok(max_connections - used_connections as u64)
             }
             ResourceType::Disk => {
-                let total_disk = snapshot.disk.total_bytes;
-                let used_disk = snapshot.disk.used_bytes;
-                Ok(total_disk.saturating_sub(used_disk))
+                // Estimate available disk I/O capacity based on utilization
+                let utilization = snapshot.disk.utilization_percent;
+                let available_capacity = (100.0 - utilization).max(0.0) as u64;
+                Ok(available_capacity)
+            }
+            ResourceType::Gpu => {
+                // For GPU resources, assume limited availability
+                // In a real implementation, this would query GPU status
+                Ok(1) // Assume 1 GPU unit available
             }
             ResourceType::Custom(name) => {
                 // For custom resources, we need to track them separately
                 // For now, assume unlimited availability
-                tracing::warn!("Custom resource type '{}' - assuming unlimited availability", name);
+                eprintln!("Custom resource type '{}' - assuming unlimited availability", name);
                 Ok(u64::MAX)
             }
         }
@@ -628,7 +675,7 @@ impl ResourceTracker {
         let used_cpu = current_snapshot.cpu.utilization_percent;
         let available_cpu = (100.0 - used_cpu).max(0.0) as u64;
         let numa_nodes = self.get_numa_node_count()?;
-        Ok(available_cpu / numa_nodes)
+        Ok(available_cpu / numa_nodes as u64)
     }
     
     /// Release a resource allocation
@@ -1113,6 +1160,7 @@ impl Drop for ResourceTracker {
 }
 
 /// Mock implementation of ResourceReleaseHandle for testing
+#[derive(Debug)]
 struct MockReleaseHandle {
     is_allocated: Arc<std::sync::atomic::AtomicBool>,
 }
@@ -1136,6 +1184,7 @@ impl ResourceReleaseHandle for MockReleaseHandle {
 }
 
 /// Real implementation of ResourceReleaseHandle for actual resource management
+#[derive(Debug)]
 struct RealReleaseHandle {
     allocation_id: String,
     allocations: Arc<RwLock<HashMap<String, ResourceAllocation>>>,

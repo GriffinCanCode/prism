@@ -176,11 +176,11 @@ pub struct QuotaUsage {
     /// Burst usage (usage above hard limit)
     pub burst_usage: HashMap<ResourceType, f64>,
     /// When burst started (if any)
-    pub burst_started_at: HashMap<ResourceType, Instant>,
+    pub burst_started_at: HashMap<ResourceType, SystemTime>,
     /// Number of times limits were hit
     pub limit_violations: HashMap<ResourceType, u64>,
     /// Last time usage was updated
-    pub last_updated: Instant,
+    pub last_updated: SystemTime,
 }
 
 /// Resource request for quota checking
@@ -263,11 +263,12 @@ impl RateWindow {
     
     /// Record an operation
     fn record_operation(&mut self) {
-        self.operations.push_back(Instant::now());
+                    self.operations.push_back(Instant::now());
     }
 }
 
 /// Main quota management system
+#[derive(Debug)]
 pub struct QuotaManager {
     /// All configured quotas
     quotas: RwLock<HashMap<QuotaId, ResourceQuota>>,
@@ -358,7 +359,7 @@ impl QuotaManager {
             burst_usage: HashMap::new(),
             burst_started_at: HashMap::new(),
             limit_violations: HashMap::new(),
-            last_updated: Instant::now(),
+            last_updated: SystemTime::now(),
         };
         self.usage.write().unwrap().insert(quota_id, usage);
         
@@ -462,9 +463,9 @@ impl QuotaManager {
                     let burst_start = current_usage.burst_started_at
                         .get(&request.resource_type)
                         .copied()
-                        .unwrap_or_else(Instant::now);
+                        .unwrap_or_else(SystemTime::now);
                     
-                    if burst_start.elapsed() > burst_duration {
+                    if SystemTime::now().duration_since(burst_start).unwrap_or_default() > burst_duration {
                         return Err(QuotaError::BurstExceeded { 
                             resource_type: request.resource_type.clone(),
                             burst_used: new_usage - limit.hard_limit,
@@ -516,7 +517,7 @@ impl QuotaManager {
             quota_id,
             resource_type: request.resource_type.clone(),
             amount: request.amount,
-            allocated_at: Instant::now(),
+                            allocated_at: Instant::now(),
             duration: request.duration,
             is_burst: check_result.used_burst,
         };
@@ -551,13 +552,13 @@ impl QuotaManager {
                                 
                                 quota_usage.burst_started_at
                                     .entry(request.resource_type.clone())
-                                    .or_insert(Instant::now());
+                                    .or_insert(SystemTime::now());
                             }
                         }
                     }
                 }
                 
-                quota_usage.last_updated = Instant::now();
+                quota_usage.last_updated = SystemTime::now();
             }
         }
         
@@ -599,7 +600,7 @@ impl QuotaManager {
                 }
             }
             
-            quota_usage.last_updated = Instant::now();
+            quota_usage.last_updated = SystemTime::now();
         }
         
         Ok(())
@@ -642,7 +643,7 @@ impl QuotaManager {
                 snapshot.memory.utilization_percent / 100.0
             );
             
-            quota_usage.last_updated = Instant::now();
+            quota_usage.last_updated = SystemTime::now();
         }
     }
     

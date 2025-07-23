@@ -701,6 +701,8 @@ pub struct ConstDecl {
     pub value: AstNode<Expr>,
     /// Visibility
     pub visibility: Visibility,
+    /// Constant attributes
+    pub attributes: Vec<Attribute>,
 }
 
 /// If statement
@@ -856,11 +858,11 @@ pub enum AttributeValue {
 /// Attribute argument
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct AttributeArgument {
-    /// Argument name (if named)
-    pub name: Option<Symbol>,
-    /// Argument value
-    pub value: AttributeValue,
+pub enum AttributeArgument {
+    /// Named argument
+    Named { name: Symbol, value: AttributeValue },
+    /// Literal argument
+    Literal(AttributeValue),
 }
 
 /// Error statement for recovery

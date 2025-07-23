@@ -59,18 +59,11 @@
 // Re-export main types for public API
 pub use analysis::{CohesionAnalyzer, AnalysisConfig, AnalysisResult, AnalysisDepth};
 pub use metrics::{MetricsCalculator, CohesionMetrics, CohesionAnalysis, MetricsMetadata};
-pub use boundaries::{BoundaryDetector, ConceptualBoundary, BoundaryType, BoundaryStrength};
+pub use boundaries::{BoundaryDetector, ConceptualBoundary, BoundaryType};
 pub use violations::{ViolationDetector, CohesionViolation, ViolationType, ViolationSeverity};
 pub use suggestions::{SuggestionEngine, CohesionSuggestion, SuggestionType, EffortLevel};
 pub use ai_insights::{AIInsightGenerator, CohesionAIInsights, InsightCategory, InsightType};
 pub use confidence::{ConfidenceCalculator, ConfidenceBreakdown, ConfidenceLevel};
-
-// Re-export types defined in this module
-pub use {
-    CohesionConfig, MetricWeights, ViolationThresholds, OptimizationLevel,
-    CohesionSystem, ProgramCohesionAnalysis, ModuleCohesionAnalysis, 
-    SectionCohesionAnalysis, AnalysisMetadata
-};
 
 // Main modules - each with a single responsibility
 pub mod analysis;

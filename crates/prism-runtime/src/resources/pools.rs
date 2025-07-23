@@ -472,6 +472,7 @@ impl Drop for SizeClassPool {
 }
 
 /// Manager for multiple memory pools
+#[derive(Debug)]
 pub struct PoolManager {
     /// Named pools
     pools: RwLock<HashMap<String, Arc<dyn MemoryPool>>>,

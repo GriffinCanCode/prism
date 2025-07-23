@@ -180,6 +180,15 @@ pub struct LockFreeMap<K, V> {
     size: AtomicCounter,
 }
 
+impl<K, V> std::fmt::Debug for LockFreeMap<K, V> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LockFreeMap")
+            .field("bucket_count", &self.bucket_count)
+            .field("size", &self.size.get())
+            .finish()
+    }
+}
+
 /// Bucket in the lock-free hash map
 struct Bucket<K, V> {
     /// Key-value pair
@@ -395,6 +404,7 @@ unsafe impl<K: Send, V: Send> Send for LockFreeMap<K, V> {}
 unsafe impl<K: Send + Sync, V: Send + Sync> Sync for LockFreeMap<K, V> {}
 
 /// High-performance atomic counter
+#[derive(Debug)]
 pub struct AtomicCounter {
     /// Counter value
     value: AtomicUsize,
@@ -464,6 +474,12 @@ impl AtomicCounter {
 impl Default for AtomicCounter {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Clone for AtomicCounter {
+    fn clone(&self) -> Self {
+        Self::new_with_value(self.get())
     }
 }
 

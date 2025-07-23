@@ -330,7 +330,7 @@ impl EffectTracker {
     }
     
     /// Get memory usage for current process (cross-platform)
-    fn get_memory_usage() -> u64 {
+    pub fn get_memory_usage() -> u64 {
         #[cfg(target_os = "linux")]
         {
             // Read from /proc/self/status on Linux
@@ -368,7 +368,7 @@ impl EffectTracker {
     }
     
     /// Get CPU time for current process (simplified)
-    fn get_cpu_time_ns() -> u64 {
+    pub fn get_cpu_time_ns() -> u64 {
         // This is a simplified implementation
         // In a real system, you'd use platform-specific APIs
         

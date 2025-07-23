@@ -8,13 +8,15 @@
 //! - **AI metadata**: Rich metadata for understanding concurrency patterns
 
 use crate::{authority, resources, intelligence};
-use crate::concurrency::async_runtime::{AsyncHandle, AsyncResult, CancellationToken, TaskPriority};
+use crate::concurrency::r#async::{AsyncHandle, AsyncResult, CancellationToken, TaskPriority, TaskId, AsyncTaskMetadata};
 use crate::resources::effects::Effect;
+use crate::intelligence::metadata::AIMetadataCollector;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock, Mutex};
 use std::time::{Duration, SystemTime, Instant};
 use thiserror::Error;
 use uuid::Uuid;
+use tokio::sync::broadcast;
 
 /// Unique identifier for structured scopes
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -35,7 +37,7 @@ pub struct StructuredScope {
     /// Cancellation token for this scope
     cancellation_token: CancellationToken,
     /// Child tasks spawned in this scope
-    child_tasks: Arc<RwLock<HashMap<crate::concurrency::async_runtime::TaskId, ChildTask>>>,
+    child_tasks: Arc<RwLock<HashMap<TaskId, ChildTask>>>,
     /// Child scopes created within this scope
     child_scopes: Arc<RwLock<HashMap<ScopeId, StructuredScope>>>,
     /// Scope metadata
@@ -47,8 +49,9 @@ pub struct StructuredScope {
 }
 
 /// Information about a child task
+#[derive(Debug)]
 struct ChildTask {
-    id: crate::concurrency::async_runtime::TaskId,
+    id: TaskId,
     handle: tokio::task::JoinHandle<()>,
     metadata: TaskMetadata,
     started_at: Instant,
@@ -177,13 +180,13 @@ impl StructuredScope {
         let task_token = self.cancellation_token.child();
         
         // Create task with scope's capabilities
-        let task_id = crate::concurrency::async_runtime::TaskId::new();
+        let task_id = TaskId::new();
         
         // Wrap future with scope cancellation
         let scoped_future = async move {
             tokio::select! {
                 result = future => result,
-                _ = task_token.cancelled() => Err(crate::concurrency::async_runtime::AsyncError::Cancelled),
+                _ = task_token.cancelled() => Err(crate::concurrency::r#async::AsyncError::Cancelled),
             }
         };
 
@@ -217,7 +220,7 @@ impl StructuredScope {
         let handle = AsyncHandle::new(
             task_id,
             self.cancellation_token.clone(),
-            crate::concurrency::async_runtime::AsyncTaskMetadata {
+            AsyncTaskMetadata {
                 purpose: "Scoped async task".to_string(),
                 type_name: "ScopedTask".to_string(),
                 capabilities: self.capabilities.capability_names(),
@@ -379,119 +382,106 @@ impl Drop for StructuredScope {
     }
 }
 
-/// Coordinator for structured concurrency across the system
+/// Coordinator for structured concurrency operations
 #[derive(Debug)]
 pub struct StructuredCoordinator {
     /// Active scopes
-    scopes: Arc<RwLock<HashMap<ScopeId, StructuredScope>>>,
-    /// Coordinator metrics
-    metrics: Arc<Mutex<CoordinatorMetrics>>,
-    /// Effect tracker
-    effect_tracker: Arc<resources::effects::EffectTracker>,
+    active_scopes: Arc<RwLock<HashMap<ScopeId, Arc<StructuredScope>>>>,
+    /// Scope statistics
+    stats: Arc<RwLock<StructuredStats>>,
+    /// AI metadata collector
+    ai_collector: Arc<AIMetadataCollector>,
 }
 
-/// Metrics for the structured coordinator
-#[derive(Debug)]
-struct CoordinatorMetrics {
+/// Statistics for structured concurrency
+#[derive(Debug, Clone, Default)]
+pub struct StructuredStats {
     /// Total scopes created
-    total_scopes_created: u64,
+    pub total_scopes_created: u64,
     /// Currently active scopes
-    active_scopes: usize,
+    pub active_scopes: usize,
     /// Total tasks spawned
-    total_tasks_spawned: u64,
-    /// Tasks completed successfully
-    tasks_completed: u64,
-    /// Tasks cancelled
-    tasks_cancelled: u64,
-    /// Tasks failed
-    tasks_failed: u64,
+    pub total_tasks_spawned: u64,
+    /// Successful completions
+    pub successful_completions: u64,
+    /// Cancelled operations
+    pub cancelled_operations: u64,
+    /// Average scope lifetime
+    pub average_scope_lifetime: Duration,
 }
 
 impl StructuredCoordinator {
     /// Create a new structured coordinator
-    pub fn new() -> Result<Self, StructuredError> {
-        Ok(Self {
-            scopes: Arc::new(RwLock::new(HashMap::new())),
-            metrics: Arc::new(Mutex::new(CoordinatorMetrics {
-                total_scopes_created: 0,
-                active_scopes: 0,
-                total_tasks_spawned: 0,
-                tasks_completed: 0,
-                tasks_cancelled: 0,
-                tasks_failed: 0,
-            })),
-            effect_tracker: Arc::new(resources::effects::EffectTracker::new()?),
-        })
+    pub fn new() -> Self {
+        Self {
+            active_scopes: Arc::new(RwLock::new(HashMap::new())),
+            stats: Arc::new(RwLock::new(StructuredStats::default())),
+            ai_collector: Arc::new(AIMetadataCollector::new_default()),
+        }
     }
 
-    /// Create a new structured scope
+        /// Create a new structured scope
     pub fn create_scope(&self) -> Result<StructuredScope, StructuredError> {
         let capabilities = authority::CapabilitySet::new();
+        let effect_tracker = Arc::new(resources::effects::EffectTracker::new()?);
+        
         let scope = StructuredScope::new(
             capabilities,
-            None,
-            Arc::clone(&self.effect_tracker),
+            None, // No parent token for root scope
+            effect_tracker,
         )?;
 
-        // Register scope
+        // Register the scope
         {
-            let mut scopes = self.scopes.write().unwrap();
-            scopes.insert(scope.id, scope.clone());
+            let mut scopes = self.active_scopes.write().unwrap();
+            scopes.insert(scope.id, Arc::new(scope.clone()));
         }
 
-        // Update metrics
+        // Update stats
         {
-            let mut metrics = self.metrics.lock().unwrap();
-            metrics.total_scopes_created += 1;
-            metrics.active_scopes += 1;
+            let mut stats = self.stats.write().unwrap();
+            stats.total_scopes_created += 1;
+            stats.active_scopes += 1;
         }
 
         Ok(scope)
     }
 
-    /// Remove a scope from coordination
+    /// Remove a scope when it completes
     pub fn remove_scope(&self, scope_id: ScopeId) {
-        let mut scopes = self.scopes.write().unwrap();
+        let mut scopes = self.active_scopes.write().unwrap();
         if scopes.remove(&scope_id).is_some() {
-            let mut metrics = self.metrics.lock().unwrap();
-            metrics.active_scopes = metrics.active_scopes.saturating_sub(1);
+            let mut stats = self.stats.write().unwrap();
+            stats.active_scopes = stats.active_scopes.saturating_sub(1);
+            stats.successful_completions += 1;
         }
     }
 
-    /// Get the number of active scopes
-    pub fn scope_count(&self) -> usize {
-        self.scopes.read().unwrap().len()
+    /// Get current statistics
+    pub fn get_stats(&self) -> StructuredStats {
+        self.stats.read().unwrap().clone()
     }
 
-    /// Shutdown all scopes gracefully
-    pub async fn shutdown(&self) -> Result<(), StructuredError> {
-        let scope_ids: Vec<_> = {
-            let scopes = self.scopes.read().unwrap();
-            scopes.keys().copied().collect()
+    /// Get number of active scopes
+    pub fn scope_count(&self) -> usize {
+        self.active_scopes.read().unwrap().len()
+    }
+
+    /// Cancel all active scopes
+    pub async fn cancel_all(&self) {
+        let scopes = {
+            let scopes = self.active_scopes.read().unwrap();
+            scopes.values().cloned().collect::<Vec<_>>()
         };
 
-        for scope_id in scope_ids {
-            if let Some(scope) = {
-                let scopes = self.scopes.read().unwrap();
-                scopes.get(&scope_id).cloned()
-            } {
-                scope.cancel();
-                scope.join_all().await?;
-            }
+        for scope in scopes {
+            scope.cancellation_token.cancel();
         }
-
-        // Clear all scopes
-        {
-            let mut scopes = self.scopes.write().unwrap();
-            scopes.clear();
-        }
-
-        Ok(())
     }
 }
 
 /// Errors that can occur in structured concurrency
-#[derive(Debug, Error)]
+#[derive(Debug, Clone, Error)]
 pub enum StructuredError {
     /// Scope was cancelled
     #[error("Scope {id:?} was cancelled")]
@@ -522,4 +512,4 @@ pub enum StructuredError {
     /// Generic structured concurrency error
     #[error("Structured concurrency error: {message}")]
     Generic { message: String },
-} 
+}

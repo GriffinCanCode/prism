@@ -14,6 +14,7 @@ use std::sync::{Arc, RwLock, Mutex};
 use std::time::{Duration, Instant, SystemTime};
 
 /// Performance profiler that collects and analyzes system metrics
+#[derive(Debug)]
 pub struct PerformanceProfiler {
     /// Real-time metrics collection
     metrics_collector: Arc<MetricsCollector>,
@@ -41,6 +42,17 @@ pub struct MetricsCollector {
     last_collection: Arc<RwLock<Instant>>,
 }
 
+impl std::fmt::Debug for MetricsCollector {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MetricsCollector")
+            .field("collection_interval", &self.collection_interval)
+            .field("actor_metrics", &"<LockFreeMap<ActorId, ActorMetrics>>")
+            .field("cpu_metrics", &"<LockFreeMap<CpuId, CpuMetrics>>")
+            .field("numa_metrics", &"<LockFreeMap<NumaNodeId, NumaMetrics>>")
+            .finish()
+    }
+}
+
 /// Performance analyzer for trend detection
 pub struct PerformanceAnalyzer {
     /// Analysis algorithms
@@ -49,12 +61,30 @@ pub struct PerformanceAnalyzer {
     results_cache: Arc<RwLock<HashMap<String, AnalysisResult>>>,
 }
 
+impl std::fmt::Debug for PerformanceAnalyzer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PerformanceAnalyzer")
+            .field("algorithms_count", &self.algorithms.len())
+            .field("results_cache", &"<HashMap<String, AnalysisResult>>")
+            .finish()
+    }
+}
+
 /// Optimization hint generator
 pub struct OptimizationHintGenerator {
     /// Machine learning models for hint generation
     ml_models: Arc<RwLock<HashMap<String, MLModel>>>,
     /// Rule-based hint generators
     rule_generators: Vec<Box<dyn RuleBasedGenerator + Send + Sync>>,
+}
+
+impl std::fmt::Debug for OptimizationHintGenerator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OptimizationHintGenerator")
+            .field("ml_models", &"<HashMap<String, MLModel>>")
+            .field("rule_generators_count", &self.rule_generators.len())
+            .finish()
+    }
 }
 
 /// Current system-wide performance metrics
@@ -274,6 +304,16 @@ pub struct HistoricalData {
     pub aggregated_stats: AggregatedStats,
 }
 
+impl std::fmt::Debug for HistoricalData {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HistoricalData")
+            .field("time_series_length", &self.time_series.len())
+            .field("max_history_length", &self.max_history_length)
+            .field("aggregated_stats", &self.aggregated_stats)
+            .finish()
+    }
+}
+
 /// Single performance data point
 #[derive(Debug, Clone)]
 pub struct PerformanceDataPoint {
@@ -370,6 +410,23 @@ pub enum OptimizationHint {
         optimization: String,
         enable: bool,
         reason: String,
+    },
+    /// Hot code region detected
+    Hot {
+        hotness_score: f64,
+        suggested_tier: u8,
+    },
+    /// Biased branch detected
+    BiasedBranch {
+        block_id: u32,
+        taken_probability: f64,
+        confidence: f64,
+    },
+    /// Function inlining candidate
+    InlineCandidate {
+        call_site: u32,
+        call_frequency: f64,
+        inline_score: f64,
     },
 }
 

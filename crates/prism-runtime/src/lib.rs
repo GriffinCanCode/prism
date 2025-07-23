@@ -44,7 +44,7 @@ pub use concurrency::{
 };
 
 pub use resources::{
-    ResourceManager, ResourceError, ResourceTracker, 
+    ResourceManager, ResourceError, ResourceTracker,
     MemoryPool, PooledBuffer, QuotaManager,
     create_production_manager, create_development_manager,
 };

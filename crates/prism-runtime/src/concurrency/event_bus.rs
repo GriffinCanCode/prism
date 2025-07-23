@@ -56,7 +56,7 @@ impl SubscriberId {
 }
 
 /// Event message wrapper
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct EventMessage {
     /// Event topic
     topic: String,
@@ -148,6 +148,29 @@ pub struct EventBusMetrics {
     pub failed_deliveries: u64,
 }
 
+impl EventBusMetrics {
+    /// Create new metrics instance
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+/// Event bus errors
+#[derive(Debug, thiserror::Error)]
+pub enum EventBusError {
+    /// Generic event bus error
+    #[error("Event bus error: {0}")]
+    Generic(String),
+    
+    /// Subscription error
+    #[error("Subscription error: {0}")]
+    Subscription(String),
+    
+    /// Publishing error
+    #[error("Publishing error: {0}")]
+    Publishing(String),
+}
+
 /// AI metadata for event bus comprehension
 #[derive(Debug, Clone)]
 pub struct EventBusAIMetadata {
@@ -178,7 +201,7 @@ impl Default for EventBusAIMetadata {
 
 impl<T> EventBus<T> 
 where 
-    T: Send + Sync + Clone + 'static 
+    T: Send + Sync + Clone + std::fmt::Debug + 'static 
 {
     /// Create a new event bus
     pub fn new() -> Self {
@@ -394,11 +417,30 @@ where
         let _ = self.unsubscribe(topic, subscriber_id);
         tracing::warn!("Removed dead subscriber {:?} from topic '{}'", subscriber_id, topic);
     }
+
+    /// Shutdown the event bus
+    pub async fn shutdown(&self) -> Result<(), EventBusError> {
+        // Clear all subscribers
+        {
+            let mut subscribers = self.subscribers.write()
+                .map_err(|_| EventBusError::Generic("Failed to acquire write lock for shutdown".to_string()))?;
+            subscribers.clear();
+        }
+        
+        // Reset metrics
+        {
+            let mut metrics = self.metrics.lock()
+                .map_err(|_| EventBusError::Generic("Failed to acquire metrics lock for shutdown".to_string()))?;
+            *metrics = EventBusMetrics::new();
+        }
+        
+        Ok(())
+    }
 }
 
 impl<T> Clone for EventBus<T> 
 where 
-    T: Send + Sync + Clone + 'static 
+    T: Send + Sync + Clone + std::fmt::Debug + 'static 
 {
     fn clone(&self) -> Self {
         Self {

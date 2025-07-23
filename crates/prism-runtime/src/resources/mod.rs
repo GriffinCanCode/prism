@@ -115,6 +115,8 @@ use std::sync::Arc;
 use std::collections::HashMap;
 use std::time::Duration;
 use thiserror::Error;
+use std::time::SystemTime;
+use std::sync::RwLock;
 
 pub use tracker::{
     ResourceTracker, ResourceTrackerConfig, ResourceSnapshot, ResourceType, 
@@ -175,6 +177,7 @@ pub enum ResourceError {
 }
 
 /// Comprehensive resource management system that integrates all components
+#[derive(Debug)]
 pub struct ResourceManager {
     /// Resource tracker for monitoring
     tracker: Arc<ResourceTracker>,
@@ -317,7 +320,7 @@ impl ResourceManager {
         
         SystemStats {
             resource_snapshot: resource_stats,
-            pool_statistics: pool_stats,
+            pool_statistics: pool_stats.clone(),
             memory_statistics: memory_stats,
             effect_statistics: effect_stats,
             active_quotas: quota_stats.len(),
@@ -326,6 +329,79 @@ impl ResourceManager {
                 .sum(),
         }
     }
+}
+
+/// Handle for managing resources during execution
+#[derive(Debug, Clone)]
+pub struct ResourceHandle {
+    /// Resource manager reference
+    manager: Arc<ResourceManager>,
+    /// Active allocations for this handle
+    allocations: Arc<RwLock<Vec<ResourceAllocation>>>,
+    /// Handle creation time
+    created_at: SystemTime,
+}
+
+impl ResourceHandle {
+    /// Create a new resource handle
+    pub fn new(manager: Arc<ResourceManager>) -> Self {
+        Self {
+            manager,
+            allocations: Arc::new(RwLock::new(Vec::new())),
+            created_at: SystemTime::now(),
+        }
+    }
+
+    /// Allocate a resource through this handle
+    pub fn allocate(&self, request: TrackerResourceRequest) -> Result<ResourceAllocation, ResourceError> {
+        let allocation = self.manager.tracker().allocate_resource(request)?;
+        
+        // Track the allocation in this handle
+        {
+            let mut allocations = self.allocations.write().unwrap();
+            allocations.push(allocation.clone());
+        }
+        
+        Ok(allocation)
+    }
+
+    /// Release all allocations managed by this handle
+    pub fn release_all(&self) {
+        let allocations = {
+            let mut allocations = self.allocations.write().unwrap();
+            std::mem::take(&mut *allocations)
+        };
+
+        for allocation in allocations {
+            allocation.release_handle.release();
+        }
+    }
+
+    /// Get current allocations
+    pub fn current_allocations(&self) -> Vec<ResourceAllocation> {
+        self.allocations.read().unwrap().clone()
+    }
+}
+
+impl Drop for ResourceHandle {
+    fn drop(&mut self) {
+        self.release_all();
+    }
+}
+
+/// Result of code execution
+#[derive(Debug, Clone)]
+pub struct ExecutionResult {
+    /// Whether execution succeeded
+    pub success: bool,
+    /// Execution duration
+    pub duration: Duration,
+    /// Resources consumed during execution
+    pub resources_consumed: ResourceMeasurement,
+    /// Effects that were executed
+    pub effects_executed: Vec<CompletedEffect>,
+    /// Any error that occurred
+    pub error: Option<String>,
 }
 
 /// Comprehensive system statistics

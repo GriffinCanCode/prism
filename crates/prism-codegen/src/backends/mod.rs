@@ -8,6 +8,7 @@ pub mod llvm;
 pub mod webassembly;
 pub mod python;
 pub mod javascript;
+pub mod prism_vm;
 
 // Re-export main backend implementations
 // TypeScript backend now uses modular architecture with 2025 best practices
@@ -16,6 +17,7 @@ pub use llvm::{LLVMBackend, LLVMBackendConfig};
 pub use webassembly::WebAssemblyBackend;
 pub use python::{PythonBackend, PythonBackendConfig, PythonFeatures, PythonTarget};
 pub use javascript::{JavaScriptBackend, JavaScriptBackendConfig, JavaScriptFeatures, JavaScriptTarget};
+pub use prism_vm::{PrismVMBackend, PrismVMBackendConfig};
 
 use crate::CodeGenResult;
 use async_trait::async_trait;
@@ -54,6 +56,8 @@ pub enum CompilationTarget {
     JavaScript,
     /// Python for AI/ML and data science integration
     Python,
+    /// Prism VM for unified debugging and runtime optimization
+    PrismVM,
     
     // Potential future targets:
     // /// Rust for systems programming with memory safety
@@ -262,7 +266,11 @@ impl MultiTargetCodeGen {
         );
         backends.insert(
             CompilationTarget::Python,
-            Box::new(PythonBackend::new(config))
+            Box::new(PythonBackend::new(config.clone()))
+        );
+        backends.insert(
+            CompilationTarget::PrismVM,
+            Box::new(PrismVMBackend::new(config).expect("Failed to create PrismVM backend"))
         );
 
         Self { backends }

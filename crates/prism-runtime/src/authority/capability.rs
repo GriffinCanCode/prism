@@ -202,10 +202,10 @@ impl Authority {
                 self_sys.covers_authority(other_sys)
             }
             (Authority::Composite(self_auths), other) => {
-                self_auths.iter().any(|auth| auth.covers(other))
+                self_auths.iter().any(|auth| auth.covers_authority(other))
             }
             (self_auth, Authority::Composite(other_auths)) => {
-                other_auths.iter().all(|auth| self_auth.covers(auth))
+                other_auths.iter().all(|auth| self_auth.covers_authority(auth))
             }
             _ => false,
         }
@@ -475,8 +475,8 @@ impl CapabilitySet {
             }) {
                 // Create an attenuated capability with more restrictive constraints
                 let mut attenuated_cap = requested_cap.clone();
-                attenuated_cap.constraints = granting_cap.constraints.intersect(&requested_cap.constraints);
-                attenuated_cap.issued_by = granting_cap.id; // Track delegation chain
+                attenuated_cap.constraints = granting_cap.constraints.intersect(&requested_cap.constraints)?;
+                attenuated_cap.issued_by = granting_cap.issued_by; // Track delegation chain
                 attenuated.add(attenuated_cap);
             } else {
                 return Err(CapabilityError::InsufficientCapability {
@@ -1097,6 +1097,20 @@ impl MemoryRegion {
         let region_end = self.start_addr.saturating_add(self.size);
 
         op_start >= self.start_addr && op_end <= region_end
+    }
+
+    /// Check if this memory region covers another memory region
+    pub fn covers(&self, other: &MemoryRegion) -> bool {
+        // Check if all operations allowed by other are allowed by self
+        if !other.allowed_operations.is_subset(&self.allowed_operations) {
+            return false;
+        }
+
+        // Check if other region is within bounds of self
+        let other_end = other.start_addr.saturating_add(other.size);
+        let self_end = self.start_addr.saturating_add(self.size);
+
+        other.start_addr >= self.start_addr && other_end <= self_end
     }
 }
 

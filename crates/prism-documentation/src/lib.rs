@@ -262,6 +262,7 @@ impl DocumentationSystem {
                 violations: all_violations,
                 warnings: validation_result.warnings,
                 suggestions: validation_result.suggestions,
+                statistics: validation_result.statistics,
             },
             jsdoc_result,
             ai_metadata,

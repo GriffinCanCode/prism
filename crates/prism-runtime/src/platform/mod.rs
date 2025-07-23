@@ -57,7 +57,7 @@ impl PlatformManager {
         code: &dyn crate::Executable<T>,
         capabilities: &authority::CapabilitySet,
         context: &execution::ExecutionContext,
-        resource_handle: &resources::ResourceManager,
+        resource_handle: &resources::ResourceHandle,
     ) -> Result<T, PlatformError> {
         self.execution_manager
             .execute_monitored(code, capabilities, context, resource_handle)
@@ -80,7 +80,8 @@ impl PlatformManager {
         match target {
             execution::ExecutionTarget::TypeScript |
             execution::ExecutionTarget::WebAssembly |
-            execution::ExecutionTarget::Native => true,
+            execution::ExecutionTarget::Native |
+            execution::ExecutionTarget::PrismVM => true,
         }
     }
 }

@@ -382,15 +382,15 @@ impl RequirementChecker {
         let mut violations = Vec::new();
 
         for attr in &module_decl.attributes {
-            match attr.name.as_str() {
-                "responsibility" => {
-                    violations.extend(self.validate_responsibility_content(attr, &module_decl.name.to_string(), "module")?);
+            match attr.name.resolve().as_deref() {
+                Some("responsibility") => {
+                    violations.extend(self.validate_responsibility_content(attr, &module_decl.name.resolve().unwrap_or_default(), "module")?);
                 }
-                "description" => {
-                    violations.extend(self.validate_description_content(attr, &module_decl.name.to_string(), "module")?);
+                Some("description") => {
+                    violations.extend(self.validate_description_content(attr, &module_decl.name.resolve().unwrap_or_default(), "module")?);
                 }
-                "author" => {
-                    violations.extend(self.validate_author_content(attr, &module_decl.name.to_string())?);
+                Some("author") => {
+                    violations.extend(self.validate_author_content(attr, &module_decl.name.resolve().unwrap_or_default())?);
                 }
                 _ => {} // Other annotations don't need special validation
             }
@@ -404,12 +404,12 @@ impl RequirementChecker {
         let mut violations = Vec::new();
 
         for attr in &func_decl.attributes {
-            match attr.name.as_str() {
-                "responsibility" => {
-                    violations.extend(self.validate_responsibility_content(attr, &func_decl.name.to_string(), "function")?);
+            match attr.name.resolve().as_deref() {
+                Some("responsibility") => {
+                    violations.extend(self.validate_responsibility_content(attr, &func_decl.name.resolve().unwrap_or_default(), "function")?);
                 }
-                "effects" => {
-                    violations.extend(self.validate_effects_content(attr, &func_decl.name.to_string())?);
+                Some("effects") => {
+                    violations.extend(self.validate_effects_content(attr, &func_decl.name.resolve().unwrap_or_default())?);
                 }
                 _ => {} // Other annotations don't need special validation
             }
@@ -423,9 +423,9 @@ impl RequirementChecker {
         let mut violations = Vec::new();
 
         for attr in &type_decl.attributes {
-            match attr.name.as_str() {
-                "responsibility" => {
-                    violations.extend(self.validate_responsibility_content(attr, &type_decl.name.to_string(), "type")?);
+            match attr.name.resolve().as_deref() {
+                Some("responsibility") => {
+                    violations.extend(self.validate_responsibility_content(attr, &type_decl.name.resolve().unwrap_or_default(), "type")?);
                 }
                 _ => {} // Other annotations don't need special validation
             }

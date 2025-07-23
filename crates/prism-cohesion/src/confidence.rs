@@ -327,7 +327,7 @@ impl ConfidenceCalculator {
     
     /// Calculate module data quality
     fn calculate_module_data_quality(&self, module_decl: &ModuleDecl) -> f64 {
-        let mut quality_score = 0.5; // Base score
+        let mut quality_score: f64 = 0.5; // Base score
         
         if module_decl.description.is_some() {
             quality_score += 0.2;
@@ -346,7 +346,7 @@ impl ConfidenceCalculator {
     
     /// Calculate module analysis depth
     fn calculate_module_analysis_depth(&self, module_decl: &ModuleDecl) -> f64 {
-        let mut depth_score = 0.4; // Base score
+        let mut depth_score: f64 = 0.4; // Base score
         
         let section_count = module_decl.sections.len();
         if section_count >= 3 {
@@ -378,7 +378,7 @@ impl ConfidenceCalculator {
     
     /// Calculate module completeness
     fn calculate_module_completeness(&self, module_decl: &ModuleDecl) -> f64 {
-        let mut completeness_score = 0.3; // Base score
+        let mut completeness_score: f64 = 0.3; // Base score
         
         // Essential elements
         if module_decl.description.is_some() { completeness_score += 0.2; }

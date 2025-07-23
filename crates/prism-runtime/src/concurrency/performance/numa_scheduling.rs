@@ -15,6 +15,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 
 /// NUMA-aware scheduler for optimal task placement
+#[derive(Debug)]
 pub struct NumaScheduler {
     /// System topology information
     topology: Arc<NumaTopology>,
@@ -242,6 +243,16 @@ pub struct MigrationCoordinator {
     migration_history: Arc<RwLock<Vec<MigrationRecord>>>,
     /// Migration worker channel
     migration_tx: mpsc::UnboundedSender<MigrationRequest>,
+}
+
+impl std::fmt::Debug for MigrationCoordinator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("MigrationCoordinator")
+            .field("pending_migrations", &"<Vec<PendingMigration>>")
+            .field("migration_history", &"<Vec<MigrationRecord>>")
+            .field("migration_tx", &"<MigrationSender>")
+            .finish()
+    }
 }
 
 /// Pending migration request

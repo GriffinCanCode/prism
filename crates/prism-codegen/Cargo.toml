@@ -16,6 +16,7 @@ rust-version.workspace = true
 prism-common = { workspace = true }
 prism-ast = { workspace = true }
 prism-pir = { workspace = true }
+prism-vm = { workspace = true }
 
 # Core dependencies
 thiserror = { workspace = true }

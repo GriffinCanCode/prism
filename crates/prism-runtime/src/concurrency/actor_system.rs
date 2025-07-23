@@ -180,7 +180,6 @@ pub trait Actor: Send + Sync + 'static {
 }
 
 /// Message wrapper for actor communication
-#[derive(Debug)]
 enum ActorMessage<A: Actor> {
     /// Fire-and-forget message
     Tell(A::Message),
@@ -188,6 +187,16 @@ enum ActorMessage<A: Actor> {
     Ask(Box<dyn AskMessageTrait + Send>),
     /// System message for lifecycle management
     System(SystemMessage),
+}
+
+impl<A: Actor> std::fmt::Debug for ActorMessage<A> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ActorMessage::Tell(_) => write!(f, "ActorMessage::Tell(...)"),
+            ActorMessage::Ask(_) => write!(f, "ActorMessage::Ask(...)"),
+            ActorMessage::System(msg) => write!(f, "ActorMessage::System({:?})", msg),
+        }
+    }
 }
 
 /// Trait for ask messages that expect responses
@@ -576,7 +585,6 @@ struct ActorSystemMetrics {
 }
 
 /// Actor system that manages all actors with complete supervision
-#[derive(Debug)]
 pub struct ActorSystem {
     /// Active actors
     actors: Arc<RwLock<HashMap<ActorId, ActorHandle>>>,
@@ -590,6 +598,19 @@ pub struct ActorSystem {
     system_senders: Arc<RwLock<HashMap<ActorId, Box<dyn Fn(SystemMessage) + Send + Sync>>>>,
     /// Effect tracker
     effect_tracker: Arc<resources::effects::EffectTracker>,
+}
+
+impl std::fmt::Debug for ActorSystem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ActorSystem")
+            .field("actors", &"<HashMap<ActorId, ActorHandle>>")
+            .field("registry", &"<HashMap<String, ActorId>>")
+            .field("supervision_tree", &"<SupervisionTree>")
+            .field("metrics", &"<ActorSystemMetrics>")
+            .field("system_senders", &"<HashMap<ActorId, SystemMessageSender>>")
+            .field("effect_tracker", &self.effect_tracker)
+            .finish()
+    }
 }
 
 impl ActorSystem {
@@ -1099,6 +1120,26 @@ pub enum ActorError {
     /// Effect error
     #[error("Effect error: {0}")]
     Effect(#[from] resources::EffectError),
+    
+    /// Actor operation timeout
+    #[error("Actor operation timeout")]
+    Timeout,
+    
+    /// Actor operation cancelled
+    #[error("Actor operation cancelled")]
+    Cancelled,
+    
+    /// Invalid message type
+    #[error("Invalid message type")]
+    InvalidMessage,
+    
+    /// Actor panicked
+    #[error("Actor panicked")]
+    PanickedActor,
+    
+    /// System error
+    #[error("System error: {message}")]
+    SystemError { message: String },
     
     /// Generic actor error
     #[error("Actor error: {message}")]

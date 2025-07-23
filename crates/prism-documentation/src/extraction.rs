@@ -65,7 +65,7 @@ pub struct DocumentationElement {
 }
 
 /// Types of documentation elements
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum DocumentationElementType {
     /// Module documentation
     Module,
@@ -497,6 +497,10 @@ impl DocumentationExtractor {
             prism_ast::LiteralValue::Integer(i) => i.to_string(),
             prism_ast::LiteralValue::Float(f) => f.to_string(),
             prism_ast::LiteralValue::Boolean(b) => b.to_string(),
+            prism_ast::LiteralValue::Null => "null".to_string(),
+            prism_ast::LiteralValue::Money { amount, currency } => format!("{} {}", amount, currency),
+            prism_ast::LiteralValue::Duration { value, unit } => format!("{} {}", value, unit),
+            prism_ast::LiteralValue::Regex(pattern) => format!("/{}/", pattern),
         }
     }
 

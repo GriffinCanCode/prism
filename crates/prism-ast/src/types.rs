@@ -1388,6 +1388,8 @@ pub struct TypeDecl {
     pub kind: TypeKind,
     /// Visibility
     pub visibility: Visibility,
+    /// Type attributes
+    pub attributes: Vec<crate::stmt::Attribute>,
 }
 
 /// Type kind
@@ -1463,7 +1465,7 @@ pub struct TraitMethod {
 }
 
 /// Visibility
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Visibility {
     /// Public visibility
