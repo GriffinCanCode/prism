@@ -48,6 +48,7 @@ pub mod validation;
 pub mod ai_export;
 pub mod ai_integration;  // NEW: AI integration and metadata provider
 pub mod integration;     // NEW: Parser integration utilities
+pub mod codegen_coordination;  // NEW: PLT-101 CodeGen coordination
 
 // Re-export main types for public API
 pub use cache::{CompilationCache, CacheKey, CacheResult};
@@ -66,6 +67,10 @@ pub use validation::{
 pub use ai_export::{AIExporter, AIExportResult};
 pub use ai_integration::CompilerMetadataProvider;  // NEW: Export provider
 pub use integration::{ParserIntegration, IntegrationStatus}; // NEW: Export integration utilities
+pub use codegen_coordination::{
+    CodeGenCoordinator, DefaultCodeGenCoordinator, CrossTargetValidation, 
+    CoordinatorCapabilities, TargetConfig
+}; // NEW: PLT-101 coordination exports
 
 // NEW: Export query subsystem types
 pub use query::{
@@ -194,6 +199,8 @@ pub struct PrismCompiler {
     ai_exporter: Arc<DefaultAIExporter>,
     /// Validation orchestrator
     validation_orchestrator: Arc<ValidationOrchestrator>,
+    /// Semantic type system integration
+    semantic_type_integration: Arc<crate::semantic::SemanticTypeIntegration>,
 }
 
 impl PrismCompiler {
@@ -219,6 +226,19 @@ impl PrismCompiler {
         let symbol_table = Arc::new(SymbolTable::new());
         let scope_tree = Arc::new(ScopeTree::new());
         
+        // Initialize semantic type system integration
+        let semantic_type_system = Arc::new(prism_semantic::SemanticTypeSystem::new(
+            prism_semantic::TypeSystemConfig {
+                enable_compile_time_constraints: true,
+                enable_business_rules: config.enable_business_rules.unwrap_or(true),
+                enable_ai_metadata: config.ai_features.unwrap_or(true),
+                enable_formal_verification: false, // Future feature
+            }
+        )?);
+        let semantic_type_integration = Arc::new(crate::semantic::SemanticTypeIntegration::new(
+            semantic_type_system.clone()
+        ));
+        
         // Create query-based compilation pipeline with AI enhancements
         let pipeline_config = PipelineConfig {
             enable_parallel_execution: true,
@@ -229,7 +249,10 @@ impl PrismCompiler {
             enable_error_recovery: true,
             targets: config.targets.clone(),
         };
-        let pipeline = Arc::new(CompilationPipeline::new(pipeline_config));
+        let pipeline = Arc::new(
+            CompilationPipeline::new(pipeline_config)
+                .with_semantic_type_integration(semantic_type_integration.clone())
+        );
         
         // Create incremental compiler if incremental compilation is enabled
         let incremental_compiler = if config.incremental.unwrap_or(true) {
@@ -312,6 +335,7 @@ impl PrismCompiler {
             language_server,
             ai_exporter,
             validation_orchestrator,
+            semantic_type_integration,
         })
     }
 

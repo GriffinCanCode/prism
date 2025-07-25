@@ -102,6 +102,22 @@ pub struct QueryContext {
     pub config: QueryConfig,
     /// Performance profiler
     pub profiler: Arc<Mutex<QueryProfiler>>,
+    /// Compilation context (for real integration)
+    pub compilation_context: Option<Arc<crate::context::CompilationContext>>,
+    /// Semantic type integration (for real integration)
+    pub semantic_type_integration: Option<Arc<crate::semantic::SemanticTypeIntegration>>,
+}
+
+impl QueryContext {
+    /// Get the compilation context
+    pub fn get_compilation_context(&self) -> Option<Arc<crate::context::CompilationContext>> {
+        self.compilation_context.clone()
+    }
+    
+    /// Get the semantic type integration
+    pub fn get_semantic_type_integration(&self) -> Option<Arc<crate::semantic::SemanticTypeIntegration>> {
+        self.semantic_type_integration.clone()
+    }
 }
 
 /// Semantic context interface

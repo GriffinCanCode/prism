@@ -1,0 +1,12 @@
+// Simple Prism program to test parsing
+function main() -> i32 {
+    let message = "Hello, Prism!";
+    let result = 1 + 2 * 3;
+    return result;
+}
+
+function add(x: i32, y: i32) -> i32 {
+    return x + y;
+}
+
+let global_var = 42; 

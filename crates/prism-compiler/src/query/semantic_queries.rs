@@ -110,42 +110,208 @@ impl SemanticAnalysisQuery {
     pub fn new(semantic_db: Arc<SemanticDatabase>) -> Self {
         Self { semantic_db }
     }
+
+    /// Extract symbols from the program (delegates to symbols subsystem)
+    fn extract_symbols_from_program(&self, program: &Program) -> CompilerResult<Vec<SymbolInfo>> {
+        let mut symbols = Vec::new();
+        
+        // Extract symbols from program items
+        for item in &program.items {
+            match item.data() {
+                prism_ast::Item::Function(func) => {
+                    symbols.push(SymbolInfo {
+                        name: func.name.to_string(),
+                        kind: "function".to_string(),
+                        location: Some(item.span()),
+                        type_info: func.return_type.as_ref().map(|t| format!("{:?}", t.data())),
+                    });
+                }
+                prism_ast::Item::Struct(struct_def) => {
+                    symbols.push(SymbolInfo {
+                        name: struct_def.name.clone(),
+                        kind: "struct".to_string(),
+                        location: Some(item.span()),
+                        type_info: Some("composite".to_string()),
+                    });
+                }
+                prism_ast::Item::TypeAlias(type_alias) => {
+                    symbols.push(SymbolInfo {
+                        name: type_alias.name.clone(),
+                        kind: "type_alias".to_string(),
+                        location: Some(item.span()),
+                        type_info: Some(format!("{:?}", type_alias.type_expression.data())),
+                    });
+                }
+                _ => {
+                    // Handle other item types as needed
+                }
+            }
+        }
+        
+        Ok(symbols)
+    }
+    
+    /// Convert semantic types to metadata format
+    fn convert_semantic_types_to_metadata(
+        &self,
+        integration_result: &crate::semantic::SemanticTypeIntegrationResult,
+    ) -> CompilerResult<Vec<TypeInfo>> {
+        let mut types = Vec::new();
+        
+        for (node_id, semantic_type) in &integration_result.semantic_types {
+            match semantic_type {
+                prism_semantic::SemanticType::Complex { name, base_type, constraints, .. } => {
+                    types.push(TypeInfo {
+                        name: name.clone(),
+                        kind: format!("{:?}", base_type),
+                        constraints: constraints.iter().map(|c| c.name.clone()).collect(),
+                        location: None, // TODO: Extract from semantic type
+                    });
+                }
+                prism_semantic::SemanticType::Primitive(prim) => {
+                    types.push(TypeInfo {
+                        name: format!("{:?}", prim),
+                        kind: "primitive".to_string(),
+                        constraints: Vec::new(),
+                        location: None,
+                    });
+                }
+                _ => {
+                    // Handle other semantic type variants
+                    types.push(TypeInfo {
+                        name: "unknown".to_string(),
+                        kind: "unknown".to_string(),
+                        constraints: Vec::new(),
+                        location: None,
+                    });
+                }
+            }
+        }
+        
+        Ok(types)
+    }
+    
+    /// Extract effects from the program (placeholder implementation)
+    fn extract_effects_from_program(&self, _program: &Program) -> CompilerResult<Vec<EffectInfo>> {
+        // This would integrate with the effects subsystem
+        // For now, return empty vec
+        Ok(Vec::new())
+    }
+    
+    /// Extract modules from the program
+    fn extract_modules_from_program(&self, program: &Program) -> CompilerResult<Vec<ModuleInfo>> {
+        // Extract basic module information
+        // This would typically integrate with the module registry
+        Ok(vec![
+            ModuleInfo {
+                name: "main".to_string(), // Default module name
+                path: None,
+                items: program.items.len(),
+                dependencies: Vec::new(), // TODO: Extract dependencies
+            }
+        ])
+    }
+    
+    /// Generate AI context from semantic analysis results
+    fn generate_ai_context(
+        &self,
+        program: &Program,
+        integration_result: &crate::semantic::SemanticTypeIntegrationResult,
+    ) -> CompilerResult<AISemanticContext> {
+        let quality_score = if integration_result.metadata.failed_conversions == 0 {
+            0.9 // High quality if no conversion failures
+        } else {
+            0.6 // Lower quality if there were issues
+        };
+        
+        let patterns = vec![
+            "semantic_types_present".to_string(),
+            "structured_code".to_string(),
+        ];
+        
+        let mut recommendations = Vec::new();
+        
+        if integration_result.metadata.ast_types_processed == 0 {
+            recommendations.push("Consider adding semantic type annotations for better analysis".to_string());
+        }
+        
+        if !integration_result.warnings.is_empty() {
+            recommendations.push("Review semantic type warnings for potential improvements".to_string());
+        }
+        
+        Ok(AISemanticContext {
+            quality_score,
+            patterns,
+            recommendations,
+        })
+    }
 }
 
 #[async_trait]
 impl CompilerQuery<Program, SemanticAnalysisResult> for SemanticAnalysisQuery {
-    async fn execute(&self, input: Program, _context: QueryContext) -> CompilerResult<SemanticAnalysisResult> {
-        // For now, provide a basic implementation that returns placeholder data
-        // In a full implementation, this would:
-        // 1. Extract symbols from the AST
-        // 2. Perform type checking
-        // 3. Analyze effects and capabilities
-        // 4. Generate AI metadata
+    async fn execute(&self, input: Program, context: QueryContext) -> CompilerResult<SemanticAnalysisResult> {
+        use tracing::{info, debug, warn};
+        
+        info!("Executing semantic analysis with integrated semantic type system");
+        
+        // 1. **Get Semantic Type Integration from Context**
+        let semantic_type_integration = context.get_semantic_type_integration()
+            .ok_or_else(|| CompilerError::MissingDependency {
+                dependency: "semantic_type_integration".to_string(),
+                context: "semantic analysis query".to_string(),
+            })?;
+        
+        // Get the real compilation context from the query context
+        let compilation_context = context.get_compilation_context()
+            .ok_or_else(|| CompilerError::MissingDependency {
+                dependency: "compilation_context".to_string(),
+                context: "semantic analysis query".to_string(),
+            })?;
+        
+        // Integrate semantic types from the program
+        let semantic_integration_result = semantic_type_integration
+            .integrate_program_types(&input, &compilation_context)
+            .await?;
+        
+        debug!(
+            "Semantic type integration completed: {} types processed, {} successful conversions",
+            semantic_integration_result.metadata.ast_types_processed,
+            semantic_integration_result.metadata.successful_conversions
+        );
+        
+        // 2. **Symbol Extraction**: Extract symbols using the existing symbol table system
+        // (This delegates to the symbols subsystem, following SoC principles)
+        let symbols = self.extract_symbols_from_program(&input)?;
+        
+        // 3. **Type Information**: Convert semantic types to query result format
+        let types = self.convert_semantic_types_to_metadata(&semantic_integration_result)?;
+        
+        // 4. **Effect Analysis**: Basic effect extraction (placeholder for now)
+        let effects = self.extract_effects_from_program(&input)?;
+        
+        // 5. **Module Analysis**: Extract module information
+        let modules = self.extract_modules_from_program(&input)?;
         
         let semantic_metadata = SemanticMetadata {
-            symbols: vec![
-                SymbolInfo {
-                    name: "placeholder".to_string(),
-                    kind: "module".to_string(),
-                    location: None,
-                    type_info: None,
-                }
-            ],
-            types: vec![],
-            effects: vec![],
-            modules: vec![],
+            symbols,
+            types,
+            effects,
+            modules,
         };
 
-        let ai_context = AISemanticContext {
-            quality_score: 0.8,
-            patterns: vec!["basic_structure".to_string()],
-            recommendations: vec!["Add more semantic information".to_string()],
-        };
+        // 6. **AI Context Generation**: Generate AI-comprehensible context
+        let ai_context = self.generate_ai_context(&input, &semantic_integration_result)?;
+        
+        // 7. **Collect Diagnostics**: Include any warnings from semantic type integration
+        let mut diagnostics = Vec::new();
+        for warning in semantic_integration_result.warnings {
+            diagnostics.push(warning);
+        }
 
         Ok(SemanticAnalysisResult {
-            success: true,
+            success: semantic_integration_result.metadata.failed_conversions == 0,
             semantic_metadata,
-            diagnostics: vec![],
+            diagnostics,
             ai_context: Some(ai_context),
         })
     }
@@ -189,9 +355,9 @@ pub struct ParseInput {
     pub file_path: Option<std::path::PathBuf>,
 }
 
-/// Result of parsing
+/// Result of parsing query (compiler-internal)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ParseResult {
+pub struct ParseQueryResult {
     /// Parsed program
     pub program: Program,
     /// Syntax style detected
@@ -221,8 +387,8 @@ impl ParseSourceQuery {
 }
 
 #[async_trait]
-impl CompilerQuery<ParseInput, ParseResult> for ParseSourceQuery {
-    async fn execute(&self, input: ParseInput, _context: QueryContext) -> CompilerResult<ParseResult> {
+impl CompilerQuery<ParseInput, ParseQueryResult> for ParseSourceQuery {
+    async fn execute(&self, input: ParseInput, _context: QueryContext) -> CompilerResult<ParseQueryResult> {
         use prism_syntax::{parse_with_orchestrator, detect_syntax_style};
         
         // Step 1: Detect syntax style
@@ -243,7 +409,7 @@ impl CompilerQuery<ParseInput, ParseResult> for ParseSourceQuery {
             quality_indicators: vec!["well_structured".to_string()],
         };
 
-        Ok(ParseResult {
+        Ok(ParseQueryResult {
             program,
             detected_syntax: format!("{:?}", detection_result.detected_style),
             diagnostics: detection_result.warnings,
@@ -362,13 +528,15 @@ pub struct CodeGenQuery {
     codegen: Arc<prism_codegen::MultiTargetCodeGen>,
 }
 
-/// Code generation input
+/// Code generation input (now uses PIR as stable interface)
 #[derive(Debug, Clone, Hash, PartialEq, Eq)]
 pub struct CodeGenInput {
-    /// Program to generate code for
-    pub program: Program,
-    /// Semantic information
-    pub semantic_info: SemanticAnalysisResult,
+    /// PIR to generate code from (stable semantic bridge)
+    pub pir: prism_pir::semantic::PrismIR,
+    /// Target platform for code generation
+    pub target: crate::context::CompilationTarget,
+    /// Optimization level to apply
+    pub optimization_level: u8,
 }
 
 impl CodeGenQuery {
@@ -1196,4 +1364,393 @@ impl CompilerQuery<FinalizationInput, FinalizationResult> for FinalizationQuery 
     fn query_type(&self) -> &'static str {
         "finalization"
     }
+} 
+
+// ===== PIR GENERATION QUERY =====
+
+/// Query for PIR generation phase
+#[derive(Debug, Clone)]
+pub struct PIRGenerationQuery {
+    /// PIR construction builder
+    pir_builder: Arc<prism_pir::construction::PIRConstructionBuilder>,
+}
+
+/// Input for PIR generation
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct PIRGenerationInput {
+    /// Program to generate PIR from
+    pub program: Program,
+    /// Semantic analysis results
+    pub semantic_info: SemanticAnalysisResult,
+    /// Type checking results
+    pub type_info: TypeCheckingResult,
+    /// Effect analysis results
+    pub effect_info: EffectAnalysisResult,
+}
+
+/// Result of PIR generation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PIRGenerationResult {
+    /// Generated PIR
+    pub pir: prism_pir::semantic::PrismIR,
+    /// PIR generation success
+    pub success: bool,
+    /// PIR generation diagnostics
+    pub diagnostics: Vec<String>,
+    /// PIR generation statistics
+    pub stats: PIRGenerationStats,
+    /// PIR validation results
+    pub validation_results: Vec<String>,
+}
+
+/// PIR generation statistics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PIRGenerationStats {
+    /// Number of modules generated
+    pub modules_generated: usize,
+    /// Number of functions generated
+    pub functions_generated: usize,
+    /// Number of types preserved
+    pub types_preserved: usize,
+    /// PIR generation time in milliseconds
+    pub generation_time_ms: u64,
+    /// Semantic preservation score (0.0 to 1.0)
+    pub semantic_preservation_score: f64,
+}
+
+impl PIRGenerationQuery {
+    /// Create a new PIR generation query
+    pub fn new() -> CompilerResult<Self> {
+        let pir_builder = Arc::new(
+            prism_pir::construction::PIRConstructionBuilder::new()
+                .map_err(|e| CompilerError::InvalidOperation { 
+                    message: format!("Failed to create PIR builder: {}", e) 
+                })?
+        );
+        
+        Ok(Self { pir_builder })
+    }
+    
+    /// Create a PIR generation query with custom builder
+    pub fn with_builder(pir_builder: Arc<prism_pir::construction::PIRConstructionBuilder>) -> Self {
+        Self { pir_builder }
+    }
+}
+
+#[async_trait]
+impl CompilerQuery<PIRGenerationInput, PIRGenerationResult> for PIRGenerationQuery {
+    async fn execute(&self, input: PIRGenerationInput, _context: QueryContext) -> CompilerResult<PIRGenerationResult> {
+        use tracing::{info, debug, warn};
+        use std::time::Instant;
+        
+        let start_time = Instant::now();
+        info!("Executing PIR generation from semantic analysis results");
+        
+        let mut diagnostics = Vec::new();
+        let mut success = true;
+        
+        // Generate PIR from the program using the construction builder
+        let pir_result = {
+            // Create a mutable builder for this generation
+            let mut builder = prism_pir::construction::PIRConstructionBuilder::new()
+                .map_err(|e| CompilerError::InvalidOperation { 
+                    message: format!("Failed to create PIR builder: {}", e) 
+                })?;
+            
+            // Build PIR from the program
+            builder.build_from_program(&input.program)
+                .map_err(|e| CompilerError::InvalidOperation { 
+                    message: format!("PIR generation failed: {}", e) 
+                })
+        };
+        
+        let pir = match pir_result {
+            Ok(pir) => pir,
+            Err(e) => {
+                success = false;
+                diagnostics.push(e.to_string());
+                
+                // Return a minimal PIR for error recovery
+                prism_pir::semantic::PrismIR::new()
+            }
+        };
+        
+        // Calculate statistics
+        let modules_generated = pir.modules.len();
+        let functions_generated = pir.modules.iter()
+            .map(|module| module.sections.iter()
+                .filter_map(|section| match section {
+                    prism_pir::semantic::PIRSection::Functions(funcs) => Some(funcs.functions.len()),
+                    _ => None,
+                }).sum::<usize>())
+            .sum();
+        let types_preserved = pir.type_registry.types.len();
+        
+        let generation_time_ms = start_time.elapsed().as_millis() as u64;
+        
+        // Calculate semantic preservation score based on successful transformations
+        let semantic_preservation_score = if success {
+            // Base score on successful generation and presence of semantic information
+            let base_score = 0.8;
+            let semantic_bonus = if input.semantic_info.success { 0.1 } else { 0.0 };
+            let type_bonus = if input.type_info.success { 0.1 } else { 0.0 };
+            (base_score + semantic_bonus + type_bonus).min(1.0)
+        } else {
+            0.0
+        };
+        
+        let stats = PIRGenerationStats {
+            modules_generated,
+            functions_generated,
+            types_preserved,
+            generation_time_ms,
+            semantic_preservation_score,
+        };
+        
+        // Perform basic validation
+        let validation_results = if success {
+            self.validate_pir_quality(&pir, &input)
+        } else {
+            vec!["PIR generation failed - skipping validation".to_string()]
+        };
+        
+        debug!(
+            "PIR generation completed: {} modules, {} functions, {} types preserved",
+            modules_generated, functions_generated, types_preserved
+        );
+        
+        Ok(PIRGenerationResult {
+            pir,
+            success,
+            diagnostics,
+            stats,
+            validation_results,
+        })
+    }
+
+    fn cache_key(&self, input: &PIRGenerationInput) -> CacheKey {
+        CacheKey::from_input("pir_generation", input)
+    }
+
+    async fn dependencies(&self, _input: &PIRGenerationInput, _context: &QueryContext) -> CompilerResult<HashSet<QueryId>> {
+        // PIR generation depends on semantic analysis, type checking, and effect analysis
+        let mut deps = HashSet::new();
+        // In a full implementation, these would be proper QueryIds
+        // deps.insert(QueryId::semantic_analysis());
+        // deps.insert(QueryId::type_checking());
+        // deps.insert(QueryId::effect_analysis());
+        Ok(deps)
+    }
+
+    fn invalidate_on(&self, input: &PIRGenerationInput) -> HashSet<InvalidationTrigger> {
+        let mut triggers = HashSet::new();
+        // Invalidate when semantic analysis results change
+        triggers.insert(InvalidationTrigger::ConfigChanged);
+        triggers
+    }
+
+    fn query_type(&self) -> &'static str {
+        "pir_generation"
+    }
+}
+
+impl PIRGenerationQuery {
+    /// Validate PIR quality and semantic preservation
+    fn validate_pir_quality(&self, pir: &prism_pir::semantic::PrismIR, input: &PIRGenerationInput) -> Vec<String> {
+        let mut validation_results = Vec::new();
+        
+        // Check if all program modules were preserved
+        let program_modules = input.program.items.iter()
+            .filter(|item| matches!(item.kind, prism_ast::Item::Module(_)))
+            .count();
+        
+        if pir.modules.len() < program_modules {
+            validation_results.push(format!(
+                "Module preservation issue: {} modules in program, {} in PIR",
+                program_modules, pir.modules.len()
+            ));
+        }
+        
+        // Check semantic type preservation
+        if pir.type_registry.types.is_empty() && !input.semantic_info.semantic_metadata.types.is_empty() {
+            validation_results.push("Type information may not have been fully preserved in PIR".to_string());
+        }
+        
+        // Check effect preservation
+        if pir.effect_graph.effects.is_empty() && !input.effect_info.effects.is_empty() {
+            validation_results.push("Effect information may not have been fully preserved in PIR".to_string());
+        }
+        
+        // Validate business context preservation
+        for module in &pir.modules {
+            if module.business_context.capability.is_empty() {
+                validation_results.push(format!(
+                    "Module '{}' missing business context information",
+                    module.name
+                ));
+            }
+        }
+        
+        if validation_results.is_empty() {
+            validation_results.push("PIR quality validation passed".to_string());
+        }
+        
+        validation_results
+    }
+}
+
+// ===== RESULT TYPES =====
+
+/// Result of parsing phase
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParseResult {
+    /// The parsed program
+    pub program: Program,
+    /// Detected syntax style
+    pub syntax_style: String,
+    /// Parsing success
+    pub success: bool,
+    /// Parse errors
+    pub errors: Vec<String>,
+    /// Parse warnings
+    pub warnings: Vec<String>,
+    /// Parsing statistics
+    pub stats: ParseStats,
+}
+
+/// Parsing statistics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParseStats {
+    /// Number of AST nodes created
+    pub nodes_created: usize,
+    /// Parsing time in milliseconds
+    pub parse_time_ms: u64,
+    /// Lines parsed
+    pub lines_parsed: usize,
+    /// Syntax detection confidence
+    pub syntax_confidence: f64,
+}
+
+/// Result of type checking phase
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TypeCheckingResult {
+    /// Type checking success
+    pub success: bool,
+    /// Type information discovered
+    pub type_info: Vec<TypeInfo>,
+    /// Type errors found
+    pub type_errors: Vec<String>,
+    /// Type warnings
+    pub type_warnings: Vec<String>,
+    /// Type checking statistics
+    pub stats: TypeCheckingStats,
+}
+
+/// Type checking statistics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TypeCheckingStats {
+    /// Types resolved
+    pub types_resolved: usize,
+    /// Type constraints checked
+    pub constraints_checked: usize,
+    /// Type checking time in milliseconds
+    pub type_check_time_ms: u64,
+}
+
+/// Result of effect analysis phase
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EffectAnalysisResult {
+    /// Effect analysis success
+    pub success: bool,
+    /// Effects discovered
+    pub effects: Vec<EffectInfo>,
+    /// Capability requirements
+    pub capabilities: Vec<String>,
+    /// Effect violations found
+    pub violations: Vec<String>,
+    /// Effect analysis statistics
+    pub stats: EffectAnalysisStats,
+}
+
+/// Effect analysis statistics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EffectAnalysisStats {
+    /// Effects analyzed
+    pub effects_analyzed: usize,
+    /// Capabilities validated
+    pub capabilities_validated: usize,
+    /// Effect analysis time in milliseconds
+    pub effect_analysis_time_ms: u64,
+}
+
+/// Result of optimization phase
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OptimizationResult {
+    /// Optimization success
+    pub success: bool,
+    /// Optimizations applied
+    pub optimizations: Vec<OptimizationInfo>,
+    /// Performance improvements
+    pub improvements: Vec<String>,
+    /// Optimization statistics
+    pub stats: OptimizationStats,
+}
+
+/// Optimization information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OptimizationInfo {
+    /// Optimization type
+    pub optimization_type: String,
+    /// Description of what was optimized
+    pub description: String,
+    /// Performance impact
+    pub impact: String,
+}
+
+/// Optimization statistics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OptimizationStats {
+    /// Number of optimizations applied
+    pub optimizations_applied: usize,
+    /// Optimization time in milliseconds
+    pub optimization_time_ms: u64,
+    /// Estimated performance improvement
+    pub performance_improvement_percent: f64,
+}
+
+/// Result of linking phase
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LinkingResult {
+    /// Linking success
+    pub success: bool,
+    /// Linked artifacts
+    pub linked_artifacts: Vec<LinkedArtifact>,
+    /// Linking errors
+    pub errors: Vec<String>,
+    /// Linking statistics
+    pub stats: LinkingStats,
+}
+
+/// Linked artifact information
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LinkedArtifact {
+    /// Artifact name
+    pub name: String,
+    /// Target platform
+    pub target: String,
+    /// Output path
+    pub output_path: PathBuf,
+    /// Size in bytes
+    pub size_bytes: u64,
+}
+
+/// Linking statistics
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LinkingStats {
+    /// Artifacts linked
+    pub artifacts_linked: usize,
+    /// Total output size in bytes
+    pub total_size_bytes: u64,
+    /// Linking time in milliseconds
+    pub linking_time_ms: u64,
 } 

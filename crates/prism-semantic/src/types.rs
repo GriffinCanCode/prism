@@ -14,6 +14,7 @@ use prism_common::{NodeId, span::Span, symbol::Symbol};
 use crate::type_inference::constraints::ConstraintSet;
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
+use uuid::Uuid;
 
 /// Semantic type system implementing PLD-001
 #[derive(Debug)]
@@ -166,6 +167,185 @@ impl SemanticType {
                 location,
             }
         }
+    }
+
+    /// Convert from AST semantic type to semantic analysis type
+    /// This is the key integration point - respects SoC by being a pure conversion
+    pub fn from_ast_semantic_type(ast_type: &prism_ast::SemanticType, location: Span) -> SemanticResult<Self> {
+        // Extract base type information
+        let base_type = Self::convert_ast_base_type(&ast_type.base_type)?;
+        
+        // Convert constraints
+        let constraints = Self::convert_ast_constraints(&ast_type.constraints)?;
+        
+        // Convert metadata  
+        let metadata = Self::convert_ast_metadata(&ast_type.metadata)?;
+        
+        // Extract business domain
+        let business_domain = ast_type.business_domain.clone().unwrap_or_else(|| "default".to_string());
+        
+        // Convert static assertions to business rules
+        let business_rules = Self::convert_static_assertions(&ast_type.static_assertions)?;
+        
+        // Build comprehensive semantic type
+        Ok(SemanticType::Complex {
+            name: format!("SemanticType_{}", uuid::Uuid::new_v4()),
+            base_type,
+            constraints,
+            business_rules,
+            metadata,
+            ai_context: None, // Will be populated by AI analysis phase
+            verification_properties: Vec::new(), // Will be populated by verification phase
+            location,
+        })
+    }
+
+    /// Convert AST base type to semantic base type
+    fn convert_ast_base_type(ast_node: &prism_ast::AstNode<prism_ast::Type>) -> SemanticResult<BaseType> {
+        use prism_ast::Type;
+        
+        match &ast_node.kind {
+            Type::Primitive(prim) => {
+                // Map AST primitive types to semantic custom primitives
+                let semantic_prim = PrimitiveType::Custom { 
+                    name: format!("{:?}", prim), 
+                    base: format!("{:?}", prim) 
+                };
+                Ok(BaseType::Primitive(semantic_prim))
+            }
+            Type::Named(named) => {
+                // For now, treat named types as custom primitives
+                // In a full implementation, this would look up the actual type definition
+                Ok(BaseType::Primitive(PrimitiveType::Custom {
+                    name: named.name.to_string(),
+                    base: "named_type".to_string(),
+                }))
+            }
+            Type::Function(_func) => {
+                // Create a simple function type representation
+                // In a full implementation, this would properly convert the function signature
+                Ok(BaseType::Primitive(PrimitiveType::Custom {
+                    name: "Function".to_string(),
+                    base: "function_type".to_string(),
+                }))
+            }
+            Type::Composite(comp) => {
+                let composite_type = CompositeType {
+                    kind: match comp.kind {
+                        prism_ast::CompositeTypeKind::Struct => CompositeKind::Struct,
+                        prism_ast::CompositeTypeKind::Enum => CompositeKind::Enum,
+                        prism_ast::CompositeTypeKind::Union => CompositeKind::Union,
+                        // Handle Tuple by mapping to Struct for now
+                        _ => CompositeKind::Struct,
+                    },
+                    inheritance: Vec::new(), // Semantic types use inheritance, not fields
+                    fields: Vec::new(), // Add required fields field
+                    methods: Vec::new(), // Add required methods field
+                };
+                Ok(BaseType::Composite(composite_type))
+            }
+            _ => {
+                // For other types, create a generic custom primitive
+                Ok(BaseType::Primitive(PrimitiveType::Custom {
+                    name: "Unknown".to_string(),
+                    base: "unknown_type".to_string(),
+                }))
+            }
+        }
+    }
+
+    /// Convert AST constraints to semantic constraints
+    fn convert_ast_constraints(ast_constraints: &[prism_ast::TypeConstraint]) -> SemanticResult<Vec<TypeConstraint>> {
+        let mut constraints = Vec::new();
+        
+        for ast_constraint in ast_constraints {
+            match ast_constraint {
+                prism_ast::TypeConstraint::Range(range) => {
+                    constraints.push(TypeConstraint::Range(RangeConstraint {
+                        min: range.min.map(|v| v as f64),
+                        max: range.max.map(|v| v as f64),
+                        inclusive_min: range.inclusive_min.unwrap_or(true),
+                        inclusive_max: range.inclusive_max.unwrap_or(true),
+                    }));
+                }
+                prism_ast::TypeConstraint::Pattern(pattern) => {
+                    constraints.push(TypeConstraint::Pattern(PatternConstraint {
+                        regex: pattern.pattern.clone(),
+                        flags: pattern.flags.clone().unwrap_or_default(),
+                    }));
+                }
+                prism_ast::TypeConstraint::Length(length) => {
+                    constraints.push(TypeConstraint::Length(LengthConstraint {
+                        min_length: length.min.map(|v| v as usize),
+                        max_length: length.max.map(|v| v as usize),
+                        exact_length: length.exact.map(|v| v as usize),
+                    }));
+                }
+                prism_ast::TypeConstraint::BusinessRule(rule) => {
+                    constraints.push(TypeConstraint::BusinessRule(BusinessRuleConstraint {
+                        rule_id: rule.id.clone(),
+                        description: rule.description.clone(),
+                        expression: rule.expression.clone(),
+                        severity: rule.severity.clone().unwrap_or_default(),
+                    }));
+                }
+                _ => {
+                    // For other constraint types, create generic constraint
+                    constraints.push(TypeConstraint {
+                        name: "generic".to_string(),
+                        constraint_type: ConstraintType::Custom,
+                        parameters: HashMap::new(),
+                        validation_logic: "true".to_string(),
+                        error_message: "Constraint validation failed".to_string(),
+                    });
+                }
+            }
+        }
+        
+        Ok(constraints)
+    }
+
+    /// Convert AST metadata to semantic metadata
+    fn convert_ast_metadata(ast_metadata: &prism_ast::SemanticTypeMetadata) -> SemanticResult<SemanticTypeMetadata> {
+        Ok(SemanticTypeMetadata {
+            business_meaning: "Converted from AST semantic type".to_string(),
+            domain_context: "general".to_string(),
+            examples: ast_metadata.examples.clone(),
+            compliance_requirements: ast_metadata.compliance_requirements.clone(),
+            security_considerations: Vec::new(),
+            performance_characteristics: None,
+            related_types: Vec::new(),
+            common_mistakes: Vec::new(),
+            migration_notes: None,
+        })
+    }
+
+    /// Convert static assertions to business rules
+    fn convert_static_assertions(assertions: &[prism_ast::StaticAssertion]) -> SemanticResult<Vec<BusinessRule>> {
+        let mut business_rules = Vec::new();
+        
+        for (index, assertion) in assertions.iter().enumerate() {
+            business_rules.push(BusinessRule {
+                id: format!("static_assertion_{}", index),
+                name: format!("StaticAssertion_{}", index),
+                description: format!("{:?}", assertion.context),
+                predicate: format!("{:?}", assertion.condition),
+                enforcement_level: EnforcementLevel::CompileTime,
+                domain: "static_assertion".to_string(),
+                compliance_frameworks: Vec::new(),
+                priority: RulePriority::High,
+                severity: ValidationSeverity::Error,
+                error_message: assertion.error_message.clone(),
+                ai_explanation: Some(format!("Static assertion ensures compile-time validation: {:?}", assertion.context)),
+                examples: RuleExamples {
+                    valid: Vec::new(),
+                    invalid: Vec::new(),
+                    edge_cases: Vec::new(),
+                },
+            });
+        }
+        
+        Ok(business_rules)
     }
 
     /// Get a string representation of the type for debugging
@@ -517,6 +697,8 @@ pub struct BusinessRule {
     pub compliance_frameworks: Vec<String>,
     /// Priority level
     pub priority: RulePriority,
+    /// Validation severity
+    pub severity: ValidationSeverity,
     /// Error message when rule is violated
     pub error_message: String,
     /// AI explanation of the rule
@@ -549,6 +731,17 @@ pub enum RulePriority {
     Medium,
     /// Low priority
     Low,
+}
+
+/// Validation severity levels
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum ValidationSeverity {
+    /// Error - validation failure
+    Error,
+    /// Warning - potential issue
+    Warning,
+    /// Info - informational only
+    Info,
 }
 
 /// Examples for business rules

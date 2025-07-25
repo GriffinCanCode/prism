@@ -496,6 +496,48 @@ impl Effect {
         self.metadata = metadata;
         self
     }
+
+    /// Get the required capability for this effect
+    /// This enables runtime capability verification in the VM
+    pub fn required_capability(&self) -> Option<String> {
+        // For now, derive capability from effect definition name
+        // In a full implementation, this would look up the EffectDefinition
+        // from the registry and extract the capability requirements
+        match self.definition.as_str() {
+            // I/O Effects
+            "IO.FileSystem.Read" | "IO.FileSystem.Write" | "IO.FileSystem.Delete" => Some("FileSystem".to_string()),
+            "IO.Network.Connect" | "IO.HTTP" | "IO.Socket" => Some("Network".to_string()),
+            "IO.Console" => Some("Console".to_string()),
+            
+            // System Effects
+            "System.Process" | "System.Exec" => Some("ProcessControl".to_string()),
+            "System.Environment" => Some("Environment".to_string()),
+            "System.Time" => Some("SystemTime".to_string()),
+            
+            // Security Effects
+            "Security.Crypto" => Some("Cryptography".to_string()),
+            "Security.Auth" => Some("Authentication".to_string()),
+            "Security.Access" => Some("AccessControl".to_string()),
+            
+            // Memory Effects
+            "Memory.Allocate" | "Memory.Deallocate" => Some("MemoryManagement".to_string()),
+            "Memory.Unsafe" => Some("UnsafeMemory".to_string()),
+            
+            // Concurrency Effects
+            "Concurrency.Thread" => Some("Threading".to_string()),
+            "Concurrency.Async" => Some("AsyncExecution".to_string()),
+            "Concurrency.Lock" => Some("Synchronization".to_string()),
+            
+            // Default: no specific capability required
+            _ => None,
+        }
+    }
+
+    /// Get all required capabilities for this effect
+    /// This would integrate with the effect registry in a full implementation
+    pub fn required_capabilities(&self) -> Vec<String> {
+        self.required_capability().into_iter().collect()
+    }
 }
 
 /// Metadata for a specific effect instance

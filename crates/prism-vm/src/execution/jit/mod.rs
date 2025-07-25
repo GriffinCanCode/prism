@@ -115,6 +115,7 @@ pub use profile_guided_optimizer::{
 };
 
 use crate::{VMResult, PrismVMError, bytecode::PrismBytecode};
+use crate::execution::effects::VMEffectEnforcer;
 use prism_runtime::{
     authority::capability::CapabilitySet,
     concurrency::performance::PerformanceProfiler,
@@ -122,7 +123,7 @@ use prism_runtime::{
 use prism_codegen::backends::PrismVMBackend;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, Mutex};
 use std::time::{Duration, Instant};
 use tracing::{debug, info, span, Level};
 
@@ -155,6 +156,9 @@ pub struct JitCompiler {
     
     /// Integration with prism-codegen VM backend
     vm_backend: Arc<PrismVMBackend>,
+    
+    /// VM effect enforcer for runtime validation
+    effect_enforcer: Option<Arc<RwLock<VMEffectEnforcer>>>,
     
     /// Compilation statistics
     stats: Arc<RwLock<JitStats>>,
@@ -337,6 +341,7 @@ impl JitCompiler {
             security_compiler,
             constraint_optimizer,
             vm_backend,
+            effect_enforcer: None,
             stats: Arc::new(RwLock::new(JitStats::default())),
         })
     }
@@ -403,6 +408,9 @@ impl JitCompiler {
                 message: format!("Function {} not found", function_id),
             })?;
         
+        // Validate effects before compilation
+        self.validate_effects_for_compilation(function, capabilities)?;
+        
         let compiled = self.baseline_jit.compile(bytecode, function)?;
         let compilation_time = start_time.elapsed();
         
@@ -439,6 +447,9 @@ impl JitCompiler {
             .ok_or_else(|| PrismVMError::JITError {
                 message: format!("Function {} not found", function_id),
             })?;
+        
+        // Validate effects before compilation
+        self.validate_effects_for_compilation(function, capabilities)?;
         
         // Get runtime optimization hints from integrated profiler
         let optimization_hints = self.profiler_integration.read().unwrap().get_runtime_hints();
@@ -491,6 +502,65 @@ impl JitCompiler {
         self.config.enabled
     }
     
+    /// Set the effect enforcer for runtime validation
+    pub fn set_effect_enforcer(&mut self, enforcer: Arc<RwLock<VMEffectEnforcer>>) {
+        self.effect_enforcer = Some(enforcer);
+    }
+    
+    /// Get effect enforcement statistics from JIT compiled code
+    pub fn get_effect_stats(&self) -> Option<crate::execution::effects::EffectEnforcementStats> {
+        self.effect_enforcer.as_ref().map(|enforcer| {
+            let enforcer = enforcer.read().unwrap();
+            enforcer.get_stats()
+        })
+    }
+    
+    /// Validate effects before JIT compilation
+    fn validate_effects_for_compilation(
+        &self,
+        function: &crate::bytecode::FunctionDefinition,
+        capabilities: &CapabilitySet,
+    ) -> VMResult<()> {
+        if let Some(ref effect_enforcer) = self.effect_enforcer {
+            let enforcer = effect_enforcer.read().unwrap();
+            
+            // Create a temporary context for validation
+            let temp_context = crate::execution::effects::VMEffectContext {
+                function_id: function.id,
+                declared_effects: function.effects.clone(),
+                active_effects: std::collections::VecDeque::new(),
+                capabilities: capabilities.clone(),
+                secure_context: prism_effects::security::SecureExecutionContext {
+                    available_capabilities: capabilities.clone().into_iter().collect(),
+                    security_level: prism_effects::security::SecurityLevel::High,
+                    execution_id: uuid::Uuid::new_v4().to_string(),
+                    timestamp: std::time::SystemTime::now(),
+                },
+                effect_results: Vec::new(),
+                created_at: std::time::Instant::now(),
+            };
+            
+            // Validate declared effects
+            for effect in &function.effects {
+                // Create validation context
+                let validation_context = prism_effects::validation::ValidationContext {
+                    available_capabilities: capabilities.clone().into_iter().collect(),
+                    security_level: prism_effects::security::SecurityLevel::High,
+                    validation_timestamp: std::time::SystemTime::now(),
+                };
+                
+                // Validate through the effect system
+                if let Err(e) = enforcer.effect_validator.validate_effect(effect, &validation_context) {
+                    return Err(PrismVMError::EffectError {
+                        message: format!("Effect validation failed during JIT compilation: {}", e),
+                    });
+                }
+            }
+        }
+        
+        Ok(())
+    }
+
     /// Get integration configuration
     pub fn integration_config(&self) -> &IntegrationConfig {
         &self.config.integration_config

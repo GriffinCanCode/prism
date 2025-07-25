@@ -6,9 +6,8 @@
 //!
 //! **Conceptual Responsibility**: Generate AI-formatted cohesion insights
 
-use crate::{CohesionResult, CohesionError, CohesionMetrics, CohesionViolation, ConceptualBoundary};
-use prism_ast::{Program, AstNode, Item, ModuleDecl};
-use prism_common::{span::Span, symbol::Symbol};
+use crate::{CohesionResult, CohesionMetrics, CohesionViolation, ConceptualBoundary};
+use prism_ast::{Program, Item, ModuleDecl};
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 

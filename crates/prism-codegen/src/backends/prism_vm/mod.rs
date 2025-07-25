@@ -13,6 +13,7 @@
 
 pub mod core;
 pub mod compiler;
+pub mod semantic_compiler;
 pub mod optimization;
 pub mod validation;
 

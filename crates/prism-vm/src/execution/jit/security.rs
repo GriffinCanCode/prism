@@ -255,6 +255,12 @@ pub enum CheckType {
     Delegation,
     /// Capability expiration check
     Expiration,
+    /// Function entry capability check
+    FunctionEntry,
+    /// Effect capability check
+    EffectCapability,
+    /// Instruction effect capability check
+    InstructionEffect,
 }
 
 /// Effect tracking insertion point
@@ -418,18 +424,40 @@ impl SecurityCompiler {
     ) -> VMResult<CapabilityChecker> {
         let _span = span!(Level::DEBUG, "generate_capability_checks", function = %function.name).entered();
 
-        if !self.config.enable_capability_checks {
-            return Ok(CapabilityChecker {
-                required_capabilities: HashSet::new(),
-                available_capabilities: Arc::new(capabilities.clone()),
-                check_points: Vec::new(),
-            });
-        }
-
+        // ENHANCED: Always enable capability checks for security consistency
+        // Runtime verification must match compile-time verification completeness
         debug!("Generating capability checks for function: {}", function.name);
 
         let mut required_capabilities = HashSet::new();
         let mut check_points = Vec::new();
+
+        // ENHANCED: Check function-level capabilities
+        for required_cap in &function.capabilities {
+            required_capabilities.insert(required_cap.clone());
+            
+            // Insert capability check at function entry
+            check_points.push(CheckPoint {
+                function_id: function.id,
+                instruction_offset: 0, // Function entry
+                required_capability: required_cap.clone(),
+                check_type: CheckType::FunctionEntry,
+            });
+        }
+
+        // ENHANCED: Check effect-related capabilities
+        for effect in &function.effects {
+            if let Some(required_cap) = effect.required_capability() {
+                required_capabilities.insert(required_cap.clone());
+                
+                // Insert capability check for effect
+                check_points.push(CheckPoint {
+                    function_id: function.id,
+                    instruction_offset: 0, // Function entry for declared effects
+                    required_capability: required_cap,
+                    check_type: CheckType::EffectCapability,
+                });
+            }
+        }
 
         // Analyze instructions to determine where capability checks are needed
         for (offset, instruction) in function.instructions.iter().enumerate() {
@@ -444,6 +472,21 @@ impl SecurityCompiler {
                     check_type: CheckType::Presence,
                 });
             }
+
+            // ENHANCED: Check capabilities for instruction effects
+            for effect in &instruction.effects {
+                if let Some(required_cap) = effect.required_capability() {
+                    required_capabilities.insert(required_cap.clone());
+                    
+                    // Insert capability check before instruction with effect
+                    check_points.push(CheckPoint {
+                        function_id: function.id,
+                        instruction_offset: offset as u32,
+                        required_capability: required_cap,
+                        check_type: CheckType::InstructionEffect,
+                    });
+                }
+            }
         }
 
         // Update statistics
@@ -452,7 +495,8 @@ impl SecurityCompiler {
             stats.capability_checks_inserted += check_points.len() as u64;
         }
 
-        debug!("Generated {} capability checks", check_points.len());
+        debug!("Generated {} capability checks for {} required capabilities", 
+               check_points.len(), required_capabilities.len());
 
         Ok(CapabilityChecker {
             required_capabilities,

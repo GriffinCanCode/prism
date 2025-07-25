@@ -9,7 +9,7 @@
 
 use crate::{CohesionResult, CohesionError, CohesionMetrics, MetricsCalculator, AnalysisDepth};
 use prism_ast::{Program, AstNode, Item, ModuleDecl};
-use prism_common::{span::Span, symbol::Symbol};
+use prism_common::span::Span;
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use std::time::{Duration, Instant};

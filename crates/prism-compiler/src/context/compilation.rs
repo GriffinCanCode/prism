@@ -66,6 +66,8 @@ pub enum CompilationPhase {
     Optimization,
     /// Code generation
     CodeGeneration,
+    /// PIR generation
+    PIRGeneration,
     /// Linking
     Linking,
     /// Finalization
@@ -164,7 +166,8 @@ impl CompilationContext {
             CompilationPhase::SemanticAnalysis => Some(CompilationPhase::TypeChecking),
             CompilationPhase::TypeChecking => Some(CompilationPhase::EffectAnalysis),
             CompilationPhase::EffectAnalysis => Some(CompilationPhase::Optimization),
-            CompilationPhase::Optimization => Some(CompilationPhase::CodeGeneration),
+            CompilationPhase::Optimization => Some(CompilationPhase::PIRGeneration),
+            CompilationPhase::PIRGeneration => Some(CompilationPhase::CodeGeneration),
             CompilationPhase::CodeGeneration => Some(CompilationPhase::Linking),
             CompilationPhase::Linking => Some(CompilationPhase::Finalization),
             CompilationPhase::Finalization => None,
@@ -287,6 +290,7 @@ impl std::fmt::Display for CompilationPhase {
             CompilationPhase::TypeChecking => write!(f, "type-checking"),
             CompilationPhase::EffectAnalysis => write!(f, "effect-analysis"),
             CompilationPhase::Optimization => write!(f, "optimization"),
+            CompilationPhase::PIRGeneration => write!(f, "pir-generation"),
             CompilationPhase::CodeGeneration => write!(f, "code-generation"),
             CompilationPhase::Linking => write!(f, "linking"),
             CompilationPhase::Finalization => write!(f, "finalization"),

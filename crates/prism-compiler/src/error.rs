@@ -104,6 +104,9 @@ pub enum CompilerError {
     #[error("Semantic analysis error: {message}")]
     SemanticAnalysisError { message: String },
 
+    #[error("Missing dependency '{dependency}' in context '{context}'")]
+    MissingDependency { dependency: String, context: String },
+
     #[error("Business rule violation at {location}: {rule} - {explanation}")]
     BusinessRuleViolation {
         location: Span,
@@ -144,6 +147,12 @@ pub enum CompilerError {
     // Code generation errors
     #[error("Code generation failed for target {target}: {message}")]
     CodeGenError { target: String, message: String },
+
+    #[error("Code generation coordination failed: {message}")]
+    CodeGenerationFailed { target: String, message: String },
+
+    #[error("Cross-target validation failed: {message}")]
+    CrossTargetValidationFailed { message: String },
 
     #[error("Unsupported feature '{feature}' for target {target}")]
     UnsupportedFeature { feature: String, target: String },

@@ -12,7 +12,7 @@ To achieve its goals of performance, safety, and a cutting-edge developer experi
     * **Why**: Rust provides memory safety without a garbage collector, a strong type system, excellent error messages, and first-class support for LLVM and WebAssembly, making it the ideal choice for a modern compiler.
     * **Key Crates**:
         * **Lexing**: `rustc_lexer` for its performance and patterns.
-        * **Parsing**: `lalrpop` or `nom` to build the parser.
+        * **Parsing**: Custom recursive descent parser with Pratt parsing for expressions.
         * **Code Generation**: `cranelift` for WASM and `inkwell` for LLVM bindings.
         * **Incremental Compilation**: `salsa` to ensure fast, responsive compilation cycles.
 
@@ -36,7 +36,7 @@ The development of Prism will proceed in four distinct phases over 12 months.
 * **Focus**: Establish the core compiler architecture and a working transpiler.
 * **Tasks**:
     * Initialize Rust workspace and set up Nix flake for reproducible builds.
-    * Develop the Lexer and Parser using `lalrpop`.
+    * Develop the Lexer and custom recursive descent Parser with multi-syntax support.
     * Define the AST with structures for rich metadata like documentation and AI hints.
     * Implement the initial semantic type system with support for constraints and units.
     * Build the first code generator: a transpiler to TypeScript to enable rapid testing.

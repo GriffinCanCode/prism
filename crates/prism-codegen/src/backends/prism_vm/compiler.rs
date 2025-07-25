@@ -3,7 +3,7 @@
 //! This module implements the compiler that transforms PIR (Prism Intermediate Representation)
 //! into Prism VM bytecode while preserving all semantic information.
 
-use super::{VMBackendResult, VMBackendError};
+use super::{VMBackendResult, VMBackendError, semantic_compiler::EnhancedSemanticCompiler};
 use crate::backends::PrismIR;
 use prism_vm::{PrismBytecode, bytecode::*};
 use serde::{Deserialize, Serialize};
@@ -88,17 +88,33 @@ impl VariableScope {
     }
 }
 
-/// PIR to bytecode compiler
+/// PIR to bytecode compiler with enhanced semantic preservation
 #[derive(Debug)]
 pub struct PIRToBytecodeCompiler {
     /// Compiler configuration
     config: CompilerConfig,
+    /// Enhanced semantic compiler for full semantic preservation
+    semantic_compiler: EnhancedSemanticCompiler,
 }
 
 impl PIRToBytecodeCompiler {
     /// Create a new compiler with configuration
     pub fn new(config: CompilerConfig) -> VMBackendResult<Self> {
-        Ok(Self { config })
+        use super::semantic_compiler::SemanticCompilerConfig;
+        
+        let semantic_config = SemanticCompilerConfig {
+            preserve_all_semantics: config.preserve_semantics,
+            compile_business_rules: config.preserve_semantics,
+            compile_validation_predicates: config.preserve_semantics,
+            generate_optimization_hints: config.optimization_level > 0,
+            include_ai_metadata: config.preserve_semantics,
+            ..Default::default()
+        };
+        
+        Ok(Self { 
+            config,
+            semantic_compiler: EnhancedSemanticCompiler::new(semantic_config),
+        })
     }
 
     /// Compile PIR to bytecode
@@ -275,46 +291,78 @@ impl PIRToBytecodeCompiler {
         })
     }
 
-    /// Compile a PIR semantic type to bytecode type definition
+    /// Compile a PIR semantic type to enhanced bytecode type definition
     fn compile_semantic_type(&mut self, type_id: u32, name: &str, semantic_type: &crate::backends::PIRSemanticType) -> VMBackendResult<TypeDefinition> {
-        debug!("Compiling semantic type: {}", name);
+        debug!("Compiling semantic type with enhanced preservation: {}", name);
 
-        // Determine type kind from PIR semantic type
-        let kind = match &semantic_type.base_type {
-            crate::backends::PIRPrimitiveType::Integer => TypeKind::Primitive(PrimitiveType::Integer { signed: true, width: 64 }),
-            crate::backends::PIRPrimitiveType::Float => TypeKind::Primitive(PrimitiveType::Float { width: 64 }),
-            crate::backends::PIRPrimitiveType::Boolean => TypeKind::Primitive(PrimitiveType::Boolean),
-            crate::backends::PIRPrimitiveType::String => TypeKind::Primitive(PrimitiveType::String),
-            crate::backends::PIRPrimitiveType::Unit => TypeKind::Primitive(PrimitiveType::Unit),
-            crate::backends::PIRPrimitiveType::Composite(composite) => {
-                self.compile_composite_type(composite)?
+        // Convert to PIR semantic type format for enhanced compiler
+        let pir_semantic_type = self.convert_to_pir_semantic_type(semantic_type)?;
+        
+        // Use enhanced semantic compiler for full semantic preservation
+        let type_def = self.semantic_compiler.compile_semantic_type(type_id, name, &pir_semantic_type)?;
+        
+        Ok(type_def)
+    }
+
+    /// Convert backend PIR semantic type to full PIR semantic type
+    fn convert_to_pir_semantic_type(&self, semantic_type: &crate::backends::PIRSemanticType) -> VMBackendResult<prism_pir::semantic::PIRSemanticType> {
+        use prism_pir::semantic::{PIRSemanticType, PIRTypeInfo, PIRPrimitiveType, PIRTypeAIContext, SecurityClassification};
+        use prism_pir::business::BusinessRule;
+        
+        // Convert base type
+        let base_type = match &semantic_type.base_type {
+            crate::backends::PIRPrimitiveType::Integer => PIRTypeInfo::Primitive(PIRPrimitiveType::Integer { signed: true, width: 64 }),
+            crate::backends::PIRPrimitiveType::Float => PIRTypeInfo::Primitive(PIRPrimitiveType::Float { width: 64 }),
+            crate::backends::PIRPrimitiveType::Boolean => PIRTypeInfo::Primitive(PIRPrimitiveType::Boolean),
+            crate::backends::PIRPrimitiveType::String => PIRTypeInfo::Primitive(PIRPrimitiveType::String),
+            crate::backends::PIRPrimitiveType::Unit => PIRTypeInfo::Primitive(PIRPrimitiveType::Unit),
+            crate::backends::PIRPrimitiveType::Composite(_) => {
+                // For now, treat composite types as unit types
+                // In a complete implementation, this would convert the composite structure
+                PIRTypeInfo::Primitive(PIRPrimitiveType::Unit)
             }
         };
 
-        // Compile business rules to bytecode instructions
-        let mut business_rules = Vec::new();
-        for rule in &semantic_type.business_rules {
-            // For now, create a simple instruction sequence that represents the rule
-            // In a complete implementation, this would compile the rule logic to bytecode
-            business_rules.push(Instruction::new(instructions::PrismOpcode::LOAD_TRUE));
-            business_rules.push(Instruction::new(instructions::PrismOpcode::RETURN_VALUE));
-        }
+        // Convert business rules
+        let business_rules: Vec<BusinessRule> = semantic_type.business_rules.iter().map(|rule| {
+            BusinessRule {
+                id: format!("rule_{}", rule.name),
+                name: rule.name.clone(),
+                description: rule.description.clone(),
+                category: "business".to_string(),
+                priority: 1,
+                enforcement_level: prism_pir::business::EnforcementLevel::Required,
+                condition: None, // TODO: Convert rule condition
+                action: None, // TODO: Convert rule action
+                metadata: std::collections::HashMap::new(),
+            }
+        }).collect();
 
-        // Compile validation predicates
-        let mut validation_predicates = Vec::new();
-        for predicate in &semantic_type.validation_predicates {
-            // Similar to business rules, compile validation logic
-            validation_predicates.push(Instruction::new(instructions::PrismOpcode::LOAD_TRUE));
-            validation_predicates.push(Instruction::new(instructions::PrismOpcode::RETURN_VALUE));
-        }
+        // Convert validation predicates
+        let validation_predicates: Vec<prism_pir::semantic::ValidationPredicate> = semantic_type.validation_predicates.iter().map(|pred| {
+            prism_pir::semantic::ValidationPredicate {
+                id: format!("pred_{}", pred.description.chars().take(10).collect::<String>()),
+                description: pred.description.clone(),
+                predicate_type: prism_pir::semantic::PredicateType::Custom,
+                expression: None, // TODO: Convert predicate expression
+                error_message: format!("Validation failed: {}", pred.description),
+            }
+        }).collect();
 
-        Ok(TypeDefinition {
-            id: type_id,
-            name: name.to_string(),
-            kind,
-            domain: Some(semantic_type.domain.clone()),
+        Ok(PIRSemanticType {
+            name: semantic_type.name.clone(),
+            base_type,
+            domain: semantic_type.domain.clone(),
             business_rules,
             validation_predicates,
+            constraints: Vec::new(), // TODO: Convert constraints
+            ai_context: PIRTypeAIContext {
+                purpose: format!("Semantic type: {}", semantic_type.name),
+                usage_patterns: Vec::new(),
+                examples: Vec::new(),
+                related_concepts: Vec::new(),
+            },
+            security_classification: SecurityClassification::Internal, // Default classification
         })
     }
 

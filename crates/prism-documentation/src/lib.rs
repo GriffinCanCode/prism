@@ -59,10 +59,10 @@ pub use validation::{
     ValidationViolation, ViolationSeverity
 };
 pub use jsdoc::{
-    JSDocProcessor, JSDocInfo, JSDocTag, JSDocCompatibility
+    JSDocProcessor, JSDocTag, JSDocCompatibility
 };
 pub use extraction::{
-    DocumentationExtractor, ExtractedDocumentation, DocumentationElement
+    DocumentationExtractor, ExtractedDocumentation, DocumentationElement, JSDocInfo
 };
 pub use generation::{
     DocumentationGenerator, GenerationConfig, GeneratedDocumentation
@@ -71,7 +71,7 @@ pub use requirements::{
     RequirementChecker, RequiredAnnotationType, AnnotationRequirement
 };
 pub use ai_integration::{
-    AIMetadataGenerator, AIDocumentationMetadata, AIContextExtractor
+    AIMetadataGenerator, AIDocumentationMetadata, ContextExtractor
 };
 
 use prism_common::span::Span;

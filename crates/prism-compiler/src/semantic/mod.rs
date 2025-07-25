@@ -32,6 +32,7 @@ pub mod relationships;
 pub mod effects;
 pub mod contracts;
 pub mod export;
+pub mod integration;  // NEW: Semantic type integration bridge
 
 // Re-export main types for convenience
 pub use database::{SemanticDatabase, SemanticConfig};
@@ -43,6 +44,7 @@ pub use relationships::{
 pub use effects::{EffectSignature, EffectAnalyzer};
 pub use contracts::{ContractSpecification, ContractAnalyzer};
 pub use export::{SemanticExport, SemanticExporter, AIReadableContext};
+pub use integration::{SemanticTypeIntegration, SemanticTypeIntegrationResult, IntegrationMetadata};
 
 // Re-export essential types that other systems need
 use crate::error::CompilerResult;

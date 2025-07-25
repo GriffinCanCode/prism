@@ -9,6 +9,7 @@ use crate::{DocumentationError, DocumentationResult};
 use crate::extraction::ExtractedDocumentation;
 use prism_common::span::Span;
 use prism_ast::{Program, AstNode, Item, Stmt};
+use prism_ast::stmt::AttributeValue;
 use serde::{Serialize, Deserialize};
 use std::collections::{HashMap, HashSet};
 
@@ -643,14 +644,8 @@ impl DocumentationValidator {
     fn get_type_fields(&self, type_def: &prism_ast::TypeDecl) -> Option<Vec<String>> {
         // Extract field names from structured types
         match &type_def.kind {
-            prism_ast::TypeDefinition::Struct(struct_def) => {
+            prism_ast::types::TypeKind::Struct(struct_def) => {
                 let fields: Vec<String> = struct_def.fields.iter()
-                    .map(|field| field.name.clone())
-                    .collect();
-                if fields.is_empty() { None } else { Some(fields) }
-            },
-            prism_ast::TypeDefinition::Record(record_def) => {
-                let fields: Vec<String> = record_def.fields.iter()
                     .map(|field| field.name.clone())
                     .collect();
                 if fields.is_empty() { None } else { Some(fields) }

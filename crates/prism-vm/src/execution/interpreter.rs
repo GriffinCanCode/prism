@@ -4,11 +4,12 @@
 //! executing instructions while enforcing capabilities and tracking effects.
 
 use crate::{VMResult, PrismVMError, bytecode::*};
-use crate::execution::{ExecutionStack, StackValue, StackFrame, ExecutionResult, ExecutionStats};
+use crate::execution::{ExecutionStack, StackValue, StackFrame, ExecutionResult, ExecutionStats, VMEffectEnforcer};
 use prism_runtime::authority::capability::CapabilitySet;
 use prism_pir::{Effect, Capability};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::sync::{Arc, RwLock};
 use std::time::{Instant, Duration};
 use tracing::{debug, info, span, Level, trace};
 
@@ -53,6 +54,8 @@ pub struct Interpreter {
     capabilities: CapabilitySet,
     /// Active effects
     active_effects: Vec<Effect>,
+    /// Effect enforcer for runtime validation
+    effect_enforcer: Option<Arc<RwLock<VMEffectEnforcer>>>,
 }
 
 impl Interpreter {
@@ -68,7 +71,13 @@ impl Interpreter {
             stats: ExecutionStats::default(),
             capabilities: CapabilitySet::new(),
             active_effects: Vec::new(),
+            effect_enforcer: None,
         })
+    }
+
+    /// Set the effect enforcer for runtime validation
+    pub fn set_effect_enforcer(&mut self, enforcer: Arc<RwLock<VMEffectEnforcer>>) {
+        self.effect_enforcer = Some(enforcer);
     }
 
     /// Execute a function with given arguments
@@ -100,6 +109,12 @@ impl Interpreter {
                     message: format!("Missing required capability: {:?}", required_cap),
                 });
             }
+        }
+
+        // Create effect context if effect enforcer is available
+        if let Some(ref effect_enforcer) = self.effect_enforcer {
+            let mut enforcer = effect_enforcer.write().unwrap();
+            enforcer.create_context(function.id, function, self.capabilities.clone())?;
         }
 
         // Create new stack frame
@@ -137,6 +152,12 @@ impl Interpreter {
         // Calculate execution time
         let execution_time = start_time.elapsed();
         self.stats.execution_time_us = execution_time.as_micros() as u64;
+
+        // Clean up effect context
+        if let Some(ref effect_enforcer) = self.effect_enforcer {
+            let mut enforcer = effect_enforcer.write().unwrap();
+            enforcer.destroy_context(function.id)?;
+        }
 
         // Clean up
         self.stack.pop_frame()?;
@@ -211,12 +232,25 @@ impl Interpreter {
 
         trace!("Executing instruction: {:?}", instruction.opcode);
 
-        // Check capabilities for this instruction
+        // ENHANCED: Runtime capability verification for each instruction
+        // This ensures runtime verification matches compile-time analysis
         for required_cap in &instruction.required_capabilities {
             if !self.capabilities.has_capability(required_cap) {
                 return Err(PrismVMError::CapabilityViolation {
-                    message: format!("Instruction requires capability: {:?}", required_cap),
+                    message: format!("Instruction {:?} requires capability: {:?}", instruction.opcode, required_cap),
                 });
+            }
+        }
+
+        // ENHANCED: Verify effect-related capabilities if effects are present
+        for effect in &instruction.effects {
+            // Check if we have the capability to perform this effect
+            if let Some(required_capability) = effect.required_capability() {
+                if !self.capabilities.has_capability(&required_capability) {
+                    return Err(PrismVMError::CapabilityViolation {
+                        message: format!("Effect {:?} requires capability: {:?}", effect, required_capability),
+                    });
+                }
             }
         }
 
@@ -428,6 +462,94 @@ impl Interpreter {
                 let value = self.stack.pop()?;
                 let result = StackValue::Boolean(matches!(value, StackValue::Null));
                 self.stack.push(result)?;
+            }
+
+            // Effect Operations
+            PrismOpcode::EFFECT_ENTER(effect_id) => {
+                if let Some(ref effect_enforcer) = self.effect_enforcer {
+                    let function_id = self.current_function.ok_or_else(|| PrismVMError::ExecutionError {
+                        message: "EFFECT_ENTER called outside function context".to_string(),
+                    })?;
+                    
+                    let mut enforcer = effect_enforcer.write().unwrap();
+                    enforcer.enter_effect(function_id, effect_id, &mut self.stack)?;
+                } else {
+                    return Err(PrismVMError::EffectError {
+                        message: "Effect enforcer not available for EFFECT_ENTER".to_string(),
+                    });
+                }
+            }
+            PrismOpcode::EFFECT_EXIT => {
+                if let Some(ref effect_enforcer) = self.effect_enforcer {
+                    let function_id = self.current_function.ok_or_else(|| PrismVMError::ExecutionError {
+                        message: "EFFECT_EXIT called outside function context".to_string(),
+                    })?;
+                    
+                    let mut enforcer = effect_enforcer.write().unwrap();
+                    enforcer.exit_effect(function_id, &mut self.stack)?;
+                } else {
+                    return Err(PrismVMError::EffectError {
+                        message: "Effect enforcer not available for EFFECT_EXIT".to_string(),
+                    });
+                }
+            }
+            PrismOpcode::EFFECT_INVOKE(effect_id) => {
+                if let Some(ref effect_enforcer) = self.effect_enforcer {
+                    let function_id = self.current_function.ok_or_else(|| PrismVMError::ExecutionError {
+                        message: "EFFECT_INVOKE called outside function context".to_string(),
+                    })?;
+                    
+                    let mut enforcer = effect_enforcer.write().unwrap();
+                    enforcer.invoke_effect(function_id, effect_id, &mut self.stack)?;
+                } else {
+                    return Err(PrismVMError::EffectError {
+                        message: "Effect enforcer not available for EFFECT_INVOKE".to_string(),
+                    });
+                }
+            }
+            PrismOpcode::EFFECT_HANDLE(handler_id) => {
+                if let Some(ref effect_enforcer) = self.effect_enforcer {
+                    let function_id = self.current_function.ok_or_else(|| PrismVMError::ExecutionError {
+                        message: "EFFECT_HANDLE called outside function context".to_string(),
+                    })?;
+                    
+                    let mut enforcer = effect_enforcer.write().unwrap();
+                    enforcer.handle_effect(function_id, handler_id, &mut self.stack)?;
+                } else {
+                    return Err(PrismVMError::EffectError {
+                        message: "Effect enforcer not available for EFFECT_HANDLE".to_string(),
+                    });
+                }
+            }
+            PrismOpcode::EFFECT_RESUME => {
+                // Effect resume would integrate with the effect system's continuation mechanism
+                debug!("EFFECT_RESUME instruction executed");
+                // TODO: Implement effect resumption logic
+            }
+            PrismOpcode::EFFECT_ABORT => {
+                // Effect abort would clean up the current effect context
+                debug!("EFFECT_ABORT instruction executed");
+                if let Some(ref effect_enforcer) = self.effect_enforcer {
+                    let function_id = self.current_function.ok_or_else(|| PrismVMError::ExecutionError {
+                        message: "EFFECT_ABORT called outside function context".to_string(),
+                    })?;
+                    
+                    let mut enforcer = effect_enforcer.write().unwrap();
+                    // Force exit all active effects
+                    while let Ok(()) = enforcer.exit_effect(function_id, &mut self.stack) {
+                        // Continue exiting effects until none are active
+                    }
+                }
+            }
+
+            // Capability Operations
+            PrismOpcode::CAP_CHECK(cap_id) => {
+                // Check if a specific capability is available
+                // This would integrate with the capability system
+                debug!("Checking capability {}", cap_id);
+                // For now, push true if we have any capabilities
+                let has_capability = !self.capabilities.is_empty();
+                self.stack.push(StackValue::Boolean(has_capability))?;
             }
 
             // Debugging Operations

@@ -3,9 +3,9 @@
 //! This module generates actionable suggestions for improving code cohesion
 //! based on analysis results and detected violations.
 
-use crate::{CohesionResult, CohesionError, CohesionMetrics, CohesionViolation};
+use crate::{CohesionResult, CohesionMetrics, CohesionViolation};
 use prism_ast::{Program, AstNode, Item, ModuleDecl};
-use prism_common::{span::Span, symbol::Symbol};
+use prism_common::span::Span;
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 

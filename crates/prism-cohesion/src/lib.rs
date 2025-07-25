@@ -13,6 +13,7 @@
 //! - **AI-Driven Insights**: AI-comprehensible analysis and suggestions
 //! - **Real-time Analysis**: Incremental cohesion tracking during development
 //! - **Violation Detection**: Detection and reporting of cohesion violations
+//! - **Restructuring Integration**: Automatic module restructuring based on metrics
 //!
 //! ## Architecture
 //!
@@ -25,6 +26,7 @@
 //! - `violations/` - Cohesion violation detection and reporting
 //! - `suggestions/` - Improvement suggestion generation
 //! - `ai_insights/` - AI-comprehensible analysis and metadata
+//! - `restructuring/` - Module restructuring integration and execution
 //!
 //! ## Cohesion Types
 //!
@@ -65,6 +67,12 @@ pub use suggestions::{SuggestionEngine, CohesionSuggestion, SuggestionType, Effo
 pub use ai_insights::{AIInsightGenerator, CohesionAIInsights};
 pub use confidence::{ConfidenceCalculator, ConfidenceBreakdown, ConfidenceLevel};
 
+// Re-export restructuring types for convenience
+pub use restructuring::{
+    CohesionRestructuringSystem, RestructuringSystemConfig, RestructuringAnalysis,
+    SafetyAnalysis, RestructuringRisk, RiskCategory, ImpactEstimate
+};
+
 // Main modules - each with a single responsibility
 pub mod analysis;
 pub mod metrics;
@@ -73,45 +81,73 @@ pub mod violations;
 pub mod suggestions;
 pub mod ai_insights;
 pub mod confidence;
+pub mod restructuring;  // NEW: Module restructuring integration
 
-use prism_common::span::Span;
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use thiserror::Error;
 
-/// Main error type for cohesion analysis
-#[derive(Debug, Error)]
+/// Errors that can occur during cohesion analysis
+#[derive(Debug, thiserror::Error)]
 pub enum CohesionError {
-    /// Analysis failed with specific reason
-    #[error("Cohesion analysis failed: {reason}")]
-    AnalysisFailed { reason: String },
-
-    /// Metric calculation failed
-    #[error("Metric calculation failed for '{metric_type}': {reason}")]
-    MetricCalculationFailed { metric_type: String, reason: String },
-
-    /// Boundary detection failed
-    #[error("Boundary detection failed: {reason}")]
-    BoundaryDetectionFailed { reason: String },
-
-    /// Violation detection failed
-    #[error("Violation detection failed: {reason}")]
-    ViolationDetectionFailed { reason: String },
-
-    /// AI insight generation failed
-    #[error("AI insight generation failed: {reason}")]
-    AIInsightFailed { reason: String },
-
-    /// Invalid configuration
-    #[error("Invalid cohesion analysis configuration: {reason}")]
-    InvalidConfiguration { reason: String },
-
-    /// Insufficient data for analysis
-    #[error("Insufficient data for cohesion analysis: {data_type}")]
-    InsufficientData { data_type: String },
+    /// Analysis error
+    #[error("Analysis error: {0}")]
+    AnalysisError(String),
+    
+    /// Metric calculation error
+    #[error("Metric calculation error: {0}")]
+    MetricError(String),
+    
+    /// Boundary detection error
+    #[error("Boundary detection error: {0}")]
+    BoundaryError(String),
+    
+    /// Violation detection error
+    #[error("Violation detection error: {0}")]
+    ViolationError(String),
+    
+    /// Suggestion generation error
+    #[error("Suggestion generation error: {0}")]
+    SuggestionError(String),
+    
+    /// AI integration error
+    #[error("AI integration error: {0}")]
+    AIError(String),
+    
+    /// Configuration error
+    #[error("Configuration error: {0}")]
+    ConfigurationError(String),
+    
+    /// Insufficient data error
+    #[error("Insufficient data: {0}")]
+    InsufficientData(String),
+    
+    /// Invalid configuration error
+    #[error("Invalid configuration: {0}")]
+    InvalidConfiguration(String),
+    
+    /// Safety violation error
+    #[error("Safety violation: {0}")]
+    SafetyViolation(String),
+    
+    /// Execution error
+    #[error("Execution error: {0}")]
+    ExecutionError(String),
+    
+    /// Integration error
+    #[error("Integration error: {0}")]
+    IntegrationError(String),
+    
+    /// IO error
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+    
+    /// Serialization error
+    #[error("Serialization error: {0}")]
+    SerializationError(#[from] serde_json::Error),
 }
 
-/// Result type for cohesion analysis operations
+/// Result type for cohesion analysis
 pub type CohesionResult<T> = Result<T, CohesionError>;
 
 /// Configuration for cohesion analysis

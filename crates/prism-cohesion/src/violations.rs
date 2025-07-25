@@ -3,9 +3,9 @@
 //! This module detects violations of cohesion principles and identifies
 //! anti-patterns that reduce code maintainability and conceptual clarity.
 
-use crate::{CohesionResult, CohesionError, CohesionMetrics, ViolationThresholds};
+use crate::{CohesionResult, CohesionMetrics, ViolationThresholds};
 use prism_ast::{Program, AstNode, Item, ModuleDecl};
-use prism_common::{span::Span, symbol::Symbol};
+use prism_common::span::Span;
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 

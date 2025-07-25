@@ -5,6 +5,7 @@
 
 pub mod interpreter;
 pub mod stack;
+pub mod effects;
 
 #[cfg(feature = "jit")]
 pub mod jit;
@@ -12,6 +13,9 @@ pub mod jit;
 // Re-export main types
 pub use interpreter::{Interpreter, InterpreterConfig};
 pub use stack::{ExecutionStack, StackFrame, StackValue, AdvancedStackManager};
+pub use effects::{VMEffectEnforcer, VMEffectContext, EffectEnforcementConfig, EffectEnforcementStats};
+
+use crate::bytecode::SemanticInformationRegistry;
 
 #[cfg(feature = "jit")]
 pub use jit::{JitCompiler, JitConfig};
@@ -41,6 +45,9 @@ pub struct PrismVM {
     
     /// Global capability set
     capabilities: CapabilitySet,
+    
+    /// Effect enforcer for runtime validation
+    effect_enforcer: Option<Arc<RwLock<VMEffectEnforcer>>>,
 }
 
 /// VM configuration
@@ -164,22 +171,52 @@ impl PrismVM {
             config,
             modules: HashMap::new(),
             capabilities: CapabilitySet::new(),
+            effect_enforcer: None,
         })
     }
 
-    /// Load a bytecode module
-    pub fn load_module(&mut self, name: String, bytecode: PrismBytecode) -> VMResult<()> {
+    /// Load a bytecode module with semantic information preservation
+    pub fn load_module(&mut self, name: String, mut bytecode: PrismBytecode) -> VMResult<()> {
         let _span = span!(Level::INFO, "load_module", module = %name).entered();
-        debug!("Loading module: {}", name);
+        debug!("Loading module with semantic preservation: {}", name);
 
         // Validate bytecode
         bytecode.validate()?;
 
+        // Initialize semantic registry from bytecode
+        bytecode.initialize_semantic_registry();
+
         // Store the module
         self.modules.insert(name.clone(), Arc::new(bytecode));
 
-        info!("Successfully loaded module: {}", name);
+        info!("Successfully loaded module with semantic information: {}", name);
         Ok(())
+    }
+
+    /// Get semantic information for a type across all loaded modules
+    pub fn get_type_semantic_info(&self, type_id: u32) -> Option<&crate::bytecode::BytecodeSemanticMetadata> {
+        for module in self.modules.values() {
+            if let Some(metadata) = module.get_type_semantic_metadata(type_id) {
+                return Some(metadata);
+            }
+        }
+        None
+    }
+
+    /// Query types by business domain across all modules
+    pub fn query_types_by_domain(&self, domain: &str) -> Vec<(String, u32, &crate::bytecode::BytecodeSemanticMetadata)> {
+        let mut results = Vec::new();
+        
+        for (module_name, module) in &self.modules {
+            if let Some(registry) = &module.semantic_registry {
+                let domain_types = registry.query_types_by_domain(domain);
+                for (type_id, metadata) in domain_types {
+                    results.push((module_name.clone(), type_id, metadata));
+                }
+            }
+        }
+        
+        results
     }
 
     /// Execute a function by name
@@ -209,12 +246,39 @@ impl PrismVM {
             });
         }
 
-        // Check capabilities
+        // ENHANCED: Comprehensive capability verification at function level
+        // This matches compile-time verification completeness
         for required_capability in &function.capabilities {
             if !self.capabilities.has_capability(required_capability) {
                 return Err(PrismVMError::CapabilityViolation {
-                    message: format!("Missing required capability: {:?}", required_capability),
+                    message: format!("Function {}::{} requires capability: {:?}", 
+                        module_name, function_name, required_capability),
                 });
+            }
+        }
+
+        // ENHANCED: Verify effect-related capabilities for declared effects
+        for effect in &function.effects {
+            if let Some(required_capability) = effect.required_capability() {
+                if !self.capabilities.has_capability(&required_capability) {
+                    return Err(PrismVMError::CapabilityViolation {
+                        message: format!("Function {}::{} effect {:?} requires capability: {:?}", 
+                            module_name, function_name, effect, required_capability),
+                    });
+                }
+            }
+        }
+
+        // ENHANCED: Pre-validate instruction-level capabilities to catch issues early
+        // This provides better error messages and prevents partial execution
+        for instruction in &function.instructions {
+            for required_cap in &instruction.required_capabilities {
+                if !self.capabilities.has_capability(required_cap) {
+                    return Err(PrismVMError::CapabilityViolation {
+                        message: format!("Function {}::{} contains instruction requiring capability: {:?}", 
+                            module_name, function_name, required_cap),
+                    });
+                }
             }
         }
 
@@ -232,6 +296,76 @@ impl PrismVM {
         self.execute_function(module_name, "main", vec![])
     }
 
+    /// Set up effect enforcement with the provided effect system components
+    pub fn setup_effect_enforcement(
+        &mut self,
+        effect_system: Arc<RwLock<prism_effects::effects::EffectSystem>>,
+        effect_executor: Arc<RwLock<prism_effects::execution::ExecutionSystem>>,
+        effect_validator: Arc<prism_effects::validation::EffectValidator>,
+    ) -> VMResult<()> {
+        let _span = span!(Level::INFO, "setup_effect_enforcement").entered();
+        info!("Setting up VM effect enforcement");
+        
+        // Create the effect enforcer
+        let enforcer = Arc::new(RwLock::new(VMEffectEnforcer::new(
+            effect_system,
+            effect_executor,
+            effect_validator,
+        )));
+        
+        // Set it in the VM
+        self.effect_enforcer = Some(enforcer.clone());
+        
+        // Set it in the interpreter
+        self.interpreter.set_effect_enforcer(enforcer.clone());
+        
+        // Set it in the JIT compiler if available
+        #[cfg(feature = "jit")]
+        if let Some(ref mut jit_compiler) = self.jit_compiler {
+            jit_compiler.set_effect_enforcer(enforcer.clone());
+        }
+        
+        info!("Effect enforcement setup completed");
+        Ok(())
+    }
+    
+    /// Get effect enforcement statistics
+    pub fn get_effect_stats(&self) -> Option<EffectEnforcementStats> {
+        self.effect_enforcer.as_ref().map(|enforcer| {
+            let enforcer = enforcer.read().unwrap();
+            let mut stats = enforcer.get_stats();
+            
+            // Add JIT effect statistics if available
+            #[cfg(feature = "jit")]
+            if let Some(ref jit_compiler) = self.jit_compiler {
+                if let Some(jit_effect_stats) = jit_compiler.get_effect_stats() {
+                    // Merge JIT statistics with interpreter statistics
+                    stats.contexts_created += jit_effect_stats.contexts_created;
+                    stats.effects_entered += jit_effect_stats.effects_entered;
+                    stats.effects_executed += jit_effect_stats.effects_executed;
+                    stats.violations_detected += jit_effect_stats.violations_detected;
+                    stats.validation_time += jit_effect_stats.validation_time;
+                    stats.execution_time += jit_effect_stats.execution_time;
+                }
+            }
+            
+            stats
+        })
+    }
+    
+    /// Update effect enforcement configuration
+    pub fn update_effect_config(&mut self, config: EffectEnforcementConfig) -> VMResult<()> {
+        if let Some(ref effect_enforcer) = self.effect_enforcer {
+            let mut enforcer = effect_enforcer.write().unwrap();
+            enforcer.update_config(config);
+            Ok(())
+        } else {
+            Err(PrismVMError::EffectError {
+                message: "Effect enforcer not initialized".to_string(),
+            })
+        }
+    }
+
     /// Get VM statistics
     pub fn get_stats(&self) -> VMStats {
         VMStats {
@@ -239,12 +373,14 @@ impl PrismVM {
             interpreter_stats: self.interpreter.get_stats(),
             #[cfg(feature = "jit")]
             jit_stats: self.jit_compiler.as_ref().map(|jit| jit.get_stats()),
+            effect_stats: self.get_effect_stats(),
         }
     }
 
     /// Set capabilities for the VM
     pub fn set_capabilities(&mut self, capabilities: CapabilitySet) {
-        self.capabilities = capabilities;
+        self.capabilities = capabilities.clone();
+        self.interpreter.set_capabilities(capabilities);
     }
 
     /// Get current capabilities
@@ -286,4 +422,6 @@ pub struct VMStats {
     /// JIT compiler statistics (if enabled)
     #[cfg(feature = "jit")]
     pub jit_stats: Option<jit::JitStats>,
+    /// Effect enforcement statistics
+    pub effect_stats: Option<EffectEnforcementStats>,
 } 

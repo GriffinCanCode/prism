@@ -5,9 +5,9 @@
 //!
 //! **Conceptual Responsibility**: Detect and validate conceptual boundaries
 
-use crate::{CohesionResult, CohesionError, AnalysisResult, CohesionMetrics};
+use crate::{CohesionResult, AnalysisResult};
 use prism_ast::{Program, AstNode, Item, ModuleDecl, SectionDecl};
-use prism_common::{span::Span, symbol::Symbol};
+use prism_common::span::Span;
 use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 
@@ -138,6 +138,9 @@ pub enum BoundaryAction {
     
     /// Add explicit boundary markers
     AddMarkers,
+    
+    /// Isolate this area from others
+    Isolate,
     
     /// No action needed - boundary is appropriate
     NoAction,
@@ -412,7 +415,7 @@ impl BoundaryDetector {
     
     /// Detect responsibility boundaries
     fn detect_responsibility_boundaries(&self, module_decl: &ModuleDecl) -> CohesionResult<Vec<ConceptualBoundary>> {
-        let mut boundaries = Vec::new();
+        let boundaries = Vec::new();
         
         // TODO: Implement responsibility boundary detection
         // This would analyze how well-defined and separated the responsibilities are

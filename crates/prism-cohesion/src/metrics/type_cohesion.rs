@@ -72,12 +72,10 @@ impl TypeCohesionAnalyzer {
         let relationship_cohesion = self.calculate_type_relationship_cohesion(&types);
         
         // Weighted combination of cohesion aspects
-        let overall_cohesion = (
-            naming_cohesion * 0.25 +
+        let overall_cohesion = naming_cohesion * 0.25 +
             structural_cohesion * 0.35 +
             semantic_cohesion * 0.25 +
-            relationship_cohesion * 0.15
-        );
+            relationship_cohesion * 0.15;
         
         Ok(overall_cohesion)
     }

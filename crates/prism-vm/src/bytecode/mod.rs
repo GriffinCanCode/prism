@@ -14,11 +14,16 @@
 pub mod instructions;
 pub mod constants;
 pub mod serialization;
+pub mod semantic;
 
 // Re-export main types
 pub use instructions::{PrismOpcode, Instruction, InstructionMetadata};
 pub use constants::{ConstantPool, Constant, ConstantType};
 pub use serialization::{BytecodeSerializer, BytecodeDeserializer};
+pub use semantic::{
+    BytecodeSemanticMetadata, SemanticInformationRegistry, CompiledBusinessRule,
+    CompiledValidationPredicate, ValidationResult, OptimizationHint, SemanticMetadataBuilder
+};
 
 use crate::{VMResult, VMVersion};
 use prism_pir::{Effect, Capability};
@@ -32,7 +37,7 @@ pub const PRISM_BYTECODE_MAGIC: u32 = 0x50524953;
 /// Current bytecode format version
 pub const BYTECODE_FORMAT_VERSION: u16 = 1;
 
-/// Complete Prism bytecode representation
+/// Complete Prism bytecode representation with semantic preservation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PrismBytecode {
     /// Magic number for identification
@@ -64,6 +69,10 @@ pub struct PrismBytecode {
     
     /// Debug information (optional)
     pub debug_info: Option<DebugInfo>,
+    
+    /// Semantic information registry for runtime access
+    #[serde(skip)]
+    pub semantic_registry: Option<SemanticInformationRegistry>,
 }
 
 /// Bytecode version information
@@ -75,7 +84,7 @@ pub struct BytecodeVersion {
     pub vm: VMVersion,
 }
 
-/// Type definition in bytecode
+/// Type definition in bytecode with enhanced semantic preservation
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TypeDefinition {
     /// Type ID
@@ -86,10 +95,12 @@ pub struct TypeDefinition {
     pub kind: TypeKind,
     /// Semantic domain
     pub domain: Option<String>,
-    /// Business rules (as bytecode)
+    /// Business rules (as bytecode) - DEPRECATED: Use semantic_metadata instead
     pub business_rules: Vec<Instruction>,
-    /// Validation predicates (as bytecode)
+    /// Validation predicates (as bytecode) - DEPRECATED: Use semantic_metadata instead
     pub validation_predicates: Vec<Instruction>,
+    /// Enhanced semantic metadata with full preservation
+    pub semantic_metadata: Option<BytecodeSemanticMetadata>,
 }
 
 /// Type kind enumeration
@@ -414,7 +425,37 @@ impl PrismBytecode {
                 ai_metadata: None,
             },
             debug_info: None,
+            semantic_registry: Some(SemanticInformationRegistry::new()),
         }
+    }
+
+    /// Get the semantic registry, creating it if it doesn't exist
+    pub fn semantic_registry(&mut self) -> &mut SemanticInformationRegistry {
+        if self.semantic_registry.is_none() {
+            self.semantic_registry = Some(SemanticInformationRegistry::new());
+        }
+        self.semantic_registry.as_mut().unwrap()
+    }
+
+    /// Get semantic metadata for a type
+    pub fn get_type_semantic_metadata(&self, type_id: u32) -> Option<&BytecodeSemanticMetadata> {
+        self.semantic_registry
+            .as_ref()?
+            .get_type_metadata(type_id)
+    }
+
+    /// Initialize semantic registry from type definitions
+    pub fn initialize_semantic_registry(&mut self) {
+        let mut registry = SemanticInformationRegistry::new();
+        
+        // Register semantic metadata from type definitions
+        for type_def in &self.types {
+            if let Some(metadata) = &type_def.semantic_metadata {
+                registry.register_type_metadata(type_def.id, metadata.clone());
+            }
+        }
+        
+        self.semantic_registry = Some(registry);
     }
 
     /// Validate the bytecode format
