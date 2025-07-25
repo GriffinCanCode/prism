@@ -20,6 +20,7 @@
 
 ## Design Documentation
 
+- **[PLT-000: Conversational Grammar](PLT/PLT-000.md)** - The canonical grammar specification for human-thinking code
 - **[PEP Index](PEP/PEP-INDEX.md)** - Prism Enhancement Proposals: Community-driven language improvements
 - **[PLD Index](PLD/README.md)** - Prism Language Design: Core language features and specifications  
 - **[PLT Index](PLT/PLT-INDEX.md)** - Prism Language Technical: Implementation details and technical specifications
@@ -266,11 +267,22 @@ Start with TypeScript for quick iteration, then compile to native code for produ
 Prism treats documentation as executable code that is validated at compile time. Every public function and module must declare its single responsibility through required `@responsibility` annotations, preventing architectural drift and enforcing separation of concerns. The compiler validates documentation completeness, checks for consistency with implementation, and generates AI-readable metadata. This approach eliminates documentation rot by making outdated or missing documentation a compile-time error, similar to how TypeScript prevents type errors.
 
 ```prism
-@responsibility "Validates user credentials against database"
-@param credentials "User email and password combination"
-@returns "Authentication session or specific error type"
-@throws AuthError.InvalidCredentials "When credentials don't match"
-function authenticateUser(credentials: LoginCredentials) -> Result<Session, AuthError>
+what happens when authenticating user?
+given credentials: LoginCredentials
+expecting valid email format and non-empty password
+{
+    // First we check if the credentials match our database
+    ensure credentials match stored user data
+    
+    // Then we create a secure session
+    create authenticated session for user
+}
+gives Session or AuthError
+
+// note: validates user credentials against database
+// what could go wrong?
+// if credentials don't match then return InvalidCredentials
+// and tell them "please check your email and password"
 ```
 
 ### Multi-Syntax Support with Semantic Delimiters
@@ -280,10 +292,29 @@ function authenticateUser(credentials: LoginCredentials) -> Result<Session, Auth
 Prism supports multiple familiar syntax styles (C-like, Python-like, Rust-like) while using explicit semantic delimiters that eliminate whitespace dependency. Unlike traditional languages where indentation or formatting affects program meaning, Prism's structure is preserved through explicit delimiters that work across any medium - email, forums, documentation, or chat. The compiler automatically converts between syntax styles while maintaining semantic consistency.
 
 ```prism
-// All equivalent - same semantic meaning
-module UserAuth { function login() -> Result<Session, Error> }
-module UserAuth: function login() -> Result<Session, Error>
-module UserAuth { fn login() -> Result<Session, Error> }
+// All equivalent - same semantic meaning across syntax styles
+
+// C-like syntax
+module UserAuth {
+    function login() -> Result<Session, Error> { /* implementation */ }
+}
+
+// Python-like syntax  
+module UserAuth:
+    def login() -> Result<Session, Error]:
+        # implementation
+
+// Canonical conversational syntax (preferred)
+what does UserAuth do?
+  handles user authentication and session management
+  
+what happens when user logs in?
+given credentials: LoginCredentials
+{
+    ensure credentials are valid
+    create secure session
+}
+gives Session or AuthError
 ```
 
 ### Smart Module Conceptual Cohesion Measurement
@@ -293,13 +324,18 @@ module UserAuth { fn login() -> Result<Session, Error> }
 The compiler actively measures and reports conceptual cohesion within modules using quantitative metrics. It analyzes type relationships, data flow patterns, semantic naming similarity, and dependency structures to calculate cohesion scores. When code doesn't belong together conceptually, the compiler suggests refactoring opportunities. This system aligns code organization with human mental models rather than arbitrary technical boundaries.
 
 ```prism
-module UserManagement {
-    @cohesion score: 87
-    @cohesion analysis: {
-        strengths: ["All user-related types co-located", "Clear data flow"],
-        suggestions: ["Consider extracting PasswordPolicy to separate module"]
-    }
-}
+what does UserManagement do?
+  handles everything about users in our system
+  manages profiles, preferences, and account lifecycle
+  
+// cohesion score: 87
+// analysis: all user-related types co-located with clear data flow
+// suggestion: consider extracting PasswordPolicy to separate module
+
+our types:
+  what is User? someone with an account in our system
+  what is UserProfile? personal information and preferences
+  what is UserSession? active login state and permissions
 ```
 
 ### Prism Intermediate Representation (PIR) Architecture
@@ -315,9 +351,17 @@ PIR serves as a stable contract between compilation orchestration and code gener
 The language enforces architectural principles through required responsibility declarations and systematic naming conventions. Every module and function must declare its single responsibility, while naming follows linguistic modifier patterns for consistency and AI comprehension. This approach makes separation of concerns a language feature rather than a coding guideline.
 
 ```prism
-// Base terms with systematic modifiers
-user → userBy, userWith, userFor, userAll
-validate → validateStrict, validateSoft, validateBefore
+// Base terms with systematic modifiers following PLT-000 conversational patterns
+user → what is user? someone with an account
+userBy → how to find user by email?
+userWith → what users have premium subscription?  
+userFor → which user for this session?
+userAll → what are all active users?
+
+validate → what happens when validating data?
+validateStrict → how to validate with strict rules?
+validateSoft → how to validate with warnings only?
+validateBefore → when should validation happen before processing?
 ```
 
 ### Runtime System Architecture
