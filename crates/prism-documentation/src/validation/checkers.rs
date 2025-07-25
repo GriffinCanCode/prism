@@ -329,12 +329,14 @@ impl ConsistencyChecker {
     fn are_semantically_related(&self, module_resp: &str, element_resp: &str) -> bool {
         // Simple semantic relatedness check
         // In a full implementation, this could use NLP techniques
-        let module_words: HashSet<_> = module_resp.to_lowercase()
+        let module_resp_lower = module_resp.to_lowercase();
+        let module_words: HashSet<_> = module_resp_lower
             .split_whitespace()
             .filter(|w| w.len() > 3) // Filter out common words
             .collect();
             
-        let element_words: HashSet<_> = element_resp.to_lowercase()
+        let element_resp_lower = element_resp.to_lowercase();
+        let element_words: HashSet<_> = element_resp_lower
             .split_whitespace()
             .filter(|w| w.len() > 3)
             .collect();

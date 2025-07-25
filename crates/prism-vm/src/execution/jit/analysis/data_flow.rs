@@ -5,7 +5,9 @@
 //! that are essential for optimization.
 
 use crate::{VMResult, PrismVMError, bytecode::{FunctionDefinition, Instruction}};
-use super::{AnalysisConfig, control_flow::{ControlFlowGraph, BasicBlock}};
+use super::shared::{Analysis, AnalysisKind, Variable, AnalysisConfig};
+use super::pipeline::AnalysisContext;
+use super::control_flow::{ControlFlowGraph, BasicBlock};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, BTreeSet};
 
@@ -128,50 +130,7 @@ pub struct InterferenceGraph {
     pub coloring: HashMap<Variable, u32>,
 }
 
-/// Variable representation
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Variable {
-    /// Variable name or identifier
-    pub name: String,
-    
-    /// Variable type
-    pub var_type: VariableType,
-    
-    /// Scope information
-    pub scope: VariableScope,
-}
-
-/// Variable type
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum VariableType {
-    /// Local variable
-    Local { index: u8 },
-    
-    /// Global variable
-    Global { name: String },
-    
-    /// Temporary variable
-    Temporary { id: u32 },
-    
-    /// Stack slot
-    Stack { offset: i32 },
-    
-    /// Register
-    Register { reg: u8 },
-}
-
-/// Variable scope
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum VariableScope {
-    /// Function-local scope
-    Function,
-    
-    /// Block-local scope
-    Block { block_id: u32 },
-    
-    /// Global scope
-    Global,
-}
+// Variable types are now imported from shared module
 
 /// Definition of a variable
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -2011,5 +1970,53 @@ impl DataFlowAnalyzer {
         }
         
         cost
+    }
+}
+
+/// Dependencies for data flow analysis (requires CFG)
+pub struct DataFlowDependencies {
+    pub cfg: ControlFlowGraph,
+}
+
+/// Implement the Analysis trait for DataFlowAnalyzer
+impl Analysis for DataFlowAnalyzer {
+    type Config = AnalysisConfig;
+    type Result = DataFlowAnalysis;
+    type Dependencies = DataFlowDependencies;
+
+    fn new(config: &Self::Config) -> VMResult<Self> {
+        Self::new(config)
+    }
+
+    fn analyze(&mut self, function: &FunctionDefinition, deps: Self::Dependencies) -> VMResult<Self::Result> {
+        self.analyze(function, &deps.cfg)
+    }
+
+    fn analysis_kind() -> AnalysisKind {
+        AnalysisKind::DataFlow
+    }
+
+    fn dependencies() -> Vec<AnalysisKind> {
+        vec![AnalysisKind::ControlFlow]
+    }
+
+    fn validate_dependencies(deps: &Self::Dependencies) -> VMResult<()> {
+        // Validate that CFG is not empty
+        if deps.cfg.blocks.is_empty() {
+            return Err(crate::PrismVMError::AnalysisError(
+                "Control flow graph is empty".to_string()
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Implement conversion from AnalysisContext for DataFlowDependencies
+impl From<&AnalysisContext> for DataFlowDependencies {
+    fn from(context: &AnalysisContext) -> Self {
+        let cfg = context.get_result(AnalysisKind::ControlFlow)
+            .expect("Control flow analysis result required for data flow analysis");
+        
+        Self { cfg }
     }
 } 

@@ -3,14 +3,29 @@
 //! This module implements confidence calculation for syntax detection results,
 //! maintaining conceptual cohesion around "confidence assessment and style scoring".
 
-use super::{detector::SyntaxEvidence, SyntaxStyle};
+use super::{detector::{SyntaxEvidence, EvidenceType, DetectionResult, DetectionError}, SyntaxStyle};
 use std::collections::HashMap;
+
+/// Scoring algorithm for confidence calculation
+#[derive(Debug, Clone)]
+pub enum ScoringAlgorithm {
+    /// Weighted average of evidence scores
+    Weighted,
+    /// Bayesian probability combination
+    Bayesian,
+    /// Maximum confidence score
+    MaxConfidence,
+}
 
 /// Confidence scorer for syntax detection
 #[derive(Debug)]
 pub struct ConfidenceScorer {
-    /// Scoring configuration
-    config: ScoringConfig,
+    /// Scoring algorithm to use
+    scoring_algorithm: ScoringAlgorithm,
+    /// Minimum confidence threshold
+    min_confidence_threshold: f64,
+    /// Maximum number of alternatives to return
+    max_alternatives: usize,
 }
 
 /// Configuration for confidence scoring
@@ -113,8 +128,9 @@ impl ConfidenceScorer {
             return Ok(DetectionResult {
                 detected_style: SyntaxStyle::Canonical, // Default fallback
                 confidence: 0.5,
-                alternative_styles: Vec::new(),
-                detection_metadata: std::collections::HashMap::new(),
+                evidence: Vec::new(),
+                alternatives: Vec::new(),
+                warnings: Vec::new(),
             });
         }
         
@@ -149,36 +165,30 @@ impl ConfidenceScorer {
             .unwrap_or((SyntaxStyle::Canonical, 0.5));
         
         // Generate alternative styles
-        let mut alternatives: Vec<SyntaxStyle> = final_scores
+        let mut alternatives: Vec<_> = final_scores
             .iter()
             .filter(|(&style, &conf)| style != detected_style && conf > 0.3)
-            .map(|(&style, _)| style)
+            .map(|(&style, &conf)| super::detector::AlternativeStyle {
+                style,
+                confidence: conf,
+                rejection_reason: format!("Lower confidence than primary choice: {:.3}", conf),
+            })
             .collect();
         
         // Sort alternatives by confidence (descending)
-        alternatives.sort_by(|&a, &b| {
-            let conf_a = final_scores.get(&a).unwrap_or(&0.0);
-            let conf_b = final_scores.get(&b).unwrap_or(&0.0);
-            conf_b.partial_cmp(conf_a).unwrap_or(std::cmp::Ordering::Equal)
+        alternatives.sort_by(|a, b| {
+            b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal)
         });
         
         // Limit number of alternatives
         alternatives.truncate(self.max_alternatives);
         
-        // Create detection metadata
-        let mut metadata = std::collections::HashMap::new();
-        metadata.insert("evidence_count".to_string(), evidence.len().to_string());
-        metadata.insert("scoring_algorithm".to_string(), format!("{:?}", self.scoring_algorithm));
-        
-        for (style, score) in &final_scores {
-            metadata.insert(format!("score_{:?}", style).to_lowercase(), format!("{:.3}", score));
-        }
-        
         Ok(DetectionResult {
             detected_style,
             confidence,
-            alternative_styles: alternatives,
-            detection_metadata: metadata,
+            evidence: evidence.to_vec(),
+            alternatives,
+            warnings: Vec::new(),
         })
     }
     

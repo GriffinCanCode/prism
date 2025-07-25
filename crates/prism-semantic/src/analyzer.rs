@@ -9,6 +9,7 @@
 //! **What it doesn't do**: type inference, validation, pattern recognition (delegates to specialized modules)
 
 use crate::{SemanticResult, SemanticError, SemanticConfig};
+use crate::type_inference::constraints::ConstraintSet;
 use prism_ast::{Program, AstNode, Item, Stmt, Expr, Type};
 use prism_common::{NodeId, span::Span, symbol::Symbol};
 use std::collections::HashMap;
@@ -263,8 +264,7 @@ impl SemanticAnalyzer {
     fn analyze_item(&mut self, item: &AstNode<Item>) -> SemanticResult<()> {
         if self.context.depth >= self.config.max_depth {
             return Err(SemanticError::ValidationError {
-                location: item.span,
-                message: "Maximum analysis depth exceeded".to_string(),
+                message: format!("Maximum analysis depth exceeded at {:?}", item.span),
             });
         }
 

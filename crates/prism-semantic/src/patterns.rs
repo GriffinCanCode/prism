@@ -5,6 +5,7 @@
 //! for ONE thing: recognizing semantic patterns in code.
 
 use crate::{SemanticResult, SemanticConfig};
+use crate::type_inference::constraints::ConstraintSet;
 use crate::analyzer::AnalysisResult;
 use prism_ast::Program;
 use prism_common::{span::Span, symbol::Symbol};

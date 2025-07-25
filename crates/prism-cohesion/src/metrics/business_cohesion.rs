@@ -85,7 +85,7 @@ impl BusinessCohesionAnalyzer {
     
     /// Analyze the clarity and specificity of a capability statement
     fn analyze_capability_clarity(&self, capability: &str) -> f64 {
-        let mut clarity_score = 0.0;
+        let mut clarity_score: f64 = 0.0;
         
         // Length analysis - not too short, not too long
         let word_count = capability.split_whitespace().count();
@@ -120,12 +120,12 @@ impl BusinessCohesionAnalyzer {
             clarity_score += 3.0;
         }
         
-        clarity_score.min(15.0) // Cap the bonus
+        clarity_score.min(15.0_f64) // Cap the bonus
     }
     
     /// Analyze the quality of module description
     fn analyze_description_quality(&self, description: &str) -> f64 {
-        let mut quality_score = 0.0;
+        let mut quality_score: f64 = 0.0;
         
         // Basic quality indicators
         if description.len() > 20 {
@@ -156,7 +156,7 @@ impl BusinessCohesionAnalyzer {
             quality_score += 4.0;
         }
         
-        quality_score.min(10.0) // Cap the bonus
+        quality_score.min(10.0_f64) // Cap the bonus
     }
     
     /// Analyze structural focus of the module
@@ -252,7 +252,7 @@ impl BusinessCohesionAnalyzer {
     
     /// Calculate alignment of sections with business domain
     fn calculate_domain_alignment(&self, module_decl: &ModuleDecl, domain: &BusinessPattern) -> f64 {
-        let mut alignment_score = 0.0;
+        let mut alignment_score: f64 = 0.0;
         
         // Check if sections match domain expectations
         for expected_section in &domain.expected_sections {
@@ -264,7 +264,7 @@ impl BusinessCohesionAnalyzer {
             }
         }
         
-        alignment_score.min(8.0) // Cap the bonus
+        alignment_score.min(8.0_f64) // Cap the bonus
     }
     
     /// Calculate naming alignment with business domain

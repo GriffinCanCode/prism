@@ -571,10 +571,13 @@ impl Unifier {
         &mut self,
         left_types: &[ConstraintType],
         right_types: &[ConstraintType],
-        _depth: usize,
+        depth: usize,
     ) -> Result<UnificationResult, UnificationError> {
-        // For now, we require exact matches for union types
-        // A more sophisticated implementation would handle subtyping
+        // Handle simple cases first
+        if left_types.is_empty() && right_types.is_empty() {
+            return Ok(UnificationResult::Success(Substitution::empty()));
+        }
+        
         if left_types.len() != right_types.len() {
             return Err(UnificationError::TypeMismatch {
                 left: ConstraintType::Union(left_types.to_vec()),
@@ -583,30 +586,268 @@ impl Unifier {
             });
         }
         
-        // This is a simplified implementation
-        // In practice, we'd need to handle permutations of union members
-        Ok(UnificationResult::Deferred)
+        // Try to find a permutation that unifies
+        // This is exponential in the worst case, so we limit the size
+        if left_types.len() > 5 {
+            // For large unions, we defer to avoid exponential complexity
+            return Ok(UnificationResult::Deferred);
+        }
+        
+        // Generate all permutations of right_types and try to unify with left_types
+        let mut right_indices: Vec<usize> = (0..right_types.len()).collect();
+        
+        // Try the identity permutation first (most common case)
+        if let Ok(result) = self.try_unify_union_permutation(left_types, right_types, &right_indices, depth) {
+            return Ok(result);
+        }
+        
+        // Generate other permutations using Heap's algorithm (simplified)
+        for i in 0..right_types.len() {
+            for j in (i + 1)..right_types.len() {
+                right_indices.swap(i, j);
+                if let Ok(result) = self.try_unify_union_permutation(left_types, right_types, &right_indices, depth) {
+                    return Ok(result);
+                }
+                right_indices.swap(i, j); // Restore
+            }
+        }
+        
+        // No permutation worked
+        Err(UnificationError::TypeMismatch {
+            left: ConstraintType::Union(left_types.to_vec()),
+            right: ConstraintType::Union(right_types.to_vec()),
+            reason: "No permutation of union members unifies".to_string(),
+        })
+    }
+    
+    /// Try to unify union types with a specific permutation
+    fn try_unify_union_permutation(
+        &mut self,
+        left_types: &[ConstraintType],
+        right_types: &[ConstraintType],
+        right_indices: &[usize],
+        depth: usize,
+    ) -> Result<UnificationResult, UnificationError> {
+        let mut combined_substitution = Substitution::empty();
+        
+        for (left_type, &right_index) in left_types.iter().zip(right_indices.iter()) {
+            let right_type = &right_types[right_index];
+            
+            match self.unify_internal(left_type, right_type, depth + 1)? {
+                UnificationResult::Success(sub) => {
+                    combined_substitution.compose(sub);
+                }
+                UnificationResult::Deferred => {
+                    return Ok(UnificationResult::Deferred);
+                }
+            }
+        }
+        
+        Ok(UnificationResult::Success(combined_substitution))
     }
 
     /// Unify intersection types
     fn unify_intersection_types(
         &mut self,
-        _left_types: &[ConstraintType],
-        _right_types: &[ConstraintType],
-        _depth: usize,
+        left_types: &[ConstraintType],
+        right_types: &[ConstraintType],
+        depth: usize,
     ) -> Result<UnificationResult, UnificationError> {
-        // Intersection types are complex and not fully implemented
-        Ok(UnificationResult::Deferred)
+        // Intersection types require all components to be unifiable
+        // This is more complex than union types
+        
+        // Handle simple cases
+        if left_types.is_empty() && right_types.is_empty() {
+            return Ok(UnificationResult::Success(Substitution::empty()));
+        }
+        
+        // For intersection types, we need to ensure that both intersections
+        // are compatible. This means every type in the left intersection
+        // must be unifiable with some type in the right intersection, and vice versa.
+        
+        let mut combined_substitution = Substitution::empty();
+        let mut any_deferred = false;
+        
+        // Check that every left type has a compatible right type
+        for left_type in left_types {
+            let mut found_compatible = false;
+            
+            for right_type in right_types {
+                match self.unify_internal(left_type, right_type, depth + 1) {
+                    Ok(UnificationResult::Success(sub)) => {
+                        combined_substitution.compose(sub);
+                        found_compatible = true;
+                        break;
+                    }
+                    Ok(UnificationResult::Deferred) => {
+                        any_deferred = true;
+                    }
+                    Err(_) => {
+                        // This combination doesn't work, try the next one
+                        continue;
+                    }
+                }
+            }
+            
+            if !found_compatible && !any_deferred {
+                return Err(UnificationError::TypeMismatch {
+                    left: ConstraintType::Intersection(left_types.to_vec()),
+                    right: ConstraintType::Intersection(right_types.to_vec()),
+                    reason: format!("No compatible type found for {:?}", left_type),
+                });
+            }
+        }
+        
+        // Check that every right type has a compatible left type
+        for right_type in right_types {
+            let mut found_compatible = false;
+            
+            for left_type in left_types {
+                match self.unify_internal(left_type, right_type, depth + 1) {
+                    Ok(UnificationResult::Success(_)) => {
+                        // We already composed this substitution above
+                        found_compatible = true;
+                        break;
+                    }
+                    Ok(UnificationResult::Deferred) => {
+                        any_deferred = true;
+                    }
+                    Err(_) => {
+                        continue;
+                    }
+                }
+            }
+            
+            if !found_compatible && !any_deferred {
+                return Err(UnificationError::TypeMismatch {
+                    left: ConstraintType::Intersection(left_types.to_vec()),
+                    right: ConstraintType::Intersection(right_types.to_vec()),
+                    reason: format!("No compatible type found for {:?}", right_type),
+                });
+            }
+        }
+        
+        if any_deferred {
+            Ok(UnificationResult::Deferred)
+        } else {
+            Ok(UnificationResult::Success(combined_substitution))
+        }
     }
 
     /// Unify concrete type with structured type
     fn unify_concrete_with_structured(
         &mut self,
-        _concrete: &SemanticType,
-        _structured: &ConstraintType,
+        concrete: &SemanticType,
+        structured: &ConstraintType,
     ) -> Result<UnificationResult, UnificationError> {
-        // This would handle cases like unifying a concrete list type with a constraint list type
-        Ok(UnificationResult::Deferred)
+        match (concrete, structured) {
+            // Concrete list with constraint list
+            (SemanticType::List(concrete_elem), ConstraintType::List(constraint_elem)) => {
+                let concrete_constraint = ConstraintType::Concrete((**concrete_elem).clone());
+                self.unify_internal(&concrete_constraint, constraint_elem, 0)
+            }
+            
+            // Concrete function with constraint function
+            (
+                SemanticType::Function { params: concrete_params, return_type: concrete_return, .. },
+                ConstraintType::Function { params: constraint_params, return_type: constraint_return },
+            ) => {
+                if concrete_params.len() != constraint_params.len() {
+                    return Err(UnificationError::ArityMismatch {
+                        left_arity: concrete_params.len(),
+                        right_arity: constraint_params.len(),
+                        context: "concrete function with constraint function".to_string(),
+                    });
+                }
+                
+                let mut combined_substitution = Substitution::empty();
+                
+                // Unify parameters
+                for (concrete_param, constraint_param) in concrete_params.iter().zip(constraint_params.iter()) {
+                    let concrete_constraint = ConstraintType::Concrete(concrete_param.clone());
+                    match self.unify_internal(&concrete_constraint, constraint_param, 0)? {
+                        UnificationResult::Success(sub) => combined_substitution.compose(sub),
+                        UnificationResult::Deferred => return Ok(UnificationResult::Deferred),
+                    }
+                }
+                
+                // Unify return types
+                let concrete_return_constraint = ConstraintType::Concrete((**concrete_return).clone());
+                match self.unify_internal(&concrete_return_constraint, constraint_return, 0)? {
+                    UnificationResult::Success(sub) => combined_substitution.compose(sub),
+                    UnificationResult::Deferred => return Ok(UnificationResult::Deferred),
+                }
+                
+                Ok(UnificationResult::Success(combined_substitution))
+            }
+            
+            // Concrete record with constraint record
+            (SemanticType::Record(concrete_fields), ConstraintType::Record(constraint_fields)) => {
+                // Check field compatibility
+                let concrete_field_names: std::collections::HashSet<_> = concrete_fields.keys().collect();
+                let constraint_field_names: std::collections::HashSet<_> = constraint_fields.keys().collect();
+                
+                if concrete_field_names != constraint_field_names {
+                    let missing: Vec<_> = constraint_field_names.difference(&concrete_field_names).collect();
+                    let extra: Vec<_> = concrete_field_names.difference(&constraint_field_names).collect();
+                    
+                    return Err(UnificationError::FieldMismatch {
+                        missing_fields: missing.into_iter().map(|s| s.to_string()).collect(),
+                        extra_fields: extra.into_iter().map(|s| s.to_string()).collect(),
+                    });
+                }
+                
+                let mut combined_substitution = Substitution::empty();
+                
+                for (field_name, concrete_field_type) in concrete_fields {
+                    if let Some(constraint_field_type) = constraint_fields.get(field_name) {
+                        let concrete_constraint = ConstraintType::Concrete(concrete_field_type.clone());
+                        match self.unify_internal(&concrete_constraint, constraint_field_type, 0)? {
+                            UnificationResult::Success(sub) => combined_substitution.compose(sub),
+                            UnificationResult::Deferred => return Ok(UnificationResult::Deferred),
+                        }
+                    }
+                }
+                
+                Ok(UnificationResult::Success(combined_substitution))
+            }
+            
+            // Concrete union with constraint union
+            (SemanticType::Union(concrete_types), ConstraintType::Union(constraint_types)) => {
+                let concrete_constraints: Vec<_> = concrete_types
+                    .iter()
+                    .map(|t| ConstraintType::Concrete(t.clone()))
+                    .collect();
+                
+                self.unify_union_types(&concrete_constraints, constraint_types, 0)
+            }
+            
+            // Concrete primitive with constraint concrete
+            (concrete_type, ConstraintType::Concrete(constraint_concrete)) => {
+                self.unify_concrete_types(concrete_type, constraint_concrete)
+            }
+            
+            // Variable case - create substitution
+            (concrete_type, ConstraintType::Variable(var)) => {
+                // Check occurs check
+                if self.occurs_check(var, &ConstraintType::Concrete(concrete_type.clone())) {
+                    return Err(UnificationError::OccursCheck {
+                        variable: var.clone(),
+                        type_expr: ConstraintType::Concrete(concrete_type.clone()),
+                    });
+                }
+                
+                let substitution = Substitution::single(var.id, ConstraintType::Concrete(concrete_type.clone()));
+                Ok(UnificationResult::Success(substitution))
+            }
+            
+            // Other cases - not directly unifiable
+            _ => Err(UnificationError::TypeMismatch {
+                left: ConstraintType::Concrete(concrete.clone()),
+                right: structured.clone(),
+                reason: "Cannot unify concrete type with this structured type".to_string(),
+            }),
+        }
     }
 
     /// Occurs check to prevent infinite types
@@ -635,6 +876,10 @@ impl Unifier {
             }
             ConstraintType::Union(types) | ConstraintType::Intersection(types) => {
                 types.iter().any(|t| self.occurs_check_internal(var, t, depth + 1))
+            }
+            ConstraintType::Semantic(_semantic_type) => {
+                // Semantic types don't contain type variables
+                false
             }
         }
     }

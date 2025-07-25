@@ -1,6 +1,6 @@
 //! Stack Management System
 //!
-//! This module extends the existing VM stack implementation with  features
+//! This module extends the existing VM stack implementation with features
 //! that integrate with the broader Prism ecosystem while maintaining conceptual cohesion.
 //!
 //! ## Design Principles

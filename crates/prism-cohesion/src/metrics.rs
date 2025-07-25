@@ -323,13 +323,13 @@ impl MetricsCalculator {
     
     /// Calculate confidence for a single module
     fn calculate_module_confidence(&self, module_decl: &ModuleDecl) -> f64 {
-        let mut confidence = 0.7; // Base confidence
+        let mut confidence: f64 = 0.7; // Base confidence
         
         if module_decl.description.is_some() { confidence += 0.1; }
         if module_decl.capability.is_some() { confidence += 0.1; }
         if !module_decl.sections.is_empty() { confidence += 0.1; }
         
-        confidence.min(1.0)
+        confidence.min(1.0_f64)
     }
     
     /// Fast analysis generation

@@ -35,13 +35,19 @@ use crate::{authority, resources, platform::execution::ExecutionContext};
 use std::sync::Arc;
 use thiserror::Error;
 
+pub use effects_integration::EffectsIntelligenceCollector;
+
 pub mod metadata;
+pub mod effects_integration;
 
 /// Intelligence collector that coordinates metadata collection and analysis
 #[derive(Debug)]
 pub struct IntelligenceCollector {
     /// AI metadata collection system
     metadata_collector: Arc<metadata::AIMetadataCollector>,
+    
+    /// Effects intelligence collector
+    effects_collector: Arc<EffectsIntelligenceCollector>,
     
     /// Business intelligence analyzer
     business_analyzer: Arc<BusinessIntelligenceAnalyzer>,

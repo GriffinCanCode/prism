@@ -53,14 +53,15 @@ pub use type_inference::{
     TypeVar,
     ConstraintSolver,
     Unifier,
+    constraints::ConstraintSet,
     TypeEnvironment,
     TypeError,
     TypeInferenceAI,
 };
 pub use validation::{SemanticValidator, ValidationResult, ValidationConfig};
-pub use context::{SemanticContext, ContextExtractor, AIContext};
-pub use database::{SemanticDatabase, SemanticQuery, SemanticResult};
-pub use patterns::{SemanticPattern, PatternRecognizer, PatternResult};
+pub use context::{SemanticContext};
+pub use database::{SemanticDatabase};
+pub use patterns::{SemanticPattern, PatternRecognizer};
 pub use ai_integration::SemanticMetadataProvider;
 
 // Common error type
@@ -181,7 +182,7 @@ pub struct SemanticEngine {
     /// Validator
     validator: SemanticValidator,
     /// Context extractor
-    context_extractor: ContextExtractor,
+    context_extractor: crate::context::AIContextExtractor,
     /// Database
     database: SemanticDatabase,
     /// Pattern recognizer
@@ -195,7 +196,7 @@ impl SemanticEngine {
         let type_system = SemanticTypeSystem::new(&config)?;
         let inference_engine = TypeInferenceEngine::new(&config)?;
         let validator = SemanticValidator::new(&config)?;
-        let context_extractor = ContextExtractor::new(&config)?;
+        let context_extractor = crate::context::AIContextExtractor::new(&config)?;
         let database = SemanticDatabase::new(&config)?;
         let pattern_recognizer = PatternRecognizer::new(&config)?;
 
@@ -212,7 +213,7 @@ impl SemanticEngine {
     }
 
     /// Analyze a program and return comprehensive semantic information
-    pub fn analyze_program(&mut self, program: &prism_ast::Program) -> SemanticResult<SemanticInfo> {
+    pub fn analyze_program(&mut self, program: &prism_ast::Program) -> SemanticResult<crate::database::SemanticInfo> {
         // Step 1: Core semantic analysis
         let analysis_result = self.analyzer.analyze_program(program)?;
 
@@ -245,7 +246,7 @@ impl SemanticEngine {
         };
 
         // Step 6: Store in database
-        let semantic_info = SemanticInfo {
+        let semantic_info = crate::database::SemanticInfo {
             symbols: analysis_result.symbols,
             types: analysis_result.types,
             inferred_types,
@@ -261,12 +262,12 @@ impl SemanticEngine {
     }
 
     /// Get semantic information for a specific location
-    pub fn get_semantic_info_at(&self, location: prism_common::span::Span) -> SemanticResult<Option<SemanticInfo>> {
+    pub fn get_semantic_info_at(&self, location: prism_common::span::Span) -> SemanticResult<Option<crate::database::SemanticInfo>> {
         self.database.get_semantic_info_at(location)
     }
 
     /// Export AI-readable context for external tools
-    pub fn export_ai_context(&self, location: prism_common::span::Span) -> SemanticResult<AIMetadata> {
+    pub fn export_ai_context(&self, location: prism_common::span::Span) -> SemanticResult<crate::context::AIMetadata> {
         self.context_extractor.export_ai_context(location, &self.database)
     }
 

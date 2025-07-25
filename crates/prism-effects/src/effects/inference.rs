@@ -220,11 +220,13 @@ impl EffectInferenceEngine {
 
         // Check attributes for effect annotations
         for attribute in &function.attributes {
-            if attribute.name.as_str() == "effect" {
-                // Parse effect from attribute
-                let effect_name = format!("AttributeEffect.{}", attribute.name);
-                let effect = Effect::new(effect_name, Span::dummy());
-                analysis.actual_effects.push(effect);
+            if let Some(name_str) = attribute.name.resolve() {
+                if name_str == "effect" {
+                    // Parse effect from attribute
+                    let effect_name = format!("AttributeEffect.{}", name_str);
+                    let effect = Effect::new(effect_name, Span::dummy());
+                    analysis.actual_effects.push(effect);
+                }
             }
         }
 

@@ -1,107 +1,84 @@
 //! Modern JIT Static Analysis Infrastructure
 //!
 //! This module provides comprehensive static analysis capabilities for the JIT compiler,
-//! intelligently separated into focused sub-modules that each handle specific aspects
-//! of program analysis.
+//! with a unified architecture that ensures consistency and proper interoperability.
 //!
-//! ## Module Structure
+//! ## Architecture
 //!
+//! The analysis system is built around a pipeline architecture with shared types and interfaces:
+//!
+//! - [`shared`] - Common data structures, traits, and interfaces
+//! - [`pipeline`] - Analysis pipeline coordinator with dependency management
 //! - [`control_flow`] - Control flow graph construction and analysis
 //! - [`data_flow`] - Data flow analysis including liveness and reaching definitions
 //! - [`loop_analysis`] - Loop detection, nesting analysis, and optimization opportunities
 //! - [`type_analysis`] - Type inference and propagation analysis
 //! - [`effect_analysis`] - Effect system analysis for optimization safety
 //! - [`hotness`] - Hotness analysis and profiling data integration
-//! - [`optimization_opportunities`] - Detection of optimization opportunities
 //! - [`capability_analysis`] - Capability flow analysis for security
+//!
+//! ## Usage
+//!
+//! ```rust,ignore
+//! use crate::execution::jit::analysis::{pipeline::*, shared::*};
+//! 
+//! // Create pipeline with configuration
+//! let config = PipelineConfig::default();
+//! let mut pipeline = AnalysisPipeline::new(config);
+//! 
+//! // Register analyzers
+//! pipeline.register_analyzer(ControlFlowAnalyzer::new(&config)?)?;
+//! pipeline.register_analyzer(DataFlowAnalyzer::new(&config)?)?;
+//! // ... register other analyzers
+//! 
+//! // Analyze function
+//! let context = pipeline.analyze_function(function)?;
+//! let opportunities = context.optimization_opportunities;
+//! ```
 
+// Core infrastructure
+pub mod shared;
+pub mod pipeline;
+
+// Analysis modules
 pub mod control_flow;
 pub mod data_flow;
 pub mod loop_analysis;
 pub mod type_analysis;
 pub mod effect_analysis;
 pub mod hotness;
-pub mod optimization_opportunities;
 pub mod capability_analysis;
+pub mod capability_aware_inlining;
 
-use crate::{VMResult, PrismVMError, bytecode::{PrismBytecode, FunctionDefinition}};
-use prism_runtime::authority::capability::CapabilitySet;
+use crate::{VMResult, PrismVMError, bytecode::FunctionDefinition};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::sync::Arc;
 use std::time::Duration;
 
-// Re-export key types from sub-modules
-pub use control_flow::{ControlFlowGraph, BasicBlock, CFGEdge, DominanceInfo};
-pub use data_flow::{DataFlowAnalysis, LivenessAnalysis, ReachingDefinitions, AvailableExpressions};
-pub use loop_analysis::{LoopAnalysis, LoopInfo, LoopNest, LoopOptimizationOpportunity};
-pub use type_analysis::{TypeAnalysis, TypeInference, TypeConstraint, TypeEnvironment};
-pub use effect_analysis::{EffectAnalysis, EffectFlow, EffectConstraint, SafetyAnalysis};
-pub use hotness::{HotnessAnalysis, HotSpot, ProfileData, ExecutionFrequency};
-pub use optimization_opportunities::{OptimizationFinder, OptimizationOpportunity, OptimizationKind};
-pub use capability_analysis::{CapabilityAnalysis, CapabilityFlow, SecurityConstraint};
+// Re-export core infrastructure
+pub use shared::*;
+pub use pipeline::{AnalysisPipeline, PipelineConfig, AnalysisContext, OptimizationConfig};
 
-/// Comprehensive static analyzer that coordinates all analysis passes
-#[derive(Debug)]
-pub struct StaticAnalyzer {
-    /// Configuration for analysis passes
-    config: AnalysisConfig,
-    
-    /// Control flow analysis
-    cfg_analyzer: control_flow::CFGAnalyzer,
-    
-    /// Data flow analysis
-    dataflow_analyzer: data_flow::DataFlowAnalyzer,
-    
-    /// Loop analysis
-    loop_analyzer: loop_analysis::LoopAnalyzer,
-    
-    /// Type analysis
-    type_analyzer: type_analysis::TypeAnalyzer,
-    
-    /// Effect analysis
-    effect_analyzer: effect_analysis::EffectAnalyzer,
-    
-    /// Hotness analysis
-    hotness_analyzer: hotness::HotnessAnalyzer,
-    
-    /// Optimization opportunity finder
-    optimization_finder: optimization_opportunities::OptimizationFinder,
-    
-    /// Capability analysis
-    capability_analyzer: capability_analysis::CapabilityAnalyzer,
-}
-
-/// Configuration for static analysis
+/// Legacy configuration structure for backward compatibility
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AnalysisConfig {
     /// Enable control flow analysis
     pub enable_cfg_analysis: bool,
-    
     /// Enable data flow analysis
     pub enable_dataflow_analysis: bool,
-    
     /// Enable loop analysis
     pub enable_loop_analysis: bool,
-    
     /// Enable type analysis
     pub enable_type_analysis: bool,
-    
     /// Enable effect analysis
     pub enable_effect_analysis: bool,
-    
     /// Enable hotness analysis
     pub enable_hotness_analysis: bool,
-    
     /// Enable optimization opportunity detection
     pub enable_optimization_detection: bool,
-    
     /// Enable capability analysis
     pub enable_capability_analysis: bool,
-    
     /// Analysis timeout
     pub analysis_timeout: Duration,
-    
     /// Maximum analysis iterations
     pub max_iterations: usize,
 }
@@ -123,154 +100,130 @@ impl Default for AnalysisConfig {
     }
 }
 
-/// Comprehensive analysis result
+impl From<AnalysisConfig> for PipelineConfig {
+    fn from(config: AnalysisConfig) -> Self {
+        let mut enabled_analyses = std::collections::HashSet::new();
+        
+        if config.enable_cfg_analysis {
+            enabled_analyses.insert(AnalysisKind::ControlFlow);
+        }
+        if config.enable_dataflow_analysis {
+            enabled_analyses.insert(AnalysisKind::DataFlow);
+        }
+        if config.enable_loop_analysis {
+            enabled_analyses.insert(AnalysisKind::Loop);
+        }
+        if config.enable_type_analysis {
+            enabled_analyses.insert(AnalysisKind::Type);
+        }
+        if config.enable_effect_analysis {
+            enabled_analyses.insert(AnalysisKind::Effect);
+        }
+        if config.enable_hotness_analysis {
+            enabled_analyses.insert(AnalysisKind::Hotness);
+        }
+        if config.enable_capability_analysis {
+            enabled_analyses.insert(AnalysisKind::Capability);
+        
+        // Register capability-aware inlining analyzer
+        enabled_analyses.insert(AnalysisKind::CapabilityAwareInlining);
+        }
+
+        PipelineConfig {
+            enabled_analyses,
+            analysis_timeout: config.analysis_timeout,
+            max_iterations: config.max_iterations,
+            enable_parallel: true,
+            optimization_config: OptimizationConfig {
+                enable_detection: config.enable_optimization_detection,
+                min_benefit_threshold: 0.05,
+                max_cost_threshold: 0.2,
+                enable_speculative: true,
+                aggressiveness: 0.5,
+            },
+        }
+    }
+}
+
+/// Comprehensive static analyzer - now a wrapper around the pipeline
+pub struct StaticAnalyzer {
+    /// Internal analysis pipeline
+    pipeline: AnalysisPipeline,
+}
+
+/// Legacy analysis result structure for backward compatibility
 #[derive(Debug, Clone)]
 pub struct AnalysisResult {
     /// Function being analyzed
     pub function_id: u32,
-    
     /// Control flow graph
-    pub cfg: Option<ControlFlowGraph>,
-    
+    pub cfg: Option<control_flow::ControlFlowGraph>,
     /// Data flow analysis results
-    pub dataflow: Option<DataFlowAnalysis>,
-    
+    pub dataflow: Option<data_flow::DataFlowAnalysis>,
     /// Loop analysis results
-    pub loops: Option<LoopAnalysis>,
-    
+    pub loops: Option<loop_analysis::LoopAnalysis>,
     /// Type analysis results
-    pub types: Option<TypeAnalysis>,
-    
+    pub types: Option<type_analysis::TypeAnalysis>,
     /// Effect analysis results
-    pub effects: Option<EffectAnalysis>,
-    
+    pub effects: Option<effect_analysis::EffectAnalysis>,
     /// Hotness analysis results
-    pub hotness: Option<HotnessAnalysis>,
-    
+    pub hotness: Option<hotness::HotnessAnalysis>,
     /// Detected optimization opportunities
     pub optimizations: Vec<OptimizationOpportunity>,
-    
     /// Capability analysis results
-    pub capabilities: Option<CapabilityAnalysis>,
+    pub capabilities: Option<capability_analysis::CapabilityAnalysis>,
     
+    /// Capability-aware inlining analysis results
+    pub capability_aware_inlining: Option<capability_aware_inlining::CapabilityAwareInliningAnalysis>,
     /// Analysis metadata
     pub metadata: AnalysisMetadata,
 }
 
-/// Analysis metadata
-#[derive(Debug, Clone, Default)]
-pub struct AnalysisMetadata {
-    /// Analysis duration
-    pub analysis_time: Duration,
-    
-    /// Analysis passes run
-    pub passes_run: Vec<String>,
-    
-    /// Analysis warnings
-    pub warnings: Vec<String>,
-    
-    /// Analysis confidence (0.0 to 1.0)
-    pub confidence: f64,
-}
+
 
 impl StaticAnalyzer {
-    /// Create new static analyzer with configuration
+    /// Create new static analyzer with configuration (legacy interface)
     pub fn new(config: AnalysisConfig) -> VMResult<Self> {
-        Ok(Self {
-            cfg_analyzer: control_flow::CFGAnalyzer::new(&config)?,
-            dataflow_analyzer: data_flow::DataFlowAnalyzer::new(&config)?,
-            loop_analyzer: loop_analysis::LoopAnalyzer::new(&config)?,
-            type_analyzer: type_analysis::TypeAnalyzer::new(&config)?,
-            effect_analyzer: effect_analysis::EffectAnalyzer::new(&config)?,
-            hotness_analyzer: hotness::HotnessAnalyzer::new(&config)?,
-            optimization_finder: optimization_opportunities::OptimizationFinder::new(&config)?,
-            capability_analyzer: capability_analysis::CapabilityAnalyzer::new(&config)?,
-            config,
-        })
+        let pipeline_config = PipelineConfig::from(config);
+        let mut pipeline = AnalysisPipeline::new(pipeline_config);
+        
+        // Register analyzers based on enabled analyses
+        // Note: This is a placeholder - actual analyzers will be registered
+        // when we refactor the individual analysis modules
+        
+        Ok(Self { pipeline })
     }
 
-    /// Analyze a function comprehensively
+    /// Analyze a function comprehensively (legacy interface)
     pub fn analyze_function(&mut self, function: &FunctionDefinition) -> VMResult<AnalysisResult> {
-        let start_time = std::time::Instant::now();
-        let mut result = AnalysisResult {
+        // Use the new pipeline to analyze the function
+        let context = self.pipeline.analyze_function(function.clone())?;
+        
+        // Convert the new context back to the legacy result format
+        let result = AnalysisResult {
             function_id: function.id,
-            cfg: None,
-            dataflow: None,
-            loops: None,
-            types: None,
-            effects: None,
-            hotness: None,
-            optimizations: Vec::new(),
-            capabilities: None,
-            metadata: AnalysisMetadata::default(),
+            cfg: context.get_result(AnalysisKind::ControlFlow),
+            dataflow: context.get_result(AnalysisKind::DataFlow),
+            loops: context.get_result(AnalysisKind::Loop),
+            types: context.get_result(AnalysisKind::Type),
+            effects: context.get_result(AnalysisKind::Effect),
+            hotness: context.get_result(AnalysisKind::Hotness),
+            capabilities: context.get_result(AnalysisKind::Capability),
+            capability_aware_inlining: context.get_result(AnalysisKind::CapabilityAwareInlining),
+            optimizations: context.optimization_opportunities,
+            metadata: context.metadata,
         };
-
-        // Run analysis passes in dependency order
-        if self.config.enable_cfg_analysis {
-            result.cfg = Some(self.cfg_analyzer.analyze(function)?);
-            result.metadata.passes_run.push("cfg".to_string());
-        }
-
-        if self.config.enable_dataflow_analysis {
-            if let Some(ref cfg) = result.cfg {
-                result.dataflow = Some(self.dataflow_analyzer.analyze(function, cfg)?);
-                result.metadata.passes_run.push("dataflow".to_string());
-            } else {
-                result.metadata.warnings.push("Dataflow analysis skipped: no CFG".to_string());
-            }
-        }
-
-        if self.config.enable_loop_analysis {
-            if let Some(ref cfg) = result.cfg {
-                result.loops = Some(self.loop_analyzer.analyze(function, cfg)?);
-                result.metadata.passes_run.push("loops".to_string());
-            }
-        }
-
-        if self.config.enable_type_analysis {
-            result.types = Some(self.type_analyzer.analyze(function)?);
-            result.metadata.passes_run.push("types".to_string());
-        }
-
-        if self.config.enable_effect_analysis {
-            result.effects = Some(self.effect_analyzer.analyze(function)?);
-            result.metadata.passes_run.push("effects".to_string());
-        }
-
-        if self.config.enable_hotness_analysis {
-            result.hotness = Some(self.hotness_analyzer.analyze(function)?);
-            result.metadata.passes_run.push("hotness".to_string());
-        }
-
-        if self.config.enable_optimization_detection {
-            result.optimizations = self.optimization_finder.find_opportunities(
-                function,
-                &result
-            )?;
-            result.metadata.passes_run.push("optimizations".to_string());
-        }
-
-        if self.config.enable_capability_analysis {
-            result.capabilities = Some(self.capability_analyzer.analyze(function)?);
-            result.metadata.passes_run.push("capabilities".to_string());
-        }
-
-        result.metadata.analysis_time = start_time.elapsed();
-        result.metadata.confidence = self.calculate_confidence(&result);
-
+        
         Ok(result)
     }
 
-    /// Calculate analysis confidence based on completed passes
+    /// Get the underlying pipeline for advanced usage
+    pub fn pipeline(&mut self) -> &mut AnalysisPipeline {
+        &mut self.pipeline
+    }
+
+    /// Calculate analysis confidence based on completed passes (legacy method)
     fn calculate_confidence(&self, result: &AnalysisResult) -> f64 {
-        let total_passes = 8; // Total number of possible passes
-        let completed_passes = result.metadata.passes_run.len();
-        
-        let base_confidence = completed_passes as f64 / total_passes as f64;
-        
-        // Adjust confidence based on warnings
-        let warning_penalty = result.metadata.warnings.len() as f64 * 0.1;
-        
-        (base_confidence - warning_penalty).max(0.0).min(1.0)
+        result.metadata.confidence
     }
 } 

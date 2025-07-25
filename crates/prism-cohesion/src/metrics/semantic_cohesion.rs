@@ -202,7 +202,7 @@ impl SemanticCohesionAnalyzer {
     
     /// Analyze domain-specific naming patterns
     fn analyze_domain_patterns(&self, names: &[String]) -> f64 {
-        let mut pattern_score = 0.0;
+        let mut pattern_score: f64 = 0.0;
         
         // Common domain-specific patterns
         let patterns = [
@@ -240,7 +240,7 @@ impl SemanticCohesionAnalyzer {
             }
         }
         
-        pattern_score.min(10.0) // Cap the bonus
+        pattern_score.min(10.0_f64) // Cap the bonus
     }
     
     /// Check if a name follows snake_case convention

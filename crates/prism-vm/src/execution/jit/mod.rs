@@ -48,6 +48,8 @@ pub mod runtime;
 pub mod cache;
 pub mod analysis;
 pub mod security;
+pub mod capability_guards;
+pub mod security_constraint_optimizer;
 pub mod egraph_optimizer;
 pub mod profile_guided_optimizer;
 
@@ -96,6 +98,15 @@ pub use security::{
     SecurityCompiler, CapabilityChecker, EffectTracker, SecurityPolicy,
     SecurityConfig, SecurityViolation
 };
+pub use capability_guards::{
+    CapabilityGuardGenerator, GuardGeneratorConfig, CapabilityGuardAnalysis,
+    RequiredGuard, GuardType, GuardExecutionResult, GuardFailureResponse,
+    RuntimeCapabilityValidator, DeoptimizationManager, SecurityAuditLogger
+};
+pub use security_constraint_optimizer::{
+    SecurityConstraintOptimizer, ConstraintOptimizerConfig, OptimizedConstraintValidation,
+    HotConstraintPath, ConstraintType, OptimizedValidationResult, SpecializedValidator
+};
 pub use egraph_optimizer::{
     EGraphOptimizer, EGraphConfig, OptimizedFunction
 };
@@ -139,6 +150,9 @@ pub struct JitCompiler {
     /// Security integration
     security_compiler: Arc<SecurityCompiler>,
     
+    /// Security constraint optimizer
+    constraint_optimizer: Arc<Mutex<SecurityConstraintOptimizer>>,
+    
     /// Integration with prism-codegen VM backend
     vm_backend: Arc<PrismVMBackend>,
     
@@ -169,6 +183,9 @@ pub struct JitConfig {
     
     /// Security configuration
     pub security_config: SecurityConfig,
+    
+    /// Constraint optimizer configuration
+    pub constraint_optimizer_config: ConstraintOptimizerConfig,
     
     /// Code generation configuration
     pub codegen_config: codegen::JitCodeGenConfig,
@@ -214,6 +231,7 @@ impl Default for JitConfig {
             runtime_config: RuntimeConfig::default(),
             cache_config: CacheConfig::default(),
             security_config: SecurityConfig::default(),
+            constraint_optimizer_config: ConstraintOptimizerConfig::default(),
             codegen_config: codegen::JitCodeGenConfig::default(),
             integration_config: IntegrationConfig::default(),
         }
@@ -289,6 +307,10 @@ impl JitCompiler {
             SecurityCompiler::new(config.security_config.clone())?
         );
         
+        let constraint_optimizer = Arc::new(Mutex::new(
+            SecurityConstraintOptimizer::new(config.constraint_optimizer_config.clone())?
+        ));
+        
         // Create VM backend integration if enabled
         let vm_backend = if config.integration_config.use_codegen_backend {
             Arc::new(PrismVMBackend::new(
@@ -313,6 +335,7 @@ impl JitCompiler {
             runtime,
             code_cache,
             security_compiler,
+            constraint_optimizer,
             vm_backend,
             stats: Arc::new(RwLock::new(JitStats::default())),
         })

@@ -11,6 +11,32 @@ use serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 use rustc_hash::FxHashMap;
 
+/// Error type for detection operations
+#[derive(Debug, Clone)]
+pub enum DetectionError {
+    /// Pattern matching failed
+    PatternError(String),
+    /// Heuristic analysis failed
+    HeuristicError(String),
+    /// Confidence calculation failed
+    ConfidenceError(String),
+    /// Invalid input
+    InvalidInput(String),
+}
+
+impl std::fmt::Display for DetectionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DetectionError::PatternError(msg) => write!(f, "Pattern error: {}", msg),
+            DetectionError::HeuristicError(msg) => write!(f, "Heuristic error: {}", msg),
+            DetectionError::ConfidenceError(msg) => write!(f, "Confidence error: {}", msg),
+            DetectionError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for DetectionError {}
+
 /// Intelligent syntax style detector with confidence scoring.
 /// 
 /// The SyntaxDetector analyzes source code to determine which syntax style
@@ -156,6 +182,12 @@ pub struct SyntaxEvidence {
     
     /// Type of evidence
     pub evidence_type: EvidenceType,
+    
+    /// Confidence score for this evidence
+    pub confidence: f64,
+    
+    /// Reason for this evidence
+    pub reason: String,
 }
 
 /// Types of evidence for syntax detection

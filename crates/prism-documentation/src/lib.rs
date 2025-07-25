@@ -207,7 +207,7 @@ impl DocumentationSystem {
     pub fn with_config(config: DocumentationConfig) -> Self {
         Self {
             validator: DocumentationValidator::new(config.validation.clone()),
-            jsdoc_processor: JSDocProcessor::new(config.jsdoc_compatibility),
+            jsdoc_processor: JSDocProcessor::new(config.jsdoc_compatibility.clone()),
             extractor: DocumentationExtractor::new(),
             generator: DocumentationGenerator::new(config.generation.clone()),
             requirement_checker: RequirementChecker::new(),
@@ -374,17 +374,7 @@ impl Default for DocumentationConfig {
     }
 }
 
-impl Default for AIIntegrationConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            include_business_context: true,
-            include_architectural_patterns: true,
-            include_semantic_relationships: true,
-            detail_level: AIDetailLevel::Standard,
-        }
-    }
-}
+// Default implementation is already provided in ai_integration.rs
 
 /// Validate documentation for a program using default configuration
 pub fn validate_program(program: &prism_ast::Program) -> DocumentationResult<ValidationResult> {

@@ -16,6 +16,7 @@ use crate::{VMResult, PrismVMError, bytecode::{PrismBytecode, FunctionDefinition
 use super::codegen::{CodeGenerator, MachineCode, CodeBuffer, TargetISA, ISAFeatures};
 use super::runtime::CompiledFunction;
 use super::security::SecurityCompiler;
+use super::capability_guards::{CapabilityGuardGenerator, GuardGeneratorConfig};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -35,6 +36,9 @@ pub struct BaselineJIT {
     
     /// Security compiler for capability integration
     security_compiler: Arc<SecurityCompiler>,
+    
+    /// Capability guard generator
+    guard_generator: Arc<std::sync::Mutex<CapabilityGuardGenerator>>,
     
     /// Compilation statistics
     stats: BaselineStats,
@@ -267,12 +271,16 @@ impl BaselineJIT {
         let template_engine = TemplateEngine::new(target_isa.clone())?;
         let code_generator = Arc::new(CodeGenerator::new(target_isa.clone())?);
         let security_compiler = Arc::new(SecurityCompiler::new_default()?);
+        let guard_generator = Arc::new(std::sync::Mutex::new(
+            CapabilityGuardGenerator::new(GuardGeneratorConfig::default())?
+        ));
         
         Ok(Self {
             config,
             template_engine,
             code_generator,
             security_compiler,
+            guard_generator,
             stats: BaselineStats::default(),
         })
     }

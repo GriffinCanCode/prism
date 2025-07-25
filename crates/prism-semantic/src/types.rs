@@ -11,6 +11,7 @@
 
 use crate::{SemanticResult, SemanticError, SemanticConfig};
 use prism_common::{NodeId, span::Span, symbol::Symbol};
+use crate::type_inference::constraints::ConstraintSet;
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 
@@ -234,7 +235,7 @@ pub enum PrimitiveType {
 }
 
 /// Time precision levels
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TimePrecision {
     /// Seconds
     Seconds,
@@ -260,7 +261,7 @@ pub struct CompositeType {
 }
 
 /// Composite type kinds
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum CompositeKind {
     /// Struct with semantic fields
     Struct,
@@ -277,7 +278,7 @@ pub enum CompositeKind {
 }
 
 /// Semantic field with business meaning
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SemanticField {
     /// Field name
     pub name: String,
@@ -296,7 +297,7 @@ pub struct SemanticField {
 }
 
 /// Semantic method with business logic
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SemanticMethod {
     /// Method name
     pub name: String,
@@ -326,7 +327,7 @@ pub struct FunctionType {
 }
 
 /// Semantic parameter
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SemanticParameter {
     /// Parameter name
     pub name: String,
@@ -341,7 +342,7 @@ pub struct SemanticParameter {
 }
 
 /// Generic type with semantic bounds
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct GenericType {
     /// Type parameters
     pub parameters: Vec<TypeParameter>,
@@ -352,7 +353,7 @@ pub struct GenericType {
 }
 
 /// Type parameter with semantic constraints
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TypeParameter {
     /// Parameter name
     pub name: String,
@@ -365,7 +366,7 @@ pub struct TypeParameter {
 }
 
 /// Dependent type (PLD-001)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DependentType {
     /// Base type
     pub base_type: Box<SemanticType>,
@@ -378,7 +379,7 @@ pub struct DependentType {
 }
 
 /// Effect type for capability system
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct EffectType {
     /// Effect name
     pub name: String,
@@ -389,7 +390,7 @@ pub struct EffectType {
 }
 
 /// Type constraint (PLD-001)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TypeConstraint {
     /// Range constraint
     Range(RangeConstraint),
@@ -410,7 +411,7 @@ pub enum TypeConstraint {
 }
 
 /// Range constraint for numeric types
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RangeConstraint {
     /// Minimum value (inclusive)
     pub min: Option<ConstraintValue>,
@@ -425,7 +426,7 @@ pub struct RangeConstraint {
 }
 
 /// Pattern constraint using regex
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct PatternConstraint {
     /// Regular expression pattern
     pub pattern: String,
@@ -440,7 +441,7 @@ pub struct PatternConstraint {
 }
 
 /// Length constraint for collections/strings
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct LengthConstraint {
     /// Minimum length
     pub min_length: Option<usize>,
@@ -453,12 +454,12 @@ pub struct LengthConstraint {
 }
 
 /// Format constraint for structured data
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FormatConstraint {
     /// Format specification (e.g., "ISO8601", "UUID", "E164")
     pub format: String,
-    /// Format parameters
-    pub parameters: HashMap<String, String>,
+    /// Format parameters (using Vec instead of HashMap for Hash trait)
+    pub parameters: Vec<(String, String)>,
     /// Validation function name
     pub validator: Option<String>,
     /// Error message
@@ -466,7 +467,7 @@ pub struct FormatConstraint {
 }
 
 /// Custom constraint with user-defined predicate
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CustomConstraint {
     /// Constraint name
     pub name: String,
@@ -481,7 +482,7 @@ pub struct CustomConstraint {
 }
 
 /// Business rule constraint (PLD-001)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BusinessRuleConstraint {
     /// Rule name
     pub rule_name: String,
@@ -498,7 +499,7 @@ pub struct BusinessRuleConstraint {
 }
 
 /// Business rule with semantic meaning
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BusinessRule {
     /// Unique rule identifier
     pub id: String,
@@ -525,7 +526,7 @@ pub struct BusinessRule {
 }
 
 /// Rule enforcement levels
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum EnforcementLevel {
     /// Must be validated at compile time
     CompileTime,
@@ -538,7 +539,7 @@ pub enum EnforcementLevel {
 }
 
 /// Rule priority levels
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum RulePriority {
     /// Critical business rule
     Critical,
@@ -551,7 +552,7 @@ pub enum RulePriority {
 }
 
 /// Examples for business rules
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct RuleExamples {
     /// Examples of valid values
     pub valid: Vec<String>,
@@ -562,7 +563,7 @@ pub struct RuleExamples {
 }
 
 /// Semantic type metadata (PLD-001)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SemanticTypeMetadata {
     /// Business meaning of this type
     pub business_meaning: String,
@@ -585,7 +586,7 @@ pub struct SemanticTypeMetadata {
 }
 
 /// AI type context for understanding
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AITypeContext {
     /// Primary purpose of this type
     pub purpose: String,
@@ -602,12 +603,12 @@ pub struct AITypeContext {
 }
 
 /// Constraint value types
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ConstraintValue {
     /// Integer value
     Integer(i64),
-    /// Float value
-    Float(f64),
+    /// Float value (using ordered wrapper)
+    Float(OrderedFloat),
     /// String value
     String(String),
     /// Boolean value
@@ -616,8 +617,26 @@ pub enum ConstraintValue {
     Expression(String),
 }
 
+/// Ordered float wrapper that implements Eq and Hash
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct OrderedFloat(pub f64);
+
+impl PartialEq for OrderedFloat {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.to_bits() == other.0.to_bits()
+    }
+}
+
+impl Eq for OrderedFloat {}
+
+impl std::hash::Hash for OrderedFloat {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.to_bits().hash(state);
+    }
+}
+
 /// Visibility levels
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum Visibility {
     /// Public visibility
     Public,
@@ -630,7 +649,7 @@ pub enum Visibility {
 }
 
 /// Field constraint
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FieldConstraint {
     /// Constraint type
     pub constraint_type: String,
@@ -641,7 +660,7 @@ pub struct FieldConstraint {
 }
 
 /// Parameter constraint
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ParameterConstraint {
     /// Constraint name
     pub name: String,
@@ -652,7 +671,7 @@ pub struct ParameterConstraint {
 }
 
 /// Effect signature
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct EffectSignature {
     /// Effect name
     pub name: String,
@@ -663,7 +682,7 @@ pub struct EffectSignature {
 }
 
 /// Contract specification
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Contract {
     /// Contract type
     pub contract_type: ContractType,
@@ -674,7 +693,7 @@ pub struct Contract {
 }
 
 /// Contract types
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ContractType {
     /// Precondition
     Precondition,
@@ -685,7 +704,7 @@ pub enum ContractType {
 }
 
 /// Semantic bound for generics
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SemanticBound {
     /// Bound type
     pub bound_type: String,
@@ -694,7 +713,7 @@ pub struct SemanticBound {
 }
 
 /// Type bound
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TypeBound {
     /// Bound name
     pub name: String,
@@ -703,7 +722,7 @@ pub struct TypeBound {
 }
 
 /// Dependent parameter
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DependentParameter {
     /// Parameter name
     pub name: String,
@@ -714,7 +733,7 @@ pub struct DependentParameter {
 }
 
 /// Dependent relationship types
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum DependentRelationship {
     /// Size dependency
     Size,
@@ -725,7 +744,7 @@ pub enum DependentRelationship {
 }
 
 /// Dependent constraint
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct DependentConstraint {
     /// Constraint expression
     pub expression: String,
@@ -734,7 +753,7 @@ pub struct DependentConstraint {
 }
 
 /// Proof obligation for formal verification
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ProofObligation {
     /// Obligation name
     pub name: String,
@@ -745,7 +764,7 @@ pub struct ProofObligation {
 }
 
 /// Effect parameter
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct EffectParameter {
     /// Parameter name
     pub name: String,
@@ -756,7 +775,7 @@ pub struct EffectParameter {
 }
 
 /// Effect metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct EffectMetadata {
     /// Effect description
     pub description: String,
@@ -767,7 +786,7 @@ pub struct EffectMetadata {
 }
 
 /// Compliance constraint
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ComplianceConstraint {
     /// Compliance framework
     pub framework: String,
@@ -778,7 +797,7 @@ pub struct ComplianceConstraint {
 }
 
 /// Security constraint
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SecurityConstraint {
     /// Security classification
     pub classification: String,
@@ -789,7 +808,7 @@ pub struct SecurityConstraint {
 }
 
 /// Performance profile
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct PerformanceProfile {
     /// Time complexity
     pub time_complexity: Option<String>,
@@ -802,7 +821,7 @@ pub struct PerformanceProfile {
 }
 
 /// Type relationship
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TypeRelationship {
     /// Relationship type
     pub relationship_type: RelationshipType,
@@ -813,7 +832,7 @@ pub struct TypeRelationship {
 }
 
 /// Relationship types between semantic types
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum RelationshipType {
     /// Composition relationship
     ComposedOf,
@@ -830,7 +849,7 @@ pub enum RelationshipType {
 }
 
 /// Inheritance relation
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct InheritanceRelation {
     /// Parent type
     pub parent: Box<SemanticType>,
@@ -839,7 +858,7 @@ pub struct InheritanceRelation {
 }
 
 /// Inheritance kinds
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum InheritanceKind {
     /// Structural inheritance
     Structural,
@@ -850,7 +869,7 @@ pub enum InheritanceKind {
 }
 
 /// Verification property for formal verification
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct VerificationProperty {
     /// Property name
     pub name: String,
@@ -863,7 +882,7 @@ pub struct VerificationProperty {
 }
 
 /// Property types for verification
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PropertyType {
     /// Safety property
     Safety,
@@ -876,7 +895,7 @@ pub enum PropertyType {
 }
 
 /// Proof status
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ProofStatus {
     /// Not yet proven
     Unproven,
@@ -900,7 +919,7 @@ pub struct TypeLevelComputationEngine {
 }
 
 /// Type function definition
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TypeFunction {
     /// Function name
     pub name: String,
@@ -915,7 +934,7 @@ pub struct TypeFunction {
 }
 
 /// Type function parameter
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TypeFunctionParameter {
     /// Parameter name
     pub name: String,
@@ -928,7 +947,7 @@ pub struct TypeFunctionParameter {
 }
 
 /// Type parameter types for type functions
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TypeParameterType {
     /// Type parameter
     Type,
@@ -943,7 +962,7 @@ pub enum TypeParameterType {
 }
 
 /// Type function body
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TypeFunctionBody {
     /// Built-in function
     BuiltIn(BuiltInTypeFunction),
@@ -954,7 +973,7 @@ pub enum TypeFunctionBody {
 }
 
 /// Built-in type functions
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BuiltInTypeFunction {
     /// Validate currency pair compatibility
     ValidateCurrencyPair,
@@ -969,7 +988,7 @@ pub enum BuiltInTypeFunction {
 }
 
 /// Size operations for dependent types
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum SizeOperation {
     Add,
     Multiply,
@@ -979,7 +998,7 @@ pub enum SizeOperation {
 }
 
 /// Type function case for pattern matching
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TypeFunctionCase {
     /// Pattern to match
     pub pattern: TypePattern,
@@ -990,7 +1009,7 @@ pub struct TypeFunctionCase {
 }
 
 /// Type pattern for matching
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TypePattern {
     /// Wildcard pattern
     Wildcard,
@@ -1003,7 +1022,7 @@ pub enum TypePattern {
 }
 
 /// Type function metadata
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TypeFunctionMetadata {
     /// Function description
     pub description: String,
@@ -1029,7 +1048,7 @@ pub struct ComputationConfig {
 }
 
 /// Computation result
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ComputationResult {
     /// Computed type
     pub result_type: String, // Type expression as string
@@ -1055,7 +1074,7 @@ pub struct StaticAssertionValidator {
 }
 
 /// Assertion result
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AssertionResult {
     /// Whether assertion passed
     pub passed: bool,
@@ -1456,14 +1475,17 @@ impl SemanticTypeSystem {
 
     /// Validate a semantic type
     fn validate_semantic_type(&self, semantic_type: &SemanticType) -> SemanticResult<()> {
-        // Validate constraints
-        for constraint in &semantic_type.constraints {
-            self.validate_constraint(constraint)?;
-        }
+        // Only Complex semantic types have constraints and business rules
+        if let SemanticType::Complex { constraints, business_rules, .. } = semantic_type {
+            // Validate constraints
+            for constraint in constraints {
+                self.validate_constraint(constraint)?;
+            }
 
-        // Validate business rules
-        for rule in &semantic_type.business_rules {
-            self.validate_business_rule(rule)?;
+            // Validate business rules
+            for rule in business_rules {
+                self.validate_business_rule(rule)?;
+            }
         }
 
         Ok(())
@@ -1598,6 +1620,22 @@ impl std::hash::Hash for SemanticType {
                 name.hash(state);
                 base_type.hash(state);
             },
+        }
+    }
+}
+
+impl Default for SemanticTypeMetadata {
+    fn default() -> Self {
+        Self {
+            business_meaning: String::new(),
+            domain_context: String::new(),
+            examples: Vec::new(),
+            compliance_requirements: Vec::new(),
+            security_considerations: Vec::new(),
+            performance_characteristics: None,
+            related_types: Vec::new(),
+            common_mistakes: Vec::new(),
+            migration_notes: None,
         }
     }
 }

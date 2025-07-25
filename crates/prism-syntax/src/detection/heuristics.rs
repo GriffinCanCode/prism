@@ -132,32 +132,48 @@ impl HeuristicEngine {
         let total_lines = lines.len().max(1);
         
         // Generate evidence based on patterns
-        if significant_indentation as f64 / total_lines as f64 > 0.3 {
+        if significant_indentation > total_lines / 3 {
             evidence.push(SyntaxEvidence {
-                style: crate::detection::SyntaxStyle::PythonLike,
-                confidence: 0.7,
-                reason: format!("Significant indentation found in {}% of lines", 
-                    (significant_indentation * 100 / total_lines)),
-                location: None,
-            });
-        }
-        
-        if brace_delimited as f64 / total_lines as f64 > 0.2 {
-            evidence.push(SyntaxEvidence {
-                style: crate::detection::SyntaxStyle::CLike,
-                confidence: 0.6,
-                reason: format!("Brace delimiters found in {}% of lines", 
-                    (brace_delimited * 100 / total_lines)),
-                location: None,
+                pattern: "python_indentation".to_string(),
+                style: SyntaxStyle::PythonLike,
+                weight: 0.8,
+                location: Span::default(),
+                description: "Significant indentation pattern detected".to_string(),
+                evidence_type: EvidenceType::Structure,
+                confidence: (significant_indentation as f64 / total_lines as f64).min(0.9),
+                reason: format!("Python-style indentation found: {} indented lines", significant_indentation),
             });
         }
         
         if colon_after_statement > 0 {
             evidence.push(SyntaxEvidence {
-                style: crate::detection::SyntaxStyle::PythonLike,
-                confidence: 0.8,
-                reason: format!("{} Python-like control structures found", colon_after_statement),
-                location: None,
+                pattern: "python_colons".to_string(),
+                style: SyntaxStyle::PythonLike,
+                weight: 0.9,
+                location: Span::default(),
+                description: "Python-style colon usage detected".to_string(),
+                evidence_type: EvidenceType::Punctuation,
+                confidence: (colon_after_statement as f64 * 0.2).min(0.9),
+                reason: format!("Python-style colons found: {} instances", colon_after_statement),
+            });
+        }
+        
+        if brace_delimited > 0 {
+            let style = if source.contains("fn ") || source.contains("impl ") {
+                SyntaxStyle::RustLike
+            } else {
+                SyntaxStyle::CLike
+            };
+            
+            evidence.push(SyntaxEvidence {
+                pattern: "brace_delimited".to_string(),
+                style,
+                weight: 0.7,
+                location: Span::default(),
+                description: "Brace-delimited blocks detected".to_string(),
+                evidence_type: EvidenceType::Structure,
+                confidence: (brace_delimited as f64 * 0.1).min(0.8),
+                reason: format!("Brace-delimited blocks found: {} instances", brace_delimited),
             });
         }
         
@@ -180,10 +196,14 @@ impl HeuristicEngine {
         if and_count > 0 || or_count > 0 || not_count > 0 {
             let total_python_ops = and_count + or_count + not_count;
             evidence.push(SyntaxEvidence {
+                pattern: "python_logical_operators".to_string(),
                 style: crate::detection::SyntaxStyle::PythonLike,
+                weight: 0.6,
+                location: Span::default(),
+                description: "Python-style logical operators detected".to_string(),
+                evidence_type: EvidenceType::Operator,
                 confidence: (total_python_ops as f64 * 0.1).min(0.8),
                 reason: format!("Python-style logical operators found: {} instances", total_python_ops),
-                location: None,
             });
         }
         
@@ -197,10 +217,14 @@ impl HeuristicEngine {
             };
             
             evidence.push(SyntaxEvidence {
+                pattern: "c_like_logical_operators".to_string(),
                 style,
+                weight: 0.6,
+                location: Span::default(),
+                description: "C-style logical operators detected".to_string(),
+                evidence_type: EvidenceType::Operator,
                 confidence: (total_c_ops as f64 * 0.1).min(0.7),
                 reason: format!("C-style logical operators found: {} instances", total_c_ops),
-                location: None,
             });
         }
         
@@ -211,19 +235,31 @@ impl HeuristicEngine {
     fn analyze_naming(source: &str) -> Vec<SyntaxEvidence> {
         let mut evidence = Vec::new();
         
-        // Simple regex-like pattern matching for naming conventions
-        let snake_case_count = source.matches(char::is_lowercase)
-            .filter(|_| source.contains('_'))
-            .count();
-        let camel_case_indicators = source.matches(|c: char| c.is_uppercase()).count();
+        // Very basic naming convention analysis
+        let snake_case_count = source.matches("_").count();
+        let camel_case_indicators = source.matches(|c: char| c.is_ascii_uppercase()).count();
         
-        // This is a simplified analysis - in practice, you'd use proper regex
         if snake_case_count > camel_case_indicators {
             evidence.push(SyntaxEvidence {
-                style: crate::detection::SyntaxStyle::RustLike,
+                pattern: "snake_case_naming".to_string(),
+                style: SyntaxStyle::RustLike,
+                weight: 0.3,
+                location: Span::default(),
+                description: "Snake case naming convention detected".to_string(),
+                evidence_type: EvidenceType::NamingConvention,
                 confidence: 0.4,
-                reason: "Snake_case naming convention detected".to_string(),
-                location: None,
+                reason: "Snake case naming pattern found".to_string(),
+            });
+        } else if camel_case_indicators > snake_case_count {
+            evidence.push(SyntaxEvidence {
+                pattern: "camel_case_naming".to_string(),
+                style: SyntaxStyle::CLike,
+                weight: 0.3,
+                location: Span::default(),
+                description: "Camel case naming convention detected".to_string(),
+                evidence_type: EvidenceType::NamingConvention,
+                confidence: 0.4,
+                reason: "Camel case naming pattern found".to_string(),
             });
         }
         
@@ -242,28 +278,40 @@ impl HeuristicEngine {
         if brace_pairs > 0 {
             if semicolon_count > brace_pairs {
                 evidence.push(SyntaxEvidence {
+                    pattern: "c_like_delimiters".to_string(),
                     style: crate::detection::SyntaxStyle::CLike,
+                    weight: 0.8,
+                    location: Span::default(),
+                    description: "C-like delimiter pattern detected".to_string(),
+                    evidence_type: EvidenceType::Punctuation,
                     confidence: 0.8,
                     reason: format!("C-like pattern: {} brace pairs with {} semicolons", 
                         brace_pairs, semicolon_count),
-                    location: None,
                 });
             } else {
                 evidence.push(SyntaxEvidence {
+                    pattern: "rust_like_delimiters".to_string(),
                     style: crate::detection::SyntaxStyle::RustLike,
+                    weight: 0.7,
+                    location: Span::default(),
+                    description: "Rust-like delimiter pattern detected".to_string(),
+                    evidence_type: EvidenceType::Punctuation,
                     confidence: 0.7,
                     reason: format!("Rust-like pattern: {} brace pairs with few semicolons", brace_pairs),
-                    location: None,
                 });
             }
         }
         
         if colon_count > brace_pairs && source.contains("def ") {
             evidence.push(SyntaxEvidence {
+                pattern: "python_like_delimiters".to_string(),
                 style: crate::detection::SyntaxStyle::PythonLike,
+                weight: 0.9,
+                location: Span::default(),
+                description: "Python-like delimiter pattern detected".to_string(),
+                evidence_type: EvidenceType::Punctuation,
                 confidence: 0.9,
                 reason: format!("Python-like pattern: {} colons with function definitions", colon_count),
-                location: None,
             });
         }
         
@@ -294,28 +342,40 @@ impl HeuristicEngine {
         
         if python_count > 0 {
             evidence.push(SyntaxEvidence {
+                pattern: "python_keywords".to_string(),
                 style: crate::detection::SyntaxStyle::PythonLike,
+                weight: 0.9,
+                location: Span::default(),
+                description: "Python keywords detected".to_string(),
+                evidence_type: EvidenceType::Keyword,
                 confidence: (python_count as f64 * 0.15).min(0.9),
                 reason: format!("Python keywords found: {} instances", python_count),
-                location: None,
             });
         }
         
         if rust_count > 0 {
             evidence.push(SyntaxEvidence {
+                pattern: "rust_keywords".to_string(),
                 style: crate::detection::SyntaxStyle::RustLike,
+                weight: 0.9,
+                location: Span::default(),
+                description: "Rust keywords detected".to_string(),
+                evidence_type: EvidenceType::Keyword,
                 confidence: (rust_count as f64 * 0.15).min(0.9),
                 reason: format!("Rust keywords found: {} instances", rust_count),
-                location: None,
             });
         }
         
         if c_count > 0 {
             evidence.push(SyntaxEvidence {
+                pattern: "c_like_keywords".to_string(),
                 style: crate::detection::SyntaxStyle::CLike,
+                weight: 0.9,
+                location: Span::default(),
+                description: "C-like keywords detected".to_string(),
+                evidence_type: EvidenceType::Keyword,
                 confidence: (c_count as f64 * 0.15).min(0.9),
                 reason: format!("C-like keywords found: {} instances", c_count),
-                location: None,
             });
         }
         

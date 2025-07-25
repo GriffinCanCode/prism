@@ -205,7 +205,7 @@ impl TypeCohesionAnalyzer {
             0.0
         };
         
-        (domain_score + dominance_bonus).min(100.0)
+        (domain_score as f64 + dominance_bonus as f64).min(100.0_f64)
     }
     
     /// Calculate relationship cohesion based on type interdependencies
@@ -433,8 +433,8 @@ impl TypeCohesionAnalyzer {
             }
             prism_ast::TypeKind::Enum(enum_decl) => {
                 for variant in &enum_decl.variants {
-                    if let Some(ref data_type) = variant.data_type {
-                        if let Some(target_type) = self.extract_type_name_from_ast(data_type) {
+                    for field_type in &variant.fields {
+                        if let Some(target_type) = self.extract_type_name_from_ast(field_type) {
                             relationships.push(TypeRelationship {
                                 relationship_type: RelationshipType::Contains,
                                 target_type,
@@ -446,7 +446,7 @@ impl TypeCohesionAnalyzer {
             }
             prism_ast::TypeKind::Trait(trait_decl) => {
                 for method in &trait_decl.methods {
-                    if let Some(target_type) = self.extract_type_name_from_ast(&method.return_type) {
+                    if let Some(target_type) = self.extract_type_name_from_ast(&method.method_type.return_type) {
                         relationships.push(TypeRelationship {
                             relationship_type: RelationshipType::Returns,
                             target_type,
@@ -455,8 +455,8 @@ impl TypeCohesionAnalyzer {
                     }
                 }
             }
-            prism_ast::TypeKind::Alias(alias_decl) => {
-                if let Some(target_type) = self.extract_type_name_from_ast(&alias_decl.target_type) {
+            prism_ast::TypeKind::Alias(alias_type) => {
+                if let Some(target_type) = self.extract_type_name_from_ast(alias_type) {
                     relationships.push(TypeRelationship {
                         relationship_type: RelationshipType::AliasOf,
                         target_type,

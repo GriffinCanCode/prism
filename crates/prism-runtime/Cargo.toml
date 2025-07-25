@@ -26,8 +26,8 @@ serde_json = "1.0"
 prism-common = { workspace = true }
 tracing = { workspace = true }
 
-# Temporarily removed to focus on resource management
-# prism-effects = { workspace = true }
+# Effects system for intelligence integration
+prism-effects = { workspace = true }
 # prism-ai = { workspace = true }
 # petgraph = { workspace = true }
 # indexmap = { workspace = true }

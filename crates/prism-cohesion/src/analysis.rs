@@ -956,7 +956,7 @@ impl CohesionAnalyzer {
         };
         
         // Fast metrics calculation
-        let mut metrics = FxHashMap::with_capacity_and_hasher(4, Default::default());
+        let mut metrics = std::collections::HashMap::with_capacity(4);
         metrics.insert("item_count".to_string(), item_count as f64);
         metrics.insert("section_score".to_string(), cohesion_score);
         

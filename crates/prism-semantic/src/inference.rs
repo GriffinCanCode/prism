@@ -9,6 +9,7 @@
 //! **What it doesn't do**: semantic analysis, validation, pattern recognition
 
 use crate::{SemanticResult, SemanticError, SemanticConfig};
+use crate::type_inference::constraints::ConstraintSet;
 use crate::analyzer::AnalysisResult;
 use crate::types::SemanticType;
 use prism_ast::Program;

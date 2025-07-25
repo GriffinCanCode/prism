@@ -1,6 +1,6 @@
 //! Statement AST nodes for the Prism programming language
 
-use crate::{AstNode, Expr, Pattern, Type, TypeDecl, Visibility, metadata::AiContext};
+use crate::{AstNode, Expr, Pattern, Type, TypeDecl, TypeParameter, Visibility, metadata::AiContext};
 use prism_common::symbol::Symbol;
 
 /// Statement AST node
@@ -47,6 +47,12 @@ pub enum Stmt {
     Try(TryStmt),
     /// Block statement
     Block(BlockStmt),
+    /// Let declaration (local binding)
+    Let(LetDecl),
+    /// Let statement (assignment)
+    LetStmt(LetStmt),
+    /// Type statement
+    TypeStmt(TypeStmt),
     /// Error statement (for recovery)
     Error(ErrorStmt),
 }
@@ -864,6 +870,47 @@ pub enum AttributeArgument {
     /// Literal argument
     Literal(AttributeValue),
 }
+
+/// Let declaration (local binding)
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct LetDecl {
+    /// Variable name
+    pub name: Symbol,
+    /// Variable type
+    pub type_annotation: Option<AstNode<Type>>,
+    /// Initial value
+    pub initializer: Option<AstNode<Expr>>,
+    /// Whether the variable is mutable
+    pub is_mutable: bool,
+}
+
+/// Let statement (assignment)
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct LetStmt {
+    /// Pattern to bind to
+    pub pattern: AstNode<Pattern>,
+    /// Value to assign
+    pub value: AstNode<Expr>,
+    /// Type annotation
+    pub type_annotation: Option<AstNode<Type>>,
+}
+
+/// Type statement
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct TypeStmt {
+    /// Type name
+    pub name: Symbol,
+    /// Type expression
+    pub type_expr: AstNode<Type>,
+    /// Type parameters
+    pub type_parameters: Vec<TypeParameter>,
+}
+
+/// Alias for FunctionDecl for backward compatibility
+pub type FunctionStmt = FunctionDecl;
 
 /// Error statement for recovery
 #[derive(Debug, Clone)]

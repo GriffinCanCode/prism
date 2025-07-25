@@ -4,7 +4,7 @@
 //! and scoping during type inference. It supports lexical scoping, let-polymorphism,
 //! and semantic type information.
 
-use super::{InferredType, TypeVar, InferenceSource};
+use super::{InferredType, TypeVar, InferenceSource, constraints::ConstraintSet};
 use crate::{
     SemanticResult, SemanticError,
     types::SemanticType,
@@ -245,11 +245,26 @@ impl TypeScheme {
         // Apply substitution to body type
         let instantiated_type = substitution.apply_to_semantic_type(&self.body_type)?;
 
+        // Instantiate constraints (convert from environment::TypeConstraint to constraints::TypeConstraint)
+        let instantiated_constraints = self.constraints
+            .iter()
+            .map(|constraint| {
+                // Convert environment constraint to inference constraint
+                super::constraints::TypeConstraint {
+                    lhs: super::constraints::ConstraintType::Variable(constraint.type_var.clone()),
+                    rhs: super::constraints::ConstraintType::Concrete(instantiated_type.clone()),
+                    origin: Span::dummy(),
+                    reason: super::constraints::ConstraintReason::TypeAnnotation,
+                    priority: 50,
+                }
+            })
+            .collect();
+
         Ok(InferredType {
             type_info: instantiated_type,
             confidence: 1.0,
             inference_source: InferenceSource::Explicit,
-            constraints: Vec::new(), // TODO: instantiate constraints too
+            constraints: instantiated_constraints,
             ai_metadata: None,
             span: Span::dummy(),
         })
@@ -528,7 +543,7 @@ impl TypeEnvironment {
 
     /// Generalize a type by quantifying over free variables
     pub fn generalize(
-        &self,
+        &mut self,
         semantic_type: &SemanticType,
         span: Span,
     ) -> TypeScheme {
@@ -552,7 +567,7 @@ impl TypeEnvironment {
     }
 
     /// Find free variables in a semantic type
-    fn find_free_variables(&self, semantic_type: &SemanticType) -> Vec<String> {
+    fn find_free_variables(&mut self, semantic_type: &SemanticType) -> Vec<String> {
         let mut free_vars = Vec::new();
         self.collect_free_variables(semantic_type, &mut free_vars);
         free_vars.sort();
@@ -561,7 +576,7 @@ impl TypeEnvironment {
     }
 
     /// Collect free variables recursively
-    fn collect_free_variables(&self, semantic_type: &SemanticType, vars: &mut Vec<String>) {
+    fn collect_free_variables(&mut self, semantic_type: &SemanticType, vars: &mut Vec<String>) {
         match semantic_type {
             SemanticType::Variable(var_name) => {
                 // Check if this variable is bound in the environment

@@ -6,9 +6,11 @@
 
 use super::{
     TypeInferenceResult, InferredType, InferenceSource, InferenceStatistics,
-    TypeVar, GlobalInferenceMetadata, TypeInferenceAI,
+    TypeVar,
 };
 use crate::{SemanticResult, SemanticError, types::SemanticType};
+use crate::type_inference::errors::TypeError;
+use crate::type_inference::constraints::{TypeConstraint, ConstraintSet};
 use prism_common::{NodeId, Span};
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
@@ -493,6 +495,18 @@ impl TypeInferenceAI {
             InferenceSource::Semantic => ConfidenceLevel::High,
             InferenceSource::AIAssisted => ConfidenceLevel::Low,
             InferenceSource::Default => ConfidenceLevel::VeryLow,
+            InferenceSource::Context | InferenceSource::Usage => ConfidenceLevel::Medium,
+            InferenceSource::Structural => ConfidenceLevel::Medium,
+            InferenceSource::Parameter => ConfidenceLevel::High,
+            InferenceSource::LetBinding => ConfidenceLevel::High,
+            InferenceSource::Return => ConfidenceLevel::High,
+            InferenceSource::Conditional => ConfidenceLevel::Medium,
+            InferenceSource::PatternMatch => ConfidenceLevel::High,
+            InferenceSource::Loop => ConfidenceLevel::Medium,
+            InferenceSource::Block => ConfidenceLevel::Medium,
+            InferenceSource::Iterator => ConfidenceLevel::Medium,
+            InferenceSource::TypeDefinition => ConfidenceLevel::VeryHigh,
+            InferenceSource::Operator => ConfidenceLevel::High,
         }
     }
 
@@ -736,12 +750,188 @@ impl PatternEngine {
 
     fn recognize_patterns(
         &self,
-        _inferred_type: &InferredType,
-        _constraints: &[TypeConstraint],
-        _context: &InferenceContext,
+        inferred_type: &InferredType,
+        constraints: &[TypeConstraint],
+        context: &InferenceContext,
     ) -> Vec<InferencePattern> {
-        // Pattern recognition logic would go here
-        Vec::new()
+        let mut patterns = Vec::new();
+        
+        // Analyze the type structure for common patterns
+        match &inferred_type.type_info {
+            SemanticType::Function { params, return_type, effects } => {
+                // Function patterns
+                if params.is_empty() {
+                    patterns.push(InferencePattern {
+                        name: "Nullary Function".to_string(),
+                        description: "Function with no parameters - likely a getter or constant".to_string(),
+                        confidence: 0.8,
+                        benefits: vec![
+                            "Simple to call".to_string(),
+                            "No parameter validation needed".to_string(),
+                        ],
+                        issues: vec![
+                            "Limited flexibility".to_string(),
+                        ],
+                    });
+                }
+                
+                if params.len() == 1 {
+                    patterns.push(InferencePattern {
+                        name: "Unary Function".to_string(),
+                        description: "Function with single parameter - common transformation pattern".to_string(),
+                        confidence: 0.7,
+                        benefits: vec![
+                            "Simple interface".to_string(),
+                            "Easy to compose".to_string(),
+                        ],
+                        issues: vec![
+                            "May need multiple overloads for different types".to_string(),
+                        ],
+                    });
+                }
+                
+                if params.len() > 5 {
+                    patterns.push(InferencePattern {
+                        name: "High Arity Function".to_string(),
+                        description: "Function with many parameters - consider parameter object".to_string(),
+                        confidence: 0.9,
+                        benefits: vec![],
+                        issues: vec![
+                            "Hard to remember parameter order".to_string(),
+                            "Difficult to extend".to_string(),
+                            "Consider using a configuration object".to_string(),
+                        ],
+                    });
+                }
+                
+                if !effects.is_empty() {
+                    patterns.push(InferencePattern {
+                        name: "Effectful Function".to_string(),
+                        description: format!("Function with {} effects: {}", effects.len(), effects.join(", ")),
+                        confidence: 0.85,
+                        benefits: vec![
+                            "Clear about side effects".to_string(),
+                        ],
+                        issues: vec![
+                            "Requires careful handling".to_string(),
+                            "May need error handling".to_string(),
+                        ],
+                    });
+                }
+            }
+            
+            SemanticType::Record(fields) => {
+                // Record patterns
+                if fields.is_empty() {
+                    patterns.push(InferencePattern {
+                        name: "Empty Record".to_string(),
+                        description: "Record with no fields - possibly a marker type".to_string(),
+                        confidence: 0.6,
+                        benefits: vec![
+                            "Lightweight".to_string(),
+                        ],
+                        issues: vec![
+                            "Limited utility".to_string(),
+                            "Consider using unit type instead".to_string(),
+                        ],
+                    });
+                } else if fields.len() > 10 {
+                    patterns.push(InferencePattern {
+                        name: "Large Record".to_string(),
+                        description: "Record with many fields - consider breaking into smaller types".to_string(),
+                        confidence: 0.8,
+                        benefits: vec![],
+                        issues: vec![
+                            "May violate single responsibility principle".to_string(),
+                            "Hard to maintain".to_string(),
+                            "Consider composition over large structures".to_string(),
+                        ],
+                    });
+                }
+            }
+            
+            SemanticType::List(element_type) => {
+                patterns.push(InferencePattern {
+                    name: "Homogeneous Collection".to_string(),
+                    description: "List of uniform elements - good for bulk operations".to_string(),
+                    confidence: 0.7,
+                    benefits: vec![
+                        "Efficient iteration".to_string(),
+                        "Predictable memory layout".to_string(),
+                    ],
+                    issues: vec![
+                        "All elements must be same type".to_string(),
+                    ],
+                });
+            }
+            
+            SemanticType::Union(types) => {
+                if types.len() == 2 {
+                    patterns.push(InferencePattern {
+                        name: "Binary Union".to_string(),
+                        description: "Union of two types - common for optional or result types".to_string(),
+                        confidence: 0.8,
+                        benefits: vec![
+                            "Clear alternatives".to_string(),
+                            "Type-safe error handling".to_string(),
+                        ],
+                        issues: vec![
+                            "Requires pattern matching".to_string(),
+                        ],
+                    });
+                }
+            }
+            
+            _ => {}
+        }
+        
+        // Pattern based on inference confidence
+        if inferred_type.confidence < 0.5 {
+            patterns.push(InferencePattern {
+                name: "Low Confidence Type".to_string(),
+                description: "Type inference has low confidence - consider adding annotations".to_string(),
+                confidence: 1.0,
+                benefits: vec![],
+                issues: vec![
+                    "May lead to runtime errors".to_string(),
+                    "Consider explicit type annotations".to_string(),
+                    "Review usage context".to_string(),
+                ],
+            });
+        }
+        
+        // Pattern based on constraint complexity
+        if constraints.len() > 5 {
+            patterns.push(InferencePattern {
+                name: "Complex Constraints".to_string(),
+                description: "Many type constraints - complex type relationships".to_string(),
+                confidence: 0.7,
+                benefits: vec![
+                    "Rich type relationships".to_string(),
+                ],
+                issues: vec![
+                    "May be over-engineered".to_string(),
+                    "Consider simplifying".to_string(),
+                ],
+            });
+        }
+        
+        // Context-based patterns
+        if context.in_pattern {
+            patterns.push(InferencePattern {
+                name: "Pattern Context".to_string(),
+                description: "Type used in pattern matching context".to_string(),
+                confidence: 0.6,
+                benefits: vec![
+                    "Supports exhaustive matching".to_string(),
+                ],
+                issues: vec![
+                    "Must handle all cases".to_string(),
+                ],
+            });
+        }
+        
+        patterns
     }
 }
 
@@ -761,6 +951,102 @@ impl SemanticAnalyzer {
             common_types: vec!["Int".to_string(), "String".to_string(), "Bool".to_string()],
             patterns: vec!["Function composition".to_string()],
             best_practices: vec!["Use descriptive names".to_string()],
+        });
+        
+        knowledge.insert("web".to_string(), DomainInfo {
+            name: "Web Development".to_string(),
+            common_types: vec![
+                "String".to_string(), 
+                "Number".to_string(), 
+                "Boolean".to_string(),
+                "HttpRequest".to_string(),
+                "HttpResponse".to_string(),
+                "URL".to_string(),
+                "JSON".to_string(),
+            ],
+            patterns: vec![
+                "Request-Response".to_string(), 
+                "MVC".to_string(),
+                "REST API".to_string(),
+                "Middleware".to_string(),
+                "Authentication".to_string(),
+            ],
+            best_practices: vec![
+                "Validate input".to_string(), 
+                "Handle errors gracefully".to_string(),
+                "Use HTTPS".to_string(),
+                "Sanitize output".to_string(),
+                "Rate limiting".to_string(),
+            ],
+        });
+        
+        knowledge.insert("database".to_string(), DomainInfo {
+            name: "Database".to_string(),
+            common_types: vec![
+                "Connection".to_string(),
+                "Query".to_string(),
+                "Result".to_string(),
+                "Transaction".to_string(),
+                "Schema".to_string(),
+            ],
+            patterns: vec![
+                "Repository".to_string(),
+                "Unit of Work".to_string(),
+                "Active Record".to_string(),
+                "Data Mapper".to_string(),
+            ],
+            best_practices: vec![
+                "Use parameterized queries".to_string(),
+                "Handle connection pooling".to_string(),
+                "Implement proper indexing".to_string(),
+                "Use transactions appropriately".to_string(),
+            ],
+        });
+        
+        knowledge.insert("math".to_string(), DomainInfo {
+            name: "Mathematics".to_string(),
+            common_types: vec![
+                "Integer".to_string(),
+                "Float".to_string(),
+                "Complex".to_string(),
+                "Vector".to_string(),
+                "Matrix".to_string(),
+                "Set".to_string(),
+            ],
+            patterns: vec![
+                "Functional composition".to_string(),
+                "Immutable operations".to_string(),
+                "Lazy evaluation".to_string(),
+            ],
+            best_practices: vec![
+                "Handle precision carefully".to_string(),
+                "Check for division by zero".to_string(),
+                "Use appropriate numeric types".to_string(),
+                "Consider overflow/underflow".to_string(),
+            ],
+        });
+        
+        knowledge.insert("system".to_string(), DomainInfo {
+            name: "System Programming".to_string(),
+            common_types: vec![
+                "FileHandle".to_string(),
+                "Process".to_string(),
+                "Thread".to_string(),
+                "Memory".to_string(),
+                "Socket".to_string(),
+            ],
+            patterns: vec![
+                "RAII".to_string(),
+                "Producer-Consumer".to_string(),
+                "Observer".to_string(),
+                "State Machine".to_string(),
+            ],
+            best_practices: vec![
+                "Handle resource cleanup".to_string(),
+                "Avoid race conditions".to_string(),
+                "Use appropriate synchronization".to_string(),
+                "Handle system errors".to_string(),
+            ],
         });
 
         knowledge
@@ -908,12 +1194,15 @@ impl Default for TypeInferenceAI {
 // Helper function
 fn format_primitive_type(prim: &prism_ast::PrimitiveType) -> String {
     match prim {
-        prism_ast::PrimitiveType::Integer(_) => "Int".to_string(),
+        prism_ast::PrimitiveType::Integer(_) => "Integer".to_string(),
         prism_ast::PrimitiveType::Float(_) => "Float".to_string(),
         prism_ast::PrimitiveType::String => "String".to_string(),
-        prism_ast::PrimitiveType::Boolean => "Bool".to_string(),
+        prism_ast::PrimitiveType::Boolean => "Boolean".to_string(),
         prism_ast::PrimitiveType::Char => "Char".to_string(),
         prism_ast::PrimitiveType::Unit => "Unit".to_string(),
         prism_ast::PrimitiveType::Never => "Never".to_string(),
+        prism_ast::PrimitiveType::Int32 => "Int32".to_string(),
+        prism_ast::PrimitiveType::Int64 => "Int64".to_string(),
+        prism_ast::PrimitiveType::Float64 => "Float64".to_string(),
     }
 }

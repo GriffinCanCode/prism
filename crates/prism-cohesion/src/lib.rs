@@ -57,12 +57,12 @@
 #![allow(clippy::module_name_repetitions)]
 
 // Re-export main types for public API
-pub use analysis::{CohesionAnalyzer, AnalysisConfig, AnalysisResult, AnalysisDepth};
+pub use analysis::{CohesionAnalyzer, AnalysisConfig, AnalysisResult};
 pub use metrics::{MetricsCalculator, CohesionMetrics, CohesionAnalysis, MetricsMetadata};
 pub use boundaries::{BoundaryDetector, ConceptualBoundary, BoundaryType};
 pub use violations::{ViolationDetector, CohesionViolation, ViolationType, ViolationSeverity};
 pub use suggestions::{SuggestionEngine, CohesionSuggestion, SuggestionType, EffortLevel};
-pub use ai_insights::{AIInsightGenerator, CohesionAIInsights, InsightCategory, InsightType};
+pub use ai_insights::{AIInsightGenerator, CohesionAIInsights};
 pub use confidence::{ConfidenceCalculator, ConfidenceBreakdown, ConfidenceLevel};
 
 // Main modules - each with a single responsibility

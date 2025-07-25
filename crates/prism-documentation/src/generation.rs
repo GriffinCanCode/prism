@@ -62,7 +62,7 @@ pub enum OutputFormat {
 }
 
 /// Format generator trait
-pub trait FormatGenerator: Send + Sync {
+pub trait FormatGenerator: Send + Sync + std::fmt::Debug {
     /// Generate documentation in the specific format
     fn generate(&self, docs: &ExtractedDocumentation, config: &GenerationConfig) -> DocumentationResult<GeneratedOutput>;
     
@@ -235,8 +235,7 @@ impl FormatGenerator for HTMLGenerator {
         
         // Title from module documentation
         let title = docs.module_documentation.as_ref()
-            .and_then(|m| m.name.as_ref())
-            .map(|name| format!("{} Documentation", name))
+            .map(|m| format!("{} Documentation", m.name))
             .unwrap_or_else(|| "Documentation".to_string());
         
         html.push_str(&format!("    <title>{}</title>\n", title));

@@ -5,7 +5,8 @@
 //! other optimization analyses.
 
 use crate::{VMResult, PrismVMError, bytecode::{FunctionDefinition, Instruction}};
-use super::AnalysisConfig;
+use super::shared::{Analysis, AnalysisKind, AnalysisConfig};
+use super::pipeline::AnalysisContext;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -242,6 +243,7 @@ impl CFGAnalyzer {
             config: config.clone(),
         })
     }
+}
 
     /// Analyze function and build control flow graph
     pub fn analyze(&mut self, function: &FunctionDefinition) -> VMResult<ControlFlowGraph> {
@@ -993,6 +995,46 @@ impl CFGAnalyzer {
             .filter(|block| !has_outgoing.contains(&block.id))
             .map(|block| block.id)
             .collect()
+    }
+}
+
+/// Dependencies for control flow analysis (none - it's a base analysis)
+pub type CFGDependencies = ();
+
+/// Implement the Analysis trait for CFGAnalyzer
+impl Analysis for CFGAnalyzer {
+    type Config = AnalysisConfig;
+    type Result = ControlFlowGraph;
+    type Dependencies = CFGDependencies;
+
+    fn new(config: &Self::Config) -> VMResult<Self> {
+        Self::new(config)
+    }
+
+    fn analyze(&mut self, function: &FunctionDefinition, _deps: Self::Dependencies) -> VMResult<Self::Result> {
+        self.analyze(function)
+    }
+
+    fn analysis_kind() -> AnalysisKind {
+        AnalysisKind::ControlFlow
+    }
+
+    fn dependencies() -> Vec<AnalysisKind> {
+        // Control flow analysis has no dependencies - it's a base analysis
+        Vec::new()
+    }
+
+    fn validate_dependencies(_deps: &Self::Dependencies) -> VMResult<()> {
+        // No dependencies to validate
+        Ok(())
+    }
+}
+
+/// Implement conversion from AnalysisContext for CFGDependencies
+impl From<&AnalysisContext> for CFGDependencies {
+    fn from(_context: &AnalysisContext) -> Self {
+        // No dependencies needed
+        ()
     }
 }
 

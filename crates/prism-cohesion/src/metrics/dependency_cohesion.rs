@@ -75,7 +75,7 @@ impl DependencyCohesionAnalyzer {
         let mut standard_deps = 0;
         
         for dependency in &module_decl.dependencies {
-            let dep_name = dependency.name.to_string().to_lowercase();
+            let dep_name = dependency.to_lowercase();
             
             // Check for well-named dependencies (meaningful names)
             if self.is_well_named_dependency(&dep_name) {
@@ -123,7 +123,7 @@ impl DependencyCohesionAnalyzer {
         // Group dependencies by category
         let mut categories = std::collections::HashMap::new();
         for dependency in &module_decl.dependencies {
-            let category = self.categorize_dependency(&dependency.name.to_string());
+            let category = self.categorize_dependency(dependency);
             *categories.entry(category).or_insert(0) += 1;
         }
         

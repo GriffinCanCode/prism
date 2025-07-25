@@ -21,7 +21,7 @@ pub struct ValidationRules {
 }
 
 /// Trait for validation rules
-pub trait ValidationRule: Send + Sync {
+pub trait ValidationRule: Send + Sync + std::fmt::Debug {
     /// Get the rule identifier
     fn rule_id(&self) -> &str;
     

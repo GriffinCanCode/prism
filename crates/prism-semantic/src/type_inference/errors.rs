@@ -3,7 +3,7 @@
 //! This module provides comprehensive error handling for type inference,
 //! including rich diagnostics, error recovery, and user-friendly error messages.
 
-use super::{TypeVar, InferredType};
+use super::{TypeVar, InferredType, constraints::ConstraintSet};
 use crate::types::SemanticType;
 use prism_common::{Span, SourceId};
 use serde::{Serialize, Deserialize};
@@ -694,5 +694,8 @@ fn format_primitive_type(prim: &prism_ast::PrimitiveType) -> String {
         prism_ast::PrimitiveType::Char => "Char".to_string(),
         prism_ast::PrimitiveType::Unit => "()".to_string(),
         prism_ast::PrimitiveType::Never => "!".to_string(),
+        prism_ast::PrimitiveType::Int32 => "Int32".to_string(),
+        prism_ast::PrimitiveType::Int64 => "Int64".to_string(),
+        prism_ast::PrimitiveType::Float64 => "Float64".to_string(),
     }
 } 

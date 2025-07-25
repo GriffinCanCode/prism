@@ -32,8 +32,8 @@ pub struct PrismCollector {
     collection_thread: Option<thread::JoinHandle<()>>,
     collection_trigger: Arc<(Mutex<bool>, Condvar)>,
     
-    // Write barriers
-    write_barrier: Arc<barriers::WriteBarrier>,
+    // Write barriers subsystem
+    barriers: Arc<barriers::BarrierSubsystem>,
 }
 
 impl PrismCollector {
@@ -41,7 +41,7 @@ impl PrismCollector {
         let heap = Arc::new(RwLock::new(heap::Heap::new(config.heap_target)));
         let roots = Arc::new(RwLock::new(roots::RootSet::new()));
         let allocator = Arc::new(allocator::BumpAllocator::new(config.heap_target));
-        let write_barrier = Arc::new(barriers::WriteBarrier::new(config.write_barrier));
+        let barriers = Arc::new(barriers::BarrierFactory::create_prism_optimized());
         
         let collector = Self {
             config: config.clone(),
@@ -62,7 +62,7 @@ impl PrismCollector {
             should_stop: AtomicBool::new(false),
             collection_thread: None,
             collection_trigger: Arc::new((Mutex::new(false), Condvar::new())),
-            write_barrier,
+            barriers,
         };
         
         // Start background collection thread if concurrent mode is enabled
@@ -86,7 +86,7 @@ impl PrismCollector {
             config: self.config.clone(),
             should_stop: self.should_stop.clone(),
             collection_trigger: self.collection_trigger.clone(),
-            write_barrier: self.write_barrier.clone(),
+            barriers: self.barriers.clone(),
         }
     }
     
@@ -98,6 +98,9 @@ impl PrismCollector {
         // Phase 1: Stop the world and scan roots
         let heap_size_before = self.allocator.allocated_bytes();
         let mut gray_queue = VecDeque::new();
+        
+        // Enable barriers for marking phase
+        self.barriers.enable_marking();
         
         // Mark all root objects as gray
         {
@@ -184,6 +187,9 @@ impl PrismCollector {
         
         // Reset all remaining objects to white for next collection
         heap.reset_colors_to_white();
+        
+        // Disable barriers after marking phase
+        self.barriers.disable_marking();
         
         (bytes_collected, objects_collected)
     }
@@ -292,7 +298,7 @@ struct BackgroundCollector {
     config: GcConfig,
     should_stop: AtomicBool,
     collection_trigger: Arc<(Mutex<bool>, Condvar)>,
-    write_barrier: Arc<barriers::WriteBarrier>,
+    barriers: Arc<barriers::BarrierSubsystem>,
 }
 
 impl BackgroundCollector {
@@ -341,6 +347,12 @@ impl BackgroundCollector {
                 header.set_color(ObjectColor::Black);
                 // Trace references...
             }
+        }
+        
+        // Process any objects queued by write barriers during marking
+        let barrier_queued = self.barriers.get_implementation().drain_gray_queue();
+        for obj_ptr in barrier_queued {
+            gray_queue.push_back(obj_ptr);
         }
         
         // Concurrent sweep

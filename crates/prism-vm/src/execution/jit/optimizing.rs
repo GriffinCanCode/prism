@@ -27,6 +27,7 @@ use super::{
     analysis::{StaticAnalyzer, AnalysisResult, AnalysisConfig},
     egraph_optimizer::{EGraphOptimizer, EGraphConfig, OptimizedFunction},
     profile_guided_optimizer::{ProfileGuidedOptimizer, PGOConfig, ExecutionData},
+    capability_guards::{CapabilityGuardGenerator, GuardGeneratorConfig},
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

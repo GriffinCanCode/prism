@@ -11,13 +11,12 @@
 //! 3. **No Logic Duplication**: Leverages existing semantic analysis infrastructure
 //! 4. **AI-First**: Generates structured metadata for external AI consumption
 
-use crate::{SemanticAnalyzer, SemanticDatabase, types::SemanticTypeSystem, patterns::PatternRecognizer};
 use crate::analyzer::AnalysisResult;
 use crate::database::SemanticInfo;
+use crate::type_inference::constraints::ConstraintSet;
 use prism_ai::providers::{
     MetadataProvider, MetadataDomain, ProviderContext, DomainMetadata, ProviderInfo, 
-    ProviderCapability, SemanticProviderMetadata, TypeInformation, BusinessRule,
-    SemanticRelationship, ValidationSummary
+    SemanticMetadata, BusinessMetadata
 };
 use prism_ai::AIIntegrationError;
 use async_trait::async_trait;
@@ -34,7 +33,7 @@ pub struct SemanticMetadataProvider {
     /// Whether this provider is enabled
     enabled: bool,
     /// Reference to semantic database for data extraction
-    database: Option<Arc<SemanticDatabase>>,
+    database: Option<Arc<crate::SemanticDatabase>>,
     /// Cached analysis results for performance
     cached_analysis: Option<AnalysisResult>,
     /// Cached semantic info for performance
@@ -53,7 +52,7 @@ impl SemanticMetadataProvider {
     }
     
     /// Create provider with semantic database reference
-    pub fn with_database(database: Arc<SemanticDatabase>) -> Self {
+    pub fn with_database(database: Arc<crate::SemanticDatabase>) -> Self {
         Self {
             enabled: true,
             database: Some(database),
@@ -78,38 +77,58 @@ impl SemanticMetadataProvider {
     }
     
     /// Extract type information from semantic analysis
-    fn extract_type_information(&self) -> TypeInformation {
+    fn extract_type_information(&self) -> SemanticMetadata {
         if let Some(ref analysis) = self.cached_analysis {
-            TypeInformation {
-                types_inferred: analysis.types.len() as u32,
-                constraints_solved: analysis.metadata.types_analyzed as u32, // Use actual analyzed count
-                semantic_types_identified: analysis.symbols.len() as u32,
+            SemanticMetadata {
+                type_system: Some(serde_json::json!({
+                    "types_inferred": analysis.types.len(),
+                    "constraints_solved": analysis.metadata.types_analyzed,
+                    "semantic_types_identified": analysis.symbols.len()
+                })),
+                symbols: analysis.symbols.keys().map(|sym| sym.resolve().unwrap_or_else(|| "unknown".to_string())).collect(),
+                patterns: vec!["semantic_analysis".to_string()],
+                confidence: 0.9,
             }
         } else if let Some(ref semantic_info) = self.cached_semantic_info {
-            TypeInformation {
-                types_inferred: semantic_info.types.len() as u32,
-                constraints_solved: semantic_info.analysis_metadata.types_analyzed as u32,
-                semantic_types_identified: semantic_info.symbols.len() as u32,
+            SemanticMetadata {
+                type_system: Some(serde_json::json!({
+                    "types_inferred": semantic_info.types.len(),
+                    "constraints_solved": semantic_info.analysis_metadata.types_analyzed,
+                    "semantic_types_identified": semantic_info.symbols.len()
+                })),
+                symbols: semantic_info.symbols.keys().map(|sym| sym.resolve().unwrap_or_else(|| "unknown".to_string())).collect(),
+                patterns: vec!["cached_semantic_info".to_string()],
+                confidence: 0.8,
             }
         } else if let Some(ref database) = self.database {
             let stats = database.get_statistics();
-            TypeInformation {
-                types_inferred: stats.type_count as u32,
-                constraints_solved: stats.type_count as u32, // Approximation
-                semantic_types_identified: stats.semantic_type_count as u32,
+            SemanticMetadata {
+                type_system: Some(serde_json::json!({
+                    "types_inferred": stats.type_count,
+                    "constraints_solved": stats.type_count,
+                    "semantic_types_identified": stats.semantic_type_count
+                })),
+                symbols: vec!["database_symbol".to_string()], // Simplified
+                patterns: vec!["database_analysis".to_string()],
+                confidence: 0.7,
             }
         } else {
             // Fallback to minimal data
-            TypeInformation {
-                types_inferred: 0,
-                constraints_solved: 0,
-                semantic_types_identified: 0,
+            SemanticMetadata {
+                type_system: Some(serde_json::json!({
+                    "types_inferred": 0,
+                    "constraints_solved": 0,
+                    "semantic_types_identified": 0
+                })),
+                symbols: vec![],
+                patterns: vec!["fallback".to_string()],
+                confidence: 0.1,
             }
         }
     }
     
     /// Extract business rules from semantic analysis
-    fn extract_business_rules(&self) -> Vec<BusinessRule> {
+    fn extract_business_rules(&self) -> Vec<BusinessMetadata> {
         let mut rules = Vec::new();
         
         // Extract from cached semantic info if available
@@ -117,9 +136,10 @@ impl SemanticMetadataProvider {
             // Extract business rules from symbols
             for symbol_info in semantic_info.symbols.values() {
                 if let Some(ref business_context) = symbol_info.business_context {
-                    rules.push(BusinessRule {
-                        rule_name: format!("{} business context", symbol_info.name),
-                        rule_type: "business_context".to_string(),
+                    rules.push(BusinessMetadata {
+                        domain: Some(format!("{} business context", symbol_info.name)),
+                        capabilities: vec!["business_context".to_string()],
+                        rules: vec![format!("Business context for {}", symbol_info.name)],
                         confidence: 0.85,
                     });
                 }
@@ -127,9 +147,10 @@ impl SemanticMetadataProvider {
             
             // Add validation rules if available
             if let Some(ref validation_result) = semantic_info.validation_result {
-                rules.push(BusinessRule {
-                    rule_name: "Semantic validation".to_string(),
-                    rule_type: if validation_result.passed { "validated" } else { "validation_failed" }.to_string(),
+                rules.push(BusinessMetadata {
+                    domain: Some("Semantic validation".to_string()),
+                    capabilities: vec![if validation_result.passed { "validated" } else { "validation_failed" }.to_string()],
+                    rules: vec!["Semantic validation rule".to_string()],
                     confidence: if validation_result.passed { 0.95 } else { 0.5 },
                 });
             }
@@ -139,9 +160,10 @@ impl SemanticMetadataProvider {
         if let Some(ref database) = self.database {
             let db_rules = database.get_all_business_rules();
             for rule in db_rules {
-                rules.push(BusinessRule {
-                    rule_name: rule.name,
-                    rule_type: rule.domain,
+                rules.push(BusinessMetadata {
+                    domain: Some(rule.domain),
+                    capabilities: vec![rule.name.clone()],
+                    rules: vec![format!("Business rule: {}", rule.name)],
                     confidence: 0.9, // Business rules from database are high confidence
                 });
             }
@@ -150,14 +172,16 @@ impl SemanticMetadataProvider {
         // Provide default rules if no data available
         if rules.is_empty() {
             rules.extend(vec![
-                BusinessRule {
-                    rule_name: "Type safety".to_string(),
-                    rule_type: "safety".to_string(),
+                BusinessMetadata {
+                    domain: Some("Type safety".to_string()),
+                    capabilities: vec!["safety".to_string()],
+                    rules: vec!["Type safety rule".to_string()],
                     confidence: 0.95,
                 },
-                BusinessRule {
-                    rule_name: "Semantic consistency".to_string(),
-                    rule_type: "correctness".to_string(),
+                BusinessMetadata {
+                    domain: Some("Semantic consistency".to_string()),
+                    capabilities: vec!["correctness".to_string()],
+                    rules: vec!["Semantic consistency rule".to_string()],
                     confidence: 0.90,
                 },
             ]);
@@ -167,7 +191,7 @@ impl SemanticMetadataProvider {
     }
     
     /// Extract semantic relationships from analysis
-    fn extract_semantic_relationships(&self) -> Vec<SemanticRelationship> {
+    fn extract_semantic_relationships(&self) -> Vec<String> {
         let mut relationships = Vec::new();
         
         // Extract from cached analysis if available
@@ -176,12 +200,10 @@ impl SemanticMetadataProvider {
             for (symbol, symbol_info) in &analysis.symbols {
                 for (type_id, type_info) in &analysis.types {
                     if symbol_info.location.overlaps(&type_info.location) {
-                        relationships.push(SemanticRelationship {
-                            source: symbol_info.name.clone(),
-                            target: type_info.ai_description.clone().unwrap_or_else(|| "Unknown type".to_string()),
-                            relationship_type: "has_type".to_string(),
-                            strength: 0.9,
-                        });
+                        relationships.push(format!("{}:has_type:{}", 
+                            symbol_info.name, 
+                            type_info.ai_description.clone().unwrap_or_else(|| "Unknown type".to_string())
+                        ));
                     }
                 }
             }
@@ -191,57 +213,38 @@ impl SemanticMetadataProvider {
         if let Some(ref semantic_info) = self.cached_semantic_info {
             for symbol_info in semantic_info.symbols.values() {
                 if !symbol_info.ai_hints.is_empty() {
-                    relationships.push(SemanticRelationship {
-                        source: symbol_info.name.clone(),
-                        target: "AI_Analysis".to_string(),
-                        relationship_type: "analyzed_by".to_string(),
-                        strength: 0.8,
-                    });
+                    relationships.push(format!("{}:analyzed_by:AI_Analysis", symbol_info.name));
                 }
             }
         }
         
         // Provide default relationships if no data available
         if relationships.is_empty() {
-            relationships.push(SemanticRelationship {
-                source: "SemanticAnalysis".to_string(),
-                target: "TypeSystem".to_string(),
-                relationship_type: "integrates_with".to_string(),
-                strength: 1.0,
-            });
+            relationships.push("SemanticAnalysis:integrates_with:TypeSystem".to_string());
         }
         
         relationships
     }
     
     /// Extract validation summary from semantic validation
-    fn extract_validation_summary(&self) -> ValidationSummary {
+    fn extract_validation_summary(&self) -> String {
         if let Some(ref semantic_info) = self.cached_semantic_info {
             if let Some(ref validation_result) = semantic_info.validation_result {
-                ValidationSummary {
-                    rules_checked: (validation_result.errors.len() + validation_result.warnings.len()) as u32,
-                    violations_found: validation_result.errors.len() as u32,
-                    warnings_issued: validation_result.warnings.len() as u32,
-                }
+                format!("rules_checked:{}, violations_found:{}, warnings_issued:{}", 
+                    (validation_result.errors.len() + validation_result.warnings.len()),
+                    validation_result.errors.len(),
+                    validation_result.warnings.len())
             } else {
-                ValidationSummary {
-                    rules_checked: semantic_info.symbols.len() as u32,
-                    violations_found: 0,
-                    warnings_issued: 0,
-                }
+                format!("rules_checked:{}, violations_found:0, warnings_issued:0", 
+                    semantic_info.symbols.len())
             }
         } else if let Some(ref analysis) = self.cached_analysis {
-            ValidationSummary {
-                rules_checked: (analysis.metadata.symbols_analyzed + analysis.metadata.types_analyzed) as u32,
-                violations_found: analysis.metadata.warnings.len() as u32,
-                warnings_issued: analysis.metadata.warnings.len() as u32,
-            }
+            format!("rules_checked:{}, violations_found:{}, warnings_issued:{}", 
+                (analysis.metadata.symbols_analyzed + analysis.metadata.types_analyzed),
+                analysis.metadata.warnings.len(),
+                analysis.metadata.warnings.len())
         } else {
-            ValidationSummary {
-                rules_checked: 0,
-                violations_found: 0,
-                warnings_issued: 0,
-            }
+            "rules_checked:0, violations_found:0, warnings_issued:0".to_string()
         }
     }
 }
@@ -279,11 +282,15 @@ impl MetadataProvider for SemanticMetadataProvider {
         let relationships = self.extract_semantic_relationships();
         let validation_results = self.extract_validation_summary();
         
-        let semantic_metadata = SemanticProviderMetadata {
-            type_info,
-            business_rules,
-            relationships,
-            validation_results,
+        let semantic_metadata = prism_ai::providers::SemanticMetadata {
+            type_system: Some(serde_json::json!({
+                "type_info": type_info,
+                "business_rules": business_rules,
+                "validation_results": validation_results
+            })),
+            symbols: relationships,
+            patterns: vec!["semantic_analysis".to_string()],
+            confidence: 0.8,
         };
         
         Ok(DomainMetadata::Semantic(semantic_metadata))
@@ -293,12 +300,16 @@ impl MetadataProvider for SemanticMetadataProvider {
         ProviderInfo {
             name: "Semantic Analysis Metadata Provider".to_string(),
             version: "0.1.0".to_string(),
-            schema_version: "1.0.0".to_string(),
+            description: "Provides semantic analysis metadata for AI understanding".to_string(),
+            domains: vec![
+                prism_ai::MetadataDomain::Semantic,
+                prism_ai::MetadataDomain::Business,
+            ],
             capabilities: vec![
-                ProviderCapability::RealTime,
-                ProviderCapability::BusinessContext,
-                ProviderCapability::CrossReference,
-                ProviderCapability::Incremental,
+                "real_time_analysis".to_string(),
+                "business_context".to_string(),
+                "cross_reference".to_string(),
+                "incremental_analysis".to_string(),
             ],
             dependencies: vec![], // Semantic analysis doesn't depend on other providers
         }

@@ -40,6 +40,8 @@ pub use semantic::{SemanticTypeInference, SemanticConstraint};
 pub use errors::{TypeError, TypeErrorKind, TypeDiagnostic};
 pub use metadata::{InferenceMetadata, TypeInferenceAI};
 
+// Types are defined directly in this module, no need to re-export
+
 use crate::SemanticResult;
 use prism_common::{NodeId, Span};
 use serde::{Serialize, Deserialize};
@@ -114,31 +116,53 @@ pub struct InferredType {
     pub span: Span,
 }
 
-/// Source of a type inference
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Source of type inference information
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum InferenceSource {
-    /// Type was explicitly annotated
+    /// Explicitly provided type annotation
     Explicit,
-    /// Type inferred from literal value
+    /// Inferred from literal value
     Literal,
-    /// Type inferred from variable usage
-    Variable,
-    /// Type inferred from function application
-    Application,
-    /// Type inferred from function definition
-    Function,
-    /// Type inferred from pattern matching
-    Pattern,
-    /// Type inferred from operator usage
-    Operator,
-    /// Type inferred from structural analysis
+    /// Inferred from context (function calls, etc.)
+    Context,
+    /// Inferred from usage patterns
+    Usage,
+    /// Inferred from structural analysis
     Structural,
-    /// Type inferred from semantic context
-    Semantic,
-    /// Type inferred with AI assistance
-    AIAssisted,
-    /// Default/fallback type
+    /// Default/fallback inference
     Default,
+    /// Parameter type inference
+    Parameter,
+    /// Let binding inference
+    LetBinding,
+    /// Return statement inference
+    Return,
+    /// Conditional expression inference
+    Conditional,
+    /// Pattern matching inference
+    PatternMatch,
+    /// Loop/iteration inference
+    Loop,
+    /// Block statement inference
+    Block,
+    /// Iterator inference
+    Iterator,
+    /// Type definition inference
+    TypeDefinition,
+    /// Variable reference inference
+    Variable,
+    /// Function definition inference
+    Function,
+    /// Application/call inference
+    Application,
+    /// Pattern inference
+    Pattern,
+    /// Operator inference
+    Operator,
+    /// Semantic inference
+    Semantic,
+    /// AI-assisted inference
+    AIAssisted,
 }
 
 /// Result of type inference for a program or expression

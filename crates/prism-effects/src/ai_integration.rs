@@ -11,14 +11,34 @@
 //! 3. **No Logic Duplication**: Leverages existing effects system infrastructure
 //! 4. **AI-First**: Generates structured metadata for external AI consumption
 
-use crate::{EffectSystem, EffectRegistry, SecuritySystem, EffectValidator};
+use crate::effects::definition::EffectDefinition;
 use prism_ai::providers::{
-    MetadataProvider, MetadataDomain, ProviderContext, DomainMetadata, ProviderInfo, 
-    ProviderCapability, EffectsProviderMetadata, EffectDefinition, CapabilityRequirement,
-    SecurityAnalysis, EffectCompositionInfo
+    MetadataProvider, MetadataDomain, ProviderContext, DomainMetadata, ProviderInfo
 };
 use prism_ai::AIIntegrationError;
 use async_trait::async_trait;
+
+// Local type definitions for AI integration
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct CapabilityRequirement {
+    pub capability_name: String,
+    pub permission_level: String,
+    pub justification: String,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SecurityAnalysis {
+    pub security_level: String,
+    pub threats: Vec<String>,
+    pub mitigations: Vec<String>,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct EffectCompositionInfo {
+    pub composition_type: String,
+    pub effects: Vec<String>,
+    pub dependencies: Vec<String>,
+}
 
 /// Effects metadata provider that exposes effects system metadata to the prism-ai system
 /// 
@@ -31,27 +51,27 @@ pub struct EffectsMetadataProvider {
     /// Whether this provider is enabled
     enabled: bool,
     /// Reference to effects system (would be actual system in real implementation)
-    effect_system: Option<EffectSystemRef>,
+    _effect_system: Option<EffectSystemRef>,
     /// Reference to security system
-    security_system: Option<SecuritySystemRef>,
+    _security_system: Option<SecuritySystemRef>,
     /// Reference to effect validator
-    validator: Option<EffectValidatorRef>,
+    _validator: Option<EffectValidatorRef>,
 }
 
 /// Placeholder references for effects system components
 /// In a real implementation, these would be actual references to the effects systems
 #[derive(Debug)]
-struct EffectSystemRef {
+pub struct EffectSystemRef {
     // Would contain reference to actual effect system
 }
 
 #[derive(Debug)]
-struct SecuritySystemRef {
+pub struct SecuritySystemRef {
     // Would contain reference to actual security system
 }
 
 #[derive(Debug)]
-struct EffectValidatorRef {
+pub struct EffectValidatorRef {
     // Would contain reference to actual validator
 }
 
@@ -60,9 +80,9 @@ impl EffectsMetadataProvider {
     pub fn new() -> Self {
         Self {
             enabled: true,
-            effect_system: None,
-            security_system: None,
-            validator: None,
+            _effect_system: None,
+            _security_system: None,
+            _validator: None,
         }
     }
     
@@ -74,9 +94,9 @@ impl EffectsMetadataProvider {
     ) -> Self {
         Self {
             enabled: true,
-            effect_system: Some(effect_system),
-            security_system: Some(security_system),
-            validator: Some(validator),
+            _effect_system: Some(effect_system),
+            _security_system: Some(security_system),
+            _validator: Some(validator),
         }
     }
     
@@ -87,32 +107,66 @@ impl EffectsMetadataProvider {
     
     /// Extract effect definitions from effects system
     fn extract_effect_definitions(&self) -> Vec<EffectDefinition> {
-        // In a real implementation, this would extract from self.effect_system
+        // In a real implementation, this would extract from self._effect_system
         vec![
             EffectDefinition {
-                effect_name: "FileSystem.Read".to_string(),
-                effect_type: "IO".to_string(),
+                name: "FileSystem.Read".to_string(),
                 description: "Read data from file system".to_string(),
-                required_capabilities: vec!["FileSystem".to_string()],
+                category: crate::effects::definition::EffectCategory::IO,
+                parent_effect: None,
+                ai_context: Some("File system read operation with capability-based access control".to_string()),
+                security_implications: vec!["Requires FileSystem capability".to_string()],
+                business_rules: vec![],
+                capability_requirements: {
+                    let mut caps = std::collections::HashMap::new();
+                    caps.insert("FileSystem".to_string(), vec!["Read".to_string()]);
+                    caps
+                },
+                parameters: vec![],
+                examples: vec!["Reading configuration files".to_string()],
+                common_mistakes: vec!["Not checking file permissions".to_string()],
             },
             EffectDefinition {
-                effect_name: "Network.Connect".to_string(),
-                effect_type: "Network".to_string(),
+                name: "Network.Connect".to_string(),
                 description: "Establish network connection".to_string(),
-                required_capabilities: vec!["Network".to_string()],
+                category: crate::effects::definition::EffectCategory::Network,
+                parent_effect: None,
+                ai_context: Some("Network connection establishment with security controls".to_string()),
+                security_implications: vec!["Requires Network capability".to_string()],
+                business_rules: vec![],
+                capability_requirements: {
+                    let mut caps = std::collections::HashMap::new();
+                    caps.insert("Network".to_string(), vec!["Connect".to_string()]);
+                    caps
+                },
+                parameters: vec![],
+                examples: vec!["HTTP client connections".to_string()],
+                common_mistakes: vec!["Not validating connection targets".to_string()],
             },
             EffectDefinition {
-                effect_name: "Database.Query".to_string(),
-                effect_type: "Data".to_string(),
+                name: "Database.Query".to_string(),
                 description: "Execute database query".to_string(),
-                required_capabilities: vec!["Database", "Network".to_string()],
+                category: crate::effects::definition::EffectCategory::Database,
+                parent_effect: None,
+                ai_context: Some("Database query execution with access controls".to_string()),
+                security_implications: vec!["Requires Database and Network capabilities".to_string()],
+                business_rules: vec![],
+                capability_requirements: {
+                    let mut caps = std::collections::HashMap::new();
+                    caps.insert("Database".to_string(), vec!["Query".to_string()]);
+                    caps.insert("Network".to_string(), vec!["Connect".to_string()]);
+                    caps
+                },
+                parameters: vec![],
+                examples: vec!["SELECT queries".to_string(), "INSERT operations".to_string()],
+                common_mistakes: vec!["SQL injection vulnerabilities".to_string()],
             },
         ]
     }
     
     /// Extract capability requirements from security system
     fn extract_capabilities(&self) -> Vec<CapabilityRequirement> {
-        // In a real implementation, this would extract from self.security_system
+        // In a real implementation, this would extract from self._security_system
         vec![
             CapabilityRequirement {
                 capability_name: "FileSystem".to_string(),
@@ -136,13 +190,13 @@ impl EffectsMetadataProvider {
     fn extract_security_implications(&self) -> SecurityAnalysis {
         // In a real implementation, this would extract from security analysis results
         SecurityAnalysis {
-            risk_level: "Medium".to_string(),
-            threat_vectors: vec![
+            security_level: "Medium".to_string(),
+            threats: vec![
                 "Unauthorized file access".to_string(),
                 "Network-based attacks".to_string(),
                 "SQL injection via database queries".to_string(),
             ],
-            mitigation_strategies: vec![
+            mitigations: vec![
                 "Capability-based access control".to_string(),
                 "Input validation and sanitization".to_string(),
                 "Least privilege principle enforcement".to_string(),
@@ -154,12 +208,13 @@ impl EffectsMetadataProvider {
     fn extract_composition_info(&self) -> EffectCompositionInfo {
         // In a real implementation, this would analyze effect composition patterns
         EffectCompositionInfo {
-            composition_patterns: vec![
+            composition_type: "Sequential IO operations".to_string(),
+            effects: vec![
                 "Sequential IO operations".to_string(),
                 "Parallel network requests".to_string(),
                 "Transactional database operations".to_string(),
             ],
-            complexity_score: 0.7, // Medium complexity
+            dependencies: vec![],
         }
     }
 }
@@ -197,11 +252,24 @@ impl MetadataProvider for EffectsMetadataProvider {
         let security_implications = self.extract_security_implications();
         let composition_info = self.extract_composition_info();
         
-        let effects_metadata = EffectsProviderMetadata {
-            effect_definitions,
-            capabilities,
-            security_implications,
-            composition_info,
+        // Create effects metadata structure
+        use serde_json::json;
+        use prism_ai::providers::EffectsMetadata;
+        
+        let security_context = json!({
+            "security_implications": security_implications,
+        });
+        
+        let effect_graph = json!({
+            "effect_definitions": effect_definitions,
+            "composition_info": composition_info,
+        });
+        
+        let effects_metadata = EffectsMetadata {
+            capabilities: capabilities.iter().map(|c| c.capability_name.clone()).collect(),
+            security_context: Some(security_context),
+            effect_graph: Some(effect_graph),
+            confidence: 0.85, // High confidence in effects system metadata
         };
         
         Ok(DomainMetadata::Effects(effects_metadata))
@@ -211,12 +279,13 @@ impl MetadataProvider for EffectsMetadataProvider {
         ProviderInfo {
             name: "Effects System Metadata Provider".to_string(),
             version: "0.1.0".to_string(),
-            schema_version: "1.0.0".to_string(),
+            description: "Provides metadata about the effects system".to_string(),
+            domains: vec![MetadataDomain::Effects],
             capabilities: vec![
-                ProviderCapability::RealTime,
-                ProviderCapability::BusinessContext,
-                ProviderCapability::CrossReference,
-                ProviderCapability::PerformanceMetrics,
+                "RealTime".to_string(),
+                "BusinessContext".to_string(),
+                "CrossReference".to_string(),
+                "PerformanceMetrics".to_string(),
             ],
             dependencies: vec![], // Effects system doesn't depend on other providers
         }

@@ -177,7 +177,7 @@ impl SemanticValidator {
         // Check for missing expected documentation elements
         for expected_doc in &semantic_info.expected_docs {
             let has_expected = element.annotations.iter()
-                .any(|a| a.name == expected_doc);
+                .any(|a| a.name == *expected_doc);
 
             if !has_expected {
                 suggestions.push(format!(
@@ -281,7 +281,7 @@ impl SemanticValidator {
         let mut suggestions = Vec::new();
 
         // Extract function information
-        if let Item::Function(func_decl) = &ast_item.inner {
+        if let Item::Function(func_decl) = &ast_item.kind {
             // Check if function has effects that should be documented
             let has_effect_annotation = element.annotations.iter()
                 .any(|a| a.name == "effects");
@@ -340,12 +340,14 @@ impl SemanticValidator {
     fn are_semantically_aligned(&self, doc_text: &str, semantic_meaning: &str) -> bool {
         // Simple semantic alignment check
         // In a complete implementation, this could use more sophisticated NLP
-        let doc_words: HashSet<_> = doc_text.to_lowercase()
+        let doc_text_lower = doc_text.to_lowercase();
+        let doc_words: HashSet<_> = doc_text_lower
             .split_whitespace()
             .filter(|w| w.len() > 3)
             .collect();
 
-        let semantic_words: HashSet<_> = semantic_meaning.to_lowercase()
+        let semantic_meaning_lower = semantic_meaning.to_lowercase();
+        let semantic_words: HashSet<_> = semantic_meaning_lower
             .split_whitespace()
             .filter(|w| w.len() > 3)
             .collect();

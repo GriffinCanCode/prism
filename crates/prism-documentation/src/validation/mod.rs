@@ -260,12 +260,12 @@ impl DocumentationValidator {
 
     /// Validate a single AST item
     fn validate_item(&self, item: &AstNode<Item>) -> DocumentationResult<ValidationResult> {
-        match &item.inner {
-            Item::Module(module) => self.validate_module_item(item, module),
-            Item::Function(function) => self.validate_function_item(item, function),
-            Item::Type(type_def) => self.validate_type_item(item, type_def),
-            Item::Const(const_def) => self.validate_const_item(item, const_def),
-            Item::Variable(var_def) => self.validate_variable_item(item, var_def),
+        match &item.kind {
+            Item::Module(module) => self.validate_module_item(item, &module),
+            Item::Function(function) => self.validate_function_item(item, &function),
+            Item::Type(type_def) => self.validate_type_item(item, &type_def),
+            Item::Const(const_def) => self.validate_const_item(item, &const_def),
+            Item::Variable(var_def) => self.validate_variable_item(item, &var_def),
             _ => Ok(ValidationResult::empty()),
         }
     }
@@ -378,7 +378,7 @@ impl DocumentationValidator {
 
             // Validate parameter documentation completeness
             for param in &function.parameters {
-                if !self.has_parameter_documentation(item, &param.name) {
+                if !self.has_parameter_documentation(item, &param.name.to_string()) {
                     violations.push(ValidationViolation {
                         violation_type: ViolationType::MissingRequiredAnnotation,
                         severity: ViolationSeverity::Error,
@@ -590,38 +590,32 @@ impl DocumentationValidator {
 
     // Helper methods for AST analysis
     fn has_annotation(&self, item: &AstNode<Item>, annotation_type: &str) -> bool {
-        // Check item attributes for the annotation
-        item.metadata.attributes.iter().any(|attr| {
-            self.extract_annotation_name(attr) == annotation_type
+        // Check semantic annotations for the annotation type
+        item.metadata.semantic_annotations.iter().any(|annotation| {
+            annotation == annotation_type
         })
     }
 
     fn has_documentation(&self, item: &AstNode<Item>) -> bool {
-        // Check if item has documentation comment or any annotations
-        item.metadata.doc_comment.is_some() || !item.metadata.attributes.is_empty()
+        // Check if item has documentation or any annotations
+        item.metadata.documentation.is_some() || !item.metadata.semantic_annotations.is_empty()
     }
 
     fn has_parameter_documentation(&self, item: &AstNode<Item>, param_name: &str) -> bool {
-        // Look for @param annotations that mention this parameter
-        item.metadata.attributes.iter().any(|attr| {
-            if self.extract_annotation_name(attr) == "param" {
-                // Check if the annotation mentions this parameter name
-                self.annotation_mentions_parameter(attr, param_name)
-            } else {
-                false
-            }
+        // Look for param annotations that mention this parameter
+        item.metadata.semantic_annotations.iter().any(|annotation| {
+            annotation.starts_with("param") && annotation.contains(param_name)
+        }) || item.metadata.documentation.as_ref().map_or(false, |doc| {
+            doc.contains(param_name)
         })
     }
 
     fn has_field_documentation(&self, item: &AstNode<Item>, field_name: &str) -> bool {
-        // Look for @field annotations that mention this field
-        item.metadata.attributes.iter().any(|attr| {
-            if self.extract_annotation_name(attr) == "field" {
-                // Check if the annotation mentions this field name
-                self.annotation_mentions_field(attr, field_name)
-            } else {
-                false
-            }
+        // Look for field annotations that mention this field
+        item.metadata.semantic_annotations.iter().any(|annotation| {
+            annotation.starts_with("field") && annotation.contains(field_name)
+        }) || item.metadata.documentation.as_ref().map_or(false, |doc| {
+            doc.contains(field_name)
         })
     }
 
@@ -648,7 +642,7 @@ impl DocumentationValidator {
 
     fn get_type_fields(&self, type_def: &prism_ast::TypeDecl) -> Option<Vec<String>> {
         // Extract field names from structured types
-        match &type_def.definition {
+        match &type_def.kind {
             prism_ast::TypeDefinition::Struct(struct_def) => {
                 let fields: Vec<String> = struct_def.fields.iter()
                     .map(|field| field.name.clone())
@@ -693,8 +687,8 @@ impl DocumentationValidator {
     }
 
     // Utility methods for annotation parsing
-    fn extract_annotation_name(&self, attr: &prism_ast::Attribute) -> &str {
-        &attr.name
+    fn extract_annotation_name(&self, attr: &prism_ast::Attribute) -> String {
+        attr.name.to_string()
     }
 
     fn annotation_mentions_parameter(&self, attr: &prism_ast::Attribute, param_name: &str) -> bool {

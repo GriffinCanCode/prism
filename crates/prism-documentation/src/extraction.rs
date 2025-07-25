@@ -348,7 +348,7 @@ impl DocumentationExtractor {
         let annotations = self.extract_annotations_from_attributes(&type_decl.attributes);
         let doc_content = self.extract_doc_comment_from_metadata(&item.metadata);
         let ai_context = self.extract_ai_context_from_metadata(&item.metadata);
-        let jsdoc_info = self.extract_jsdoc_info(&annotations.unwrap_or_default(), &doc_content);
+        let jsdoc_info = self.extract_jsdoc_info(&annotations.as_ref().unwrap_or(&vec![]), &doc_content);
 
         Ok(DocumentationElement {
             element_type: DocumentationElementType::Type,
@@ -450,7 +450,7 @@ impl DocumentationExtractor {
 
         for attr in attributes {
             let annotation = ExtractedAnnotation {
-                name: attr.name.clone(),
+                name: attr.name.to_string(),
                 value: self.extract_primary_value_from_attribute(attr),
                 arguments: self.extract_arguments_from_attribute(attr),
                 location: Span::dummy(), // TODO: Get actual location from attribute
@@ -465,7 +465,7 @@ impl DocumentationExtractor {
     fn extract_primary_value_from_attribute(&self, attr: &Attribute) -> Option<String> {
         // For attributes like @responsibility "value", extract the first string argument
         attr.arguments.first().and_then(|arg| match arg {
-            prism_ast::AttributeArgument::Literal(prism_ast::LiteralValue::String(s)) => Some(s.clone()),
+            prism_ast::AttributeArgument::Literal(prism_ast::AttributeValue::String(s)) => Some(s.clone()),
             _ => None,
         })
     }
@@ -474,16 +474,16 @@ impl DocumentationExtractor {
     fn extract_arguments_from_attribute(&self, attr: &Attribute) -> Vec<AnnotationArgument> {
         attr.arguments.iter().map(|arg| {
             match arg {
-                prism_ast::AttributeArgument::Literal(literal) => {
+                prism_ast::AttributeArgument::Literal(value) => {
                     AnnotationArgument {
                         name: None,
-                        value: self.literal_to_string(literal),
+                        value: self.attribute_value_to_string(value),
                     }
                 }
                 prism_ast::AttributeArgument::Named { name, value } => {
                     AnnotationArgument {
-                        name: Some(name.clone()),
-                        value: self.literal_to_string(value),
+                        name: Some(name.to_string()),
+                        value: self.attribute_value_to_string(value),
                     }
                 }
             }
@@ -501,6 +501,24 @@ impl DocumentationExtractor {
             prism_ast::LiteralValue::Money { amount, currency } => format!("{} {}", amount, currency),
             prism_ast::LiteralValue::Duration { value, unit } => format!("{} {}", value, unit),
             prism_ast::LiteralValue::Regex(pattern) => format!("/{}/", pattern),
+        }
+    }
+
+    /// Convert attribute value to string
+    fn attribute_value_to_string(&self, value: &prism_ast::AttributeValue) -> String {
+        match value {
+            prism_ast::AttributeValue::String(s) => s.clone(),
+            prism_ast::AttributeValue::Integer(i) => i.to_string(),
+            prism_ast::AttributeValue::Float(f) => f.to_string(),
+            prism_ast::AttributeValue::Boolean(b) => b.to_string(),
+            prism_ast::AttributeValue::Array(arr) => {
+                let values: Vec<String> = arr.iter().map(|v| self.attribute_value_to_string(v)).collect();
+                format!("[{}]", values.join(", "))
+            }
+            prism_ast::AttributeValue::Object(obj) => {
+                let pairs: Vec<String> = obj.iter().map(|(k, v)| format!("{}: {}", k, self.attribute_value_to_string(v))).collect();
+                format!("{{{}}}", pairs.join(", "))
+            }
         }
     }
 

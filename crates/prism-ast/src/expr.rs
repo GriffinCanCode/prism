@@ -727,6 +727,25 @@ pub struct ComprehensionGenerator {
     pub is_async: bool,
 }
 
+/// Alias for ComprehensionGenerator for backward compatibility
+pub type Generator = ComprehensionGenerator;
+
+/// Expression context for starred expressions
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum ExprContext {
+    /// Load context
+    Load,
+    /// Store context
+    Store,
+    /// Delete context
+    Del,
+    /// Augmented assignment context
+    AugLoad,
+    /// Parameter context
+    Param,
+}
+
 /// Named expression (walrus operator :=)
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]

@@ -289,6 +289,7 @@ impl EffectHierarchy {
 
 /// Definition of an effect type
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EffectDefinition {
     /// Unique name of the effect
     pub name: String,
@@ -420,6 +421,7 @@ impl fmt::Display for EffectCategory {
 
 /// Parameter for an effect
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct EffectParameter {
     /// Parameter name
     pub name: String,
@@ -437,6 +439,7 @@ pub struct EffectParameter {
 
 /// Constraint on an effect parameter
 #[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ParameterConstraint {
     /// Constraint expression
     pub expression: AstNode<Expr>,
@@ -448,6 +451,7 @@ pub struct ParameterConstraint {
 
 /// Severity levels for constraint violations
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum ConstraintSeverity {
     /// Error - must be satisfied
     Error,

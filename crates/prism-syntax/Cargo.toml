@@ -17,6 +17,7 @@ prism-common = { workspace = true }
 prism-lexer = { workspace = true }
 prism-ast = { workspace = true }
 prism-ai = { workspace = true }
+prism-documentation = { path = "../prism-documentation" }
 async-trait = { workspace = true }
 
 # Parsing and text processing

@@ -369,6 +369,32 @@ impl AstVisitor for DefaultVisitor {
                 }
             }
             Stmt::Error(_) => {},
+            Stmt::Let(let_decl) => {
+                if let Some(type_annotation) = &let_decl.type_annotation {
+                    self.visit_type(type_annotation);
+                }
+                if let Some(initializer) = &let_decl.initializer {
+                    self.visit_expr(initializer);
+                }
+            }
+            Stmt::LetStmt(let_stmt) => {
+                self.visit_pattern(&let_stmt.pattern);
+                self.visit_expr(&let_stmt.value);
+                if let Some(type_annotation) = &let_stmt.type_annotation {
+                    self.visit_type(type_annotation);
+                }
+            }
+            Stmt::TypeStmt(type_stmt) => {
+                self.visit_type(&type_stmt.type_expr);
+                for param in &type_stmt.type_parameters {
+                    for bound in &param.bounds {
+                        self.visit_type(bound);
+                    }
+                    if let Some(default) = &param.default {
+                        self.visit_type(default);
+                    }
+                }
+            }
 
         }
     }

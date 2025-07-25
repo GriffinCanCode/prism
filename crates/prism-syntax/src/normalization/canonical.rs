@@ -395,6 +395,76 @@ impl CanonicalNormalizer {
                     arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("section_definition".to_string()))],
                 }))
             }
+            Stmt::Actor(_) => {
+                // Actor declarations - convert to expression call
+                Ok(CanonicalStatement::Expression(CanonicalExpression::Call {
+                    function: "actor_declaration".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("actor_definition".to_string()))],
+                }))
+            }
+            Stmt::Import(_) => {
+                // Import statements - convert to expression call
+                Ok(CanonicalStatement::Expression(CanonicalExpression::Call {
+                    function: "import_statement".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("import_definition".to_string()))],
+                }))
+            }
+            Stmt::Export(_) => {
+                // Export statements - convert to expression call
+                Ok(CanonicalStatement::Expression(CanonicalExpression::Call {
+                    function: "export_statement".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("export_definition".to_string()))],
+                }))
+            }
+            Stmt::Const(_) => {
+                // Const declarations - convert to expression call
+                Ok(CanonicalStatement::Expression(CanonicalExpression::Call {
+                    function: "const_declaration".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("const_definition".to_string()))],
+                }))
+            }
+            Stmt::If(_) => {
+                // If statements - convert to expression call
+                Ok(CanonicalStatement::Expression(CanonicalExpression::Call {
+                    function: "if_statement".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("if_definition".to_string()))],
+                }))
+            }
+            Stmt::While(_) => {
+                // While statements - convert to expression call
+                Ok(CanonicalStatement::Expression(CanonicalExpression::Call {
+                    function: "while_statement".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("while_definition".to_string()))],
+                }))
+            }
+            Stmt::For(_) => {
+                // For statements - convert to expression call
+                Ok(CanonicalStatement::Expression(CanonicalExpression::Call {
+                    function: "for_statement".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("for_definition".to_string()))],
+                }))
+            }
+            Stmt::Match(_) => {
+                // Match statements - convert to expression call
+                Ok(CanonicalStatement::Expression(CanonicalExpression::Call {
+                    function: "match_statement".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("match_definition".to_string()))],
+                }))
+            }
+            Stmt::Throw(_) => {
+                // Throw statements - convert to expression call
+                Ok(CanonicalStatement::Expression(CanonicalExpression::Call {
+                    function: "throw_statement".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("throw_definition".to_string()))],
+                }))
+            }
+            Stmt::Try(_) => {
+                // Try statements - convert to expression call
+                Ok(CanonicalStatement::Expression(CanonicalExpression::Call {
+                    function: "try_statement".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("try_definition".to_string()))],
+                }))
+            }
         }
     }
     
@@ -479,6 +549,139 @@ impl CanonicalNormalizer {
                     arguments: block_args,
                 })
             }
+            // Add all missing expression variants
+            Expr::Index(_) => {
+                Ok(CanonicalExpression::Call {
+                    function: "index_access".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("index".to_string()))],
+                })
+            }
+            Expr::Array(_) => {
+                Ok(CanonicalExpression::Call {
+                    function: "array_literal".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("array".to_string()))],
+                })
+            }
+            Expr::Object(_) => {
+                Ok(CanonicalExpression::Call {
+                    function: "object_literal".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("object".to_string()))],
+                })
+            }
+            Expr::Lambda(_) => {
+                Ok(CanonicalExpression::Call {
+                    function: "lambda_expression".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("lambda".to_string()))],
+                })
+            }
+            Expr::Match(_) => {
+                Ok(CanonicalExpression::Call {
+                    function: "match_expression".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("match".to_string()))],
+                })
+            }
+            Expr::If(_) => {
+                Ok(CanonicalExpression::Call {
+                    function: "if_expression".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("if".to_string()))],
+                })
+            }
+            Expr::While(_) => {
+                Ok(CanonicalExpression::Call {
+                    function: "while_expression".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("while".to_string()))],
+                })
+            }
+            Expr::For(_) => {
+                Ok(CanonicalExpression::Call {
+                    function: "for_expression".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("for".to_string()))],
+                })
+            }
+            Expr::Try(_) => {
+                Ok(CanonicalExpression::Call {
+                    function: "try_expression".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("try".to_string()))],
+                })
+            }
+            Expr::TypeAssertion(_) => {
+                Ok(CanonicalExpression::Call {
+                    function: "type_assertion".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("type_assertion".to_string()))],
+                })
+            }
+            Expr::Await(_) => {
+                Ok(CanonicalExpression::Call {
+                    function: "await_expression".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("await".to_string()))],
+                })
+            }
+            Expr::Yield(_) => {
+                Ok(CanonicalExpression::Call {
+                    function: "yield_expression".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("yield".to_string()))],
+                })
+            }
+            Expr::Actor(_) => {
+                Ok(CanonicalExpression::Call {
+                    function: "actor_expression".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("actor".to_string()))],
+                })
+            }
+            Expr::Spawn(_) => {
+                Ok(CanonicalExpression::Call {
+                    function: "spawn_expression".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("spawn".to_string()))],
+                })
+            }
+            Expr::Channel(_) => {
+                Ok(CanonicalExpression::Call {
+                    function: "channel_expression".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("channel".to_string()))],
+                })
+            }
+            Expr::Select(_) => {
+                Ok(CanonicalExpression::Call {
+                    function: "select_expression".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("select".to_string()))],
+                })
+            }
+            Expr::Range(_) => {
+                Ok(CanonicalExpression::Call {
+                    function: "range_expression".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("range".to_string()))],
+                })
+            }
+            Expr::Tuple(_) => {
+                Ok(CanonicalExpression::Call {
+                    function: "tuple_expression".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("tuple".to_string()))],
+                })
+            }
+            Expr::Return(_) => {
+                Ok(CanonicalExpression::Call {
+                    function: "return_expression".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("return".to_string()))],
+                })
+            }
+            Expr::Break(_) => {
+                Ok(CanonicalExpression::Call {
+                    function: "break_expression".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("break".to_string()))],
+                })
+            }
+            Expr::Continue(_) => {
+                Ok(CanonicalExpression::Call {
+                    function: "continue_expression".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("continue".to_string()))],
+                })
+            }
+            Expr::Throw(_) => {
+                Ok(CanonicalExpression::Call {
+                    function: "throw_expression".to_string(),
+                    arguments: vec![CanonicalExpression::Literal(CanonicalLiteral::String("throw".to_string()))],
+                })
+            }
         }
     }
     
@@ -490,8 +693,15 @@ impl CanonicalNormalizer {
             LiteralValue::Float(f) => Ok(CanonicalLiteral::Float(*f)),
             LiteralValue::Boolean(b) => Ok(CanonicalLiteral::Boolean(*b)),
             LiteralValue::Null => Ok(CanonicalLiteral::String("null".to_string())),
-            // Note: Character variant doesn't exist in current LiteralValue enum
-            // LiteralValue::Character(c) => Ok(CanonicalLiteral::String(c.to_string())),
+            LiteralValue::Money { amount, currency } => {
+                Ok(CanonicalLiteral::String(format!("{}.{}", amount, currency)))
+            }
+            LiteralValue::Duration { value, unit } => {
+                Ok(CanonicalLiteral::String(format!("{}.{}", value, unit)))
+            }
+            LiteralValue::Regex(pattern) => {
+                Ok(CanonicalLiteral::String(format!("regex({})", pattern)))
+            }
         }
     }
     
@@ -534,11 +744,23 @@ impl CanonicalNormalizer {
             BinaryOperator::Greater => "greater".to_string(),
             BinaryOperator::LessEqual => "less_equal".to_string(),
             BinaryOperator::GreaterEqual => "greater_equal".to_string(),
+            // Add missing comparison aliases
+            BinaryOperator::LessThan => "less_than".to_string(),
+            BinaryOperator::LessThanOrEqual => "less_than_or_equal".to_string(),
+            BinaryOperator::GreaterThan => "greater_than".to_string(),
+            BinaryOperator::GreaterThanOrEqual => "greater_than_or_equal".to_string(),
             BinaryOperator::And => "logical_and".to_string(),
             BinaryOperator::Or => "logical_or".to_string(),
+            // Add missing logical aliases
+            BinaryOperator::LogicalAnd => "logical_and".to_string(),
+            BinaryOperator::LogicalOr => "logical_or".to_string(),
             BinaryOperator::BitAnd => "bitwise_and".to_string(),
             BinaryOperator::BitOr => "bitwise_or".to_string(),
             BinaryOperator::BitXor => "bitwise_xor".to_string(),
+            // Add missing bitwise aliases
+            BinaryOperator::BitwiseAnd => "bitwise_and".to_string(),
+            BinaryOperator::BitwiseOr => "bitwise_or".to_string(),
+            BinaryOperator::BitwiseXor => "bitwise_xor".to_string(),
             BinaryOperator::LeftShift => "left_shift".to_string(),
             BinaryOperator::RightShift => "right_shift".to_string(),
             BinaryOperator::Assign => "assign".to_string(),
@@ -558,10 +780,16 @@ impl CanonicalNormalizer {
     fn map_unary_operator(&self, operator: &UnaryOperator) -> String {
         match operator {
             UnaryOperator::Not => "logical_not".to_string(),
+            UnaryOperator::LogicalNot => "logical_not".to_string(),
             UnaryOperator::Negate => "negate".to_string(),
             UnaryOperator::BitNot => "bitwise_not".to_string(),
+            UnaryOperator::BitwiseNot => "bitwise_not".to_string(),
             UnaryOperator::Reference => "reference".to_string(),
             UnaryOperator::Dereference => "dereference".to_string(),
+            UnaryOperator::PreIncrement => "pre_increment".to_string(),
+            UnaryOperator::PostIncrement => "post_increment".to_string(),
+            UnaryOperator::PreDecrement => "pre_decrement".to_string(),
+            UnaryOperator::PostDecrement => "post_decrement".to_string(),
         }
     }
     

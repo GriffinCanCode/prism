@@ -21,7 +21,7 @@ pub struct AIMetadataGenerator {
 }
 
 /// AI context extractor trait
-pub trait ContextExtractor: Send + Sync {
+pub trait ContextExtractor: Send + Sync + std::fmt::Debug {
     /// Extract AI context from a documentation element
     fn extract_context(&self, element: &DocumentationElement) -> DocumentationResult<AIElementContext>;
     
@@ -771,7 +771,7 @@ impl AIMetadataGenerator {
         let source_text = format!("{} {} {}", 
             source.functional_description.as_deref().unwrap_or(""),
             source.purpose.as_deref().unwrap_or(""),
-            source.usage_examples.iter().map(|ex| &ex.code).collect::<Vec<_>>().join(" ")
+            source.usage_examples.iter().map(|ex| ex.code.as_str()).collect::<Vec<_>>().join(" ")
         );
 
         if source_text.contains(&target.name) {

@@ -462,10 +462,8 @@ impl BoundaryDetector {
     /// Calculate dependency similarity between modules
     fn calculate_dependency_similarity(&self, module_a: &ModuleDecl, module_b: &ModuleDecl) -> f64 {
         let deps_a: std::collections::HashSet<_> = module_a.dependencies.iter()
-            .map(|d| &d.path)
             .collect();
         let deps_b: std::collections::HashSet<_> = module_b.dependencies.iter()
-            .map(|d| &d.path)
             .collect();
         
         if deps_a.is_empty() && deps_b.is_empty() {

@@ -566,7 +566,7 @@ impl RequirementChecker {
 
     /// Extract annotation names from attributes
     fn extract_annotation_names(&self, attributes: &[prism_ast::Attribute]) -> HashSet<String> {
-        attributes.iter().map(|attr| attr.name.clone()).collect()
+        attributes.iter().map(|attr| attr.name.to_string()).collect()
     }
 
     /// Check if required annotation is present
@@ -697,7 +697,7 @@ impl RequirementChecker {
     /// Get first string argument from attribute
     fn get_first_string_argument(&self, attr: &prism_ast::Attribute) -> Option<String> {
         attr.arguments.first().and_then(|arg| match arg {
-            prism_ast::AttributeArgument::Literal(prism_ast::LiteralValue::String(s)) => Some(s.clone()),
+            prism_ast::AttributeArgument::Literal(prism_ast::AttributeValue::String(s)) => Some(s.clone()),
             _ => None,
         })
     }

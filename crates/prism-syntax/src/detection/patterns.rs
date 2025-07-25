@@ -4,7 +4,7 @@
 //! of different programming styles, maintaining conceptual cohesion around the
 //! single responsibility of "syntax pattern identification and evidence collection".
 
-use super::{detector::{SyntaxEvidence, EvidenceType}, SyntaxStyle};
+use super::{detector::{SyntaxEvidence, EvidenceType, DetectionError}, SyntaxStyle};
 use prism_common::span::Span;
 use regex::Regex;
 use once_cell::sync::Lazy;
@@ -28,20 +28,17 @@ struct CompiledPattern {
 /// A pattern that identifies a specific syntax style
 #[derive(Debug, Clone)]
 pub struct SyntaxPattern {
+    /// Name of the pattern
+    pub name: String,
+    
     /// Regular expression pattern
-    pub pattern: String,
+    pub regex: String,
     
     /// Syntax style this pattern identifies
     pub style: SyntaxStyle,
     
     /// Weight/importance of this pattern
-    pub weight: f64,
-    
-    /// Type of evidence this pattern provides
-    pub evidence_type: EvidenceType,
-    
-    /// Human-readable description
-    pub description: String,
+    pub confidence_weight: f64,
 }
 
 /// Evidence found by pattern matching
@@ -142,7 +139,7 @@ impl PatternMatcher {
             },
             SyntaxPattern {
                 name: "c_include".to_string(),
-                regex: r"#include\s*[<\"].*[>\"]".to_string(),
+                regex: r#"#include\s*[<"].*[>"]"#.to_string(),
                 style: SyntaxStyle::CLike,
                 confidence_weight: 0.9,
             },
@@ -192,10 +189,14 @@ impl PatternMatcher {
         
         let evidence: Vec<SyntaxEvidence> = matches.into_iter().map(|_match_info| {
             SyntaxEvidence {
+                pattern: pattern.name.clone(),
                 style: pattern.style,
+                weight: pattern.confidence_weight,
+                location: Span::default(), // Use default Span instead of None
+                description: format!("Pattern '{}' found", pattern.name),
+                evidence_type: EvidenceType::Keyword, // Default to keyword type
                 confidence: pattern.confidence_weight,
                 reason: format!("Pattern '{}' found", pattern.name),
-                location: None, // TODO: Add actual location information
             }
         }).collect();
         
@@ -295,7 +296,7 @@ mod tests {
             }
         "#;
         
-        let evidence = matcher.analyze_patterns(c_like_source);
+        let evidence = matcher.find_patterns(c_like_source).unwrap();
         
         // Should find C-like evidence
         assert!(!evidence.is_empty(), "Should find some evidence");
@@ -325,7 +326,7 @@ mod tests {
                         return processAuth(user)
         "#;
         
-        let evidence = matcher.analyze_patterns(python_like_source);
+        let evidence = matcher.find_patterns(python_like_source).unwrap();
         
         let python_evidence: Vec<_> = evidence.iter()
             .filter(|e| e.style == SyntaxStyle::PythonLike)
@@ -356,7 +357,7 @@ mod tests {
             }
         "#;
         
-        let evidence = matcher.analyze_patterns(rust_like_source);
+        let evidence = matcher.find_patterns(rust_like_source).unwrap();
         
         let rust_evidence: Vec<_> = evidence.iter()
             .filter(|e| e.style == SyntaxStyle::RustLike)
@@ -384,7 +385,7 @@ mod tests {
             }
         "#;
         
-        let evidence = matcher.analyze_patterns(mixed_source);
+        let evidence = matcher.find_patterns(mixed_source).unwrap();
         
         // Should have both C-like and Python-like evidence
         let c_like_count = evidence.iter().filter(|e| e.style == SyntaxStyle::CLike).count();
@@ -424,7 +425,7 @@ mod tests {
         "#.repeat(100); // Repeat 100 times for performance test
         
         let start = std::time::Instant::now();
-        let evidence = matcher.analyze_patterns(&large_source);
+        let evidence = matcher.find_patterns(&large_source).unwrap();
         let duration = start.elapsed();
         
         assert!(!evidence.is_empty(), "Should find evidence in large source");

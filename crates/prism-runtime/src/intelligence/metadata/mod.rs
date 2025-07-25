@@ -158,8 +158,8 @@ impl AIMetadataCollector {
     ) -> Result<(), AIMetadataError> {
         let metadata = MemoryAllocationMetadata {
             allocation_id: ptr.allocation_id(),
-            semantic_type: ptr.semantic_type().type_name().to_string(),
-            size: ptr.size(),
+            semantic_type: (**ptr).type_name().to_string(),
+            size: std::mem::size_of::<T>(), // Use size_of instead of non-existent size() method
             context_id: context.execution_id,
             timestamp: SystemTime::now(),
             business_purpose: self.context_analyzer.analyze_memory_purpose(ptr, context),
@@ -539,7 +539,7 @@ pub struct EffectExecutionMetadata {
     /// Whether execution succeeded
     pub success: bool,
     /// Resource consumption
-    pub resource_consumption: effects::ResourceConsumption,
+    pub resource_consumption: effects::ResourceMeasurement,
     /// Business context
     pub business_context: BusinessContext,
     /// Performance characteristics
@@ -1089,6 +1089,7 @@ impl BusinessContextAnalyzer {
             execution::ExecutionTarget::TypeScript => Some("Web Application".to_string()),
             execution::ExecutionTarget::WebAssembly => Some("Performance-Critical Module".to_string()),
             execution::ExecutionTarget::Native => Some("System-Level Processing".to_string()),
+            execution::ExecutionTarget::PrismVM => Some("Prism Virtual Machine".to_string()),
         }
     }
 
@@ -1117,6 +1118,13 @@ impl BusinessContextAnalyzer {
                     "System Integration".to_string(),
                     "Platform Specific".to_string(),
                     "Direct Hardware Access".to_string(),
+                ]);
+            }
+            execution::ExecutionTarget::PrismVM => {
+                concepts.extend_from_slice(&[
+                    "Virtual Machine".to_string(),
+                    "Bytecode Execution".to_string(),
+                    "JIT Compilation".to_string(),
                 ]);
             }
         }
@@ -1166,6 +1174,10 @@ impl BusinessContextAnalyzer {
             execution::ExecutionTarget::Native => {
                 patterns.push("System Architecture".to_string());
                 patterns.push("Resource Management".to_string());
+            }
+            execution::ExecutionTarget::PrismVM => {
+                patterns.push("Virtual Machine Architecture".to_string());
+                patterns.push("Bytecode Interpretation".to_string());
             }
         }
         
